@@ -1,0 +1,4 @@
+---
+# By default, we ensure 'sudo' package is installed in both Ubuntu and Fedora.
+users_packages:
+  - sudo

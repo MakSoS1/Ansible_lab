@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  author: "MyName"
+  description: "Role to install and configure Apache or httpd"
+  company: "MyCompany"
+dependencies: []

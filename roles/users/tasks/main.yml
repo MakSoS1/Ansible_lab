@@ -1,0 +1,29 @@
+---
+- name: Ensure needed packages are present
+  package:
+    name: "{{ users_packages }}"
+    state: present
+
+- name: Create groups
+  group:
+    name: "{{ item.group }}"
+    state: present
+  loop: "{{ userlist }}"
+  when: item.group is defined
+
+- name: Create users
+  user:
+    name: "{{ item.name }}"
+    groups: "{{ item.group | default('') }}"
+    shell: "{{ item.shell | default('/bin/bash') }}"
+    password: "{{ item.password | default('') }}"
+    state: present
+  loop: "{{ userlist }}"
+
+- name: Add authorized keys for each user
+  authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ item.ssh_key }}"
+    state: present
+  loop: "{{ userlist }}"
+  when: item.ssh_key is defined

@@ -1,0 +1,4 @@
+---
+- name: Debug the vaulted admin password
+  debug:
+    msg: "Vaulted admin password is: {{ vault_admin_password }}"

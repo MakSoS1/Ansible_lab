@@ -1,0 +1,9 @@
+---
+- hosts: all
+  become: yes
+  vars_files:
+    - group_vars/all/vault_secrets.yml
+  roles:
+    - vault
+    - users
+    - apache

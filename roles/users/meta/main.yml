@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  author: "MyName"
+  description: "Role to manage Linux users and groups"
+  company: "MyCompany"
+dependencies: []

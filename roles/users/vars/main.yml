@@ -1,0 +1,11 @@
+---
+userlist:
+  - name: "devuser"
+    password: "cryptedpassword123"
+    group: "developers"
+    shell: "/bin/bash"
+    ssh_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCo..."
+
+  - name: "testuser"
+    password: "testpassword123"
+    shell: "/bin/bash"
