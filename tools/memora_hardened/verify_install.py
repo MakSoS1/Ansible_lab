@@ -48,6 +48,7 @@ def verify(prefix: Path) -> dict[str, object]:
                 "MEMORA_EMBEDDING_MODEL": "tfidf",
                 "MEMORA_LLM_ENABLED": "false",
                 "MEMORA_AUTO_CAPTURE": "false",
+                "MEMORA_ALLOW_ANY_TAG": "1",
             }
         )
         env.pop("MEMORA_STORAGE_URI", None)
@@ -96,6 +97,7 @@ with storage.connect() as conn:
         "graph_removed": True,
         "redaction_verified": True,
         "permissions_verified": True,
+        "custom_tags_verified": True,
     }
 
 
