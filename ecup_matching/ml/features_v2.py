@@ -24,9 +24,11 @@ FEATURE_NAMES_V2: tuple[str, ...] = (*FEATURE_NAMES, *EXTRA_FEATURE_NAMES_V2)
 def _symmetric_base_features(a: ItemNorm, b: ItemNorm) -> dict[str, object]:
     """Match the original two-pass v2 symmetry with one full feature pass.
 
-    All legacy v1 features are symmetric except the four SequenceMatcher-based
+    All legacy v1 features are symmetric except the SequenceMatcher-derived
     fuzzy ratios. Compute the expensive complete vector once and average only
-    those four values with their reverse-direction evaluations.
+    directional fields. For unequal title lengths, ``_partial_ratio`` already
+    canonicalizes to short-vs-long internally, so its reverse call is exactly
+    redundant and the forward value is reused.
     """
     base = _pair_features(a, b)
     result = dict(base)
@@ -43,9 +45,14 @@ def _symmetric_base_features(a: ItemNorm, b: ItemNorm) -> dict[str, object]:
     token_set_a = " ".join(common_tokens + only_a)
     token_set_b = " ".join(common_tokens + only_b)
 
+    reverse_partial = (
+        float(base["fuzz_partial_ratio"])
+        if len(a.name) != len(b.name)
+        else _partial_ratio(b.name, a.name)
+    )
     reverse_values = {
         "fuzz_ratio": _ratio(b.name, a.name),
-        "fuzz_partial_ratio": _partial_ratio(b.name, a.name),
+        "fuzz_partial_ratio": reverse_partial,
         "fuzz_token_sort": _ratio(sorted_b, sorted_a),
         "fuzz_token_set": _ratio(token_set_b, token_set_a),
     }
