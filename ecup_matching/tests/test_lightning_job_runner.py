@@ -46,6 +46,22 @@ def test_docker_job_kwargs_reject_lightning_credentials_in_remote_env():
             raise AssertionError("Lightning submitter credentials must never enter remote job env")
 
 
+def test_docker_job_kwargs_reject_unsafe_job_name():
+    try:
+        _docker_job_kwargs(
+            name="bad; rm -rf /",
+            image="python:3.11-slim",
+            machine="CPU",
+            command="echo ok",
+            teamspace="personal-space",
+            username="maksim",
+        )
+    except ValueError as exc:
+        assert "name" in str(exc).lower()
+    else:
+        raise AssertionError("unsafe job names must fail closed")
+
+
 def test_resolve_teamspace_prefers_personal_teamspace():
     class Owner:
         def __init__(self, name):
