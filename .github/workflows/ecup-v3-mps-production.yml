@@ -42,7 +42,8 @@ jobs:
             'pandas>=2.2,<3' \
             'pyarrow>=17,<24' \
             'scikit-learn>=1.5,<2' \
-            'safetensors>=0.4,<1'
+            'safetensors>=0.4,<1' \
+            'pytest>=8.3,<10'
       - name: Verify current source and Apple GPU
         shell: bash
         run: |
