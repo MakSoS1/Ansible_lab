@@ -1,4 +1,8 @@
-from scripts.lightning_secure_runner import _decode_ciphertext_b64, studio_training_commands
+from scripts.lightning_secure_runner import (
+    _decode_ciphertext_b64,
+    _extract_lightning_username,
+    studio_training_commands,
+)
 
 
 def test_studio_training_commands_are_pinned_and_secret_free():
@@ -43,3 +47,19 @@ def test_ciphertext_decode_accepts_only_outer_ascii_whitespace():
         assert False, "embedded whitespace must still fail strict validation"
     except ValueError:
         pass
+
+
+def test_extract_lightning_username_accepts_current_and_nested_identity_shapes():
+    assert _extract_lightning_username({"username": "maksim"}) == "maksim"
+    assert _extract_lightning_username({"name": "maksim"}) == "maksim"
+    assert _extract_lightning_username({"user": {"name": "maksim"}}) == "maksim"
+    assert _extract_lightning_username({"identity": {"username": "maksim"}}) == "maksim"
+
+
+def test_extract_lightning_username_rejects_missing_or_suspicious_values():
+    for payload in ({}, {"role": "member"}, {"username": ""}, {"username": "a/b"}):
+        try:
+            _extract_lightning_username(payload)
+            assert False, f"expected identity rejection for {payload!r}"
+        except ValueError:
+            pass
