@@ -31,12 +31,7 @@ def serialize_item_text(
     max_attrs: int = 12,
     max_chars: int = 1000,
 ) -> str:
-    """Serialize one normalized product with important attributes first.
-
-    The text is deterministic and self-contained so the same routine can be
-    copied into an offline submission package without network or external
-    preprocessing state.
-    """
+    """Serialize one normalized product with important attributes first."""
     if max_attrs < 0:
         raise ValueError("max_attrs must be non-negative")
     if max_chars <= 0:
@@ -96,7 +91,7 @@ def build_reranker_examples(
     max_attrs: int = 12,
     max_chars: int = 1000,
 ) -> pd.DataFrame:
-    """Materialize pair texts while preserving soft targets and weights."""
+    """Materialize pair texts while preserving soft targets, weights and provenance."""
     missing = {"id1", "id2", "target"} - set(pairs.columns)
     if missing:
         raise ValueError(f"pairs missing required columns: {sorted(missing)}")
@@ -116,12 +111,14 @@ def build_reranker_examples(
         )
         category = getattr(row, "category", cache[id1].category or cache[id2].category)
         sample_weight = float(getattr(row, "sample_weight", 1.0))
+        source = str(getattr(row, "source", "human"))
         rows.append(
             {
                 "id1": id1,
                 "id2": id2,
                 "target": float(row.target),
                 "sample_weight": sample_weight,
+                "source": source,
                 "category": str(category),
                 "text_a": text_a,
                 "text_b": text_b,
@@ -129,5 +126,14 @@ def build_reranker_examples(
         )
     return pd.DataFrame(
         rows,
-        columns=["id1", "id2", "target", "sample_weight", "category", "text_a", "text_b"],
+        columns=[
+            "id1",
+            "id2",
+            "target",
+            "sample_weight",
+            "source",
+            "category",
+            "text_a",
+            "text_b",
+        ],
     )
