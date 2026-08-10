@@ -1,0 +1,235 @@
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import shlex
+import shutil
+from pathlib import Path
+from typing import Any
+
+
+BASE_URL = "https://storage.yandexcloud.net/ozon-ecup-2026/Matching"
+
+
+def studio_training_commands(
+    *,
+    repo_url: str,
+    branch: str,
+    sha: str,
+    workdir: str = "ecup-v2-work",
+) -> list[str]:
+    """Build secret-free commands executed inside a Lightning Studio."""
+    q_repo = shlex.quote(repo_url)
+    q_branch = shlex.quote(branch)
+    q_sha = shlex.quote(sha)
+    q_workdir = shlex.quote(workdir)
+    return [
+        f"rm -rf {q_workdir} && git clone --depth 1 --branch {q_branch} {q_repo} {q_workdir}",
+        f"cd {q_workdir} && git fetch --depth 1 origin {q_sha} && git checkout --detach {q_sha}",
+        (
+            f"cd {q_workdir} && python -m pip install -U "
+            "'pandas>=2.2,<3' 'pyarrow>=17,<24' 'scikit-learn>=1.5,<2' "
+            "'transformers>=4.46,<5' 'safetensors>=0.4' 'huggingface-hub>=0.26'"
+        ),
+        (
+            f"cd {q_workdir} && mkdir -p data output && "
+            f"for file in matches.parquet items_human.parquet matches_llm.parquet items.parquet; do "
+            f"curl --fail --location --retry 5 --retry-all-errors -o data/$file {shlex.quote(BASE_URL)}/$file || exit 1; "
+            "test -s data/$file || exit 1; done"
+        ),
+        (
+            f"cd {q_workdir} && python -m ecup_matching.ml.train_reranker_v2 "
+            "--human-items data/items_human.parquet "
+            "--human-matches data/matches.parquet "
+            "--llm-matches data/matches_llm.parquet "
+            "--full-items data/items.parquet "
+            "--output-dir output "
+            "--base-model cointegrated/rubert-tiny2 "
+            "--weak-presample-rows 500000 "
+            "--weak-final-rows 300000 "
+            "--transitive-cap 1000 "
+            "--max-attrs 12 "
+            "--max-chars 900 "
+            "--max-length 256 "
+            "--train-batch-size 96 "
+            "--eval-batch-size 256 "
+            "--gradient-accumulation 1 "
+            "--epochs 1.0 "
+            "--hard-epochs 0.30 "
+            "--hard-negative-count 50000 "
+            "--learning-rate 3e-5 "
+            "--hard-learning-rate 1e-5"
+        ),
+        (
+            f"cd {q_workdir} && "
+            "rm -f output/train_examples.parquet output/validation_examples.parquet && "
+            "rm -rf output/stage1 data && "
+            "test -f output/metrics.json && test -f output/model/config.json && "
+            "test -f output/validation_predictions.parquet"
+        ),
+    ]
+
+
+def decrypt_credentials(private_key_path: Path, ciphertext_path: Path) -> dict[str, str]:
+    """Decrypt an RSA-OAEP payload. Plaintext never leaves this process."""
+    try:
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+    except ImportError as exc:  # pragma: no cover - integration runtime
+        raise RuntimeError("cryptography is required for the Lightning bridge") from exc
+
+    private_key = serialization.load_pem_private_key(
+        private_key_path.read_bytes(), password=None
+    )
+    ciphertext = base64.b64decode(ciphertext_path.read_bytes(), validate=True)
+    plaintext = private_key.decrypt(
+        ciphertext,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        ),
+    )
+    try:
+        payload = json.loads(plaintext.decode("utf-8"))
+    finally:
+        # Python cannot guarantee secure memory erasure, but we deliberately
+        # keep plaintext lifetime short and never persist or print it.
+        del plaintext
+    expected = {"LIGHTNING_USER_ID", "LIGHTNING_API_KEY"}
+    if set(payload) != expected:
+        raise ValueError("credential payload has unexpected fields")
+    for key in expected:
+        value = payload[key]
+        if not isinstance(value, str) or not value or len(value) > 512:
+            raise ValueError(f"invalid credential field: {key}")
+    return {key: payload[key] for key in expected}
+
+
+def _select_machine(studio, Machine) -> str:
+    last_error: Exception | None = None
+    for machine_name in ("L4", "A100", "T4"):
+        machine = getattr(Machine, machine_name, None)
+        if machine is None:
+            continue
+        try:
+            studio.start(machine)
+            return machine_name
+        except Exception as exc:  # pragma: no cover - cloud availability
+            last_error = exc
+            print(f"machine {machine_name} unavailable; trying fallback", flush=True)
+    raise RuntimeError("no requested Lightning GPU machine could be started") from last_error
+
+
+def run_lightning(
+    *,
+    credentials: dict[str, str],
+    repo_url: str,
+    branch: str,
+    sha: str,
+    output_dir: Path,
+    studio_name: str,
+) -> dict[str, Any]:
+    """Run v2 GPU training remotely and download only final safe artifacts."""
+    os.environ["LIGHTNING_USER_ID"] = credentials["LIGHTNING_USER_ID"]
+    os.environ["LIGHTNING_API_KEY"] = credentials["LIGHTNING_API_KEY"]
+    studio = None
+    machine_name = None
+    try:
+        from lightning_sdk import Machine, Studio, User
+
+        user = User()
+        teamspaces = list(user.teamspaces)
+        if not teamspaces:
+            raise RuntimeError("authenticated Lightning user has no personal Teamspace")
+        teamspace = teamspaces[0]
+        studio = Studio(
+            name=studio_name,
+            teamspace=teamspace.name,
+            user=user.name,
+            create_ok=True,
+        )
+        machine_name = _select_machine(studio, Machine)
+        print(f"Lightning Studio started on {machine_name}", flush=True)
+
+        commands = studio_training_commands(
+            repo_url=repo_url,
+            branch=branch,
+            sha=sha,
+        )
+        for number, command in enumerate(commands, start=1):
+            print(f"studio command {number}/{len(commands)}", flush=True)
+            output = studio.run(command)
+            if output:
+                # Commands contain no credentials; output is safe training/install telemetry.
+                print(output[-20_000:], flush=True)
+
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        studio.download_folder("ecup-v2-work/output", target_path=str(output_dir))
+
+        metrics_path = output_dir / "metrics.json"
+        model_config = output_dir / "model" / "config.json"
+        predictions = output_dir / "validation_predictions.parquet"
+        for required in (metrics_path, model_config, predictions):
+            if not required.is_file():
+                raise RuntimeError(f"Lightning download missing artifact: {required.name}")
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        return {
+            "machine": machine_name,
+            "studio_name": studio_name,
+            "target_sha": sha,
+            "selected_stage": metrics.get("selected_stage"),
+            "selected_macro_average_precision": metrics.get(
+                "selected_macro_average_precision"
+            ),
+        }
+    finally:
+        os.environ.pop("LIGHTNING_API_KEY", None)
+        os.environ.pop("LIGHTNING_USER_ID", None)
+        credentials.clear()
+        if studio is not None:
+            try:
+                studio.stop()
+            except Exception:
+                pass
+            try:
+                studio.delete()
+            except Exception:
+                pass
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--private-key", type=Path, required=True)
+    parser.add_argument("--ciphertext", type=Path, required=True)
+    parser.add_argument("--repo-url", required=True)
+    parser.add_argument("--branch", required=True)
+    parser.add_argument("--sha", required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--studio-name", required=True)
+    parser.add_argument("--result-json", type=Path, required=True)
+    args = parser.parse_args()
+
+    credentials = decrypt_credentials(args.private_key, args.ciphertext)
+    result = run_lightning(
+        credentials=credentials,
+        repo_url=args.repo_url,
+        branch=args.branch,
+        sha=args.sha,
+        output_dir=args.output_dir,
+        studio_name=args.studio_name,
+    )
+    args.result_json.parent.mkdir(parents=True, exist_ok=True)
+    args.result_json.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
