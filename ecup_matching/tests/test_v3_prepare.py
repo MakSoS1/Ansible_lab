@@ -20,6 +20,15 @@ def test_compact_serialized_examples_preserves_text_source_and_human_positives()
             "source": "human" if i < 6 else "weak",
         })
     frame = pd.DataFrame(rows)
+    expected_human_positive_pairs = set(
+        map(
+            tuple,
+            frame.loc[
+                (frame["source"] == "human") & (frame["target"].astype(float) >= 0.5),
+                ["id1", "id2"],
+            ].to_numpy(),
+        )
+    )
 
     compact = compact_serialized_examples(
         frame,
@@ -32,7 +41,7 @@ def test_compact_serialized_examples_preserves_text_source_and_human_positives()
     assert len(compact) == 10
     assert {"text_a", "text_b", "source", "sample_weight"}.issubset(compact.columns)
     human_pos = compact[(compact["source"] == "human") & (compact["target"] >= 0.5)]
-    assert set(map(tuple, human_pos[["id1", "id2"]].to_numpy())) == {(1, 2), (3, 4)}
+    assert set(map(tuple, human_pos[["id1", "id2"]].to_numpy())) == expected_human_positive_pairs
     assert compact[["text_a", "text_b"]].notna().all().all()
 
 
