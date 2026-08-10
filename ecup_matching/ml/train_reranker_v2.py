@@ -184,6 +184,11 @@ def _prefilter_weak_parquet(
     return out.reset_index(drop=True), int(parquet.metadata.num_rows)
 
 
+def _load_pair_items(items_path: Path, pairs: pd.DataFrame) -> pd.DataFrame:
+    pair_ids = set(pairs["id1"]) | set(pairs["id2"])
+    return select_items_by_ids(items_path, pair_ids)
+
+
 def prepare_training_examples(
     human_items_path: Path,
     human_matches_path: Path,
@@ -197,10 +202,8 @@ def prepare_training_examples(
     max_chars: int = 900,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     """Build leakage-safe outer-train and fixed-validation reranker examples."""
-    human_items = pd.read_parquet(
-        human_items_path, columns=["id", "name", "attributes", "category"]
-    )
     matches = pd.read_parquet(human_matches_path, columns=["id1", "id2", "target"])
+    human_items = _load_pair_items(human_items_path, matches)
     matches = attach_pair_category(matches, human_items)
     train_idx, valid_idx = fixed_v1_split(matches)
     outer_train = matches.iloc[train_idx].reset_index(drop=True)

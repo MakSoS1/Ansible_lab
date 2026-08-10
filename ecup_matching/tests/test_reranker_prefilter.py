@@ -3,7 +3,11 @@ import pandas as pd
 import pyarrow as pa
 
 from ecup_matching.ml import train_reranker_v2
-from ecup_matching.ml.train_reranker_v2 import _prefilter_weak, _prefilter_weak_parquet
+from ecup_matching.ml.train_reranker_v2 import (
+    _load_pair_items,
+    _prefilter_weak,
+    _prefilter_weak_parquet,
+)
 
 
 def _legacy_prefilter(
@@ -123,3 +127,20 @@ def test_streaming_prefilter_converts_only_selected_rows_to_pandas(monkeypatch, 
         {"id1": 1, "id2": 11, "target": 0.99},
         {"id1": 3, "id2": 13, "target": 0.01},
     ]
+
+
+def test_load_pair_items_excludes_unreferenced_human_catalog_rows(tmp_path):
+    path = tmp_path / "items_human.parquet"
+    pd.DataFrame(
+        {
+            "id": [1, 2, 3],
+            "name": ["a", "b", "unused"],
+            "attributes": ["{}", "{}", "x" * 1000],
+            "category": ["x", "x", "y"],
+        }
+    ).to_parquet(path, index=False)
+    pairs = pd.DataFrame({"id1": [1], "id2": [2], "target": [1]})
+
+    out = _load_pair_items(path, pairs)
+
+    assert out["id"].tolist() == [1, 2]
