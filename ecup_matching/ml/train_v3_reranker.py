@@ -171,11 +171,10 @@ def _train_steps(
     max_steps: int,
     seed: int,
 ) -> dict[str, float]:
-    Dataset = _make_dataset_class(torch)
+    PairDataset = _make_dataset_class(torch.utils.data.Dataset)
     DataLoader = torch.utils.data.DataLoader
-    dataset = Dataset(frame)
     loader = DataLoader(
-        dataset,
+        PairDataset(frame),
         batch_size=batch_size,
         shuffle=True,
         num_workers=0,
@@ -194,7 +193,7 @@ def _train_steps(
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             targets = batch["target"].to(device)
-            weights = batch["weight"].to(device)
+            weights = batch["sample_weight"].to(device)
             optimizer.zero_grad(set_to_none=True)
             logits = model(input_ids=input_ids, attention_mask=attention_mask).logits.squeeze(-1)
             per_row = torch.nn.functional.binary_cross_entropy_with_logits(
@@ -231,9 +230,9 @@ def _predict(
     max_length: int,
     batch_size: int,
 ) -> np.ndarray:
-    Dataset = _make_dataset_class(torch)
+    PairDataset = _make_dataset_class(torch.utils.data.Dataset)
     loader = torch.utils.data.DataLoader(
-        Dataset(frame),
+        PairDataset(frame),
         batch_size=batch_size,
         shuffle=False,
         num_workers=0,
@@ -306,7 +305,14 @@ def train_v3(
     stage2_lr: float = 8e-6,
     hard_negative_count: int = 12_000,
 ) -> dict[str, Any]:
-    torch, AutoTokenizer, AutoModelForSequenceClassification = _require_torch_transformers()
+    (
+        torch,
+        _,
+        _,
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+        _,
+    ) = _require_torch_transformers()
     _set_seed(torch, SEED)
     accelerator = _select_accelerator(torch)
     device = torch.device(accelerator)
@@ -326,7 +332,11 @@ def train_v3(
 
     aligned = _align_structured_validation(valid, structured_validation_path, structured_col)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=1)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name,
+        num_labels=1,
+        ignore_mismatched_sizes=True,
+    )
     started = time.perf_counter()
     stage1_train = _train_steps(
         model,
@@ -372,8 +382,6 @@ def train_v3(
         priority_fraction=0.70,
         seed=SEED,
     )
-    # Give the focused hard-negative curriculum equalized local weight rather
-    # than carrying the large human-vs-weak scale from stage 1.
     stage2_frame = stage2_frame.copy()
     stage2_frame["sample_weight"] = 1.0
     stage2_train = _train_steps(
@@ -450,7 +458,6 @@ def train_v3(
         candidates, key=lambda item: item[2]
     )
     selected_neural_scores = stage1_scores if selected_stage == "stage1" else stage2_scores
-    # Retain the correct checkpoint for the selected stage.
     selected_dir = output_dir / "model"
     if selected_dir.exists():
         shutil.rmtree(selected_dir)
@@ -505,6 +512,8 @@ def train_v3(
         "selected_candidate": selected_name,
         "validation_macro_ap": float(selected_macro_exact),
         "max_length": int(max_length),
+        "max_attrs": 10,
+        "max_chars": 700,
         "structured_column": structured_col,
         "priority_categories": sorted(PRIORITY_CATEGORIES),
         "category_alphas": selected_alphas,
