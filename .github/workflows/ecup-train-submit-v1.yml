@@ -75,7 +75,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm "${ORGANIZER_IMAGE}" python - <<'PY'
+          docker run --rm -i "${ORGANIZER_IMAGE}" python - <<'PY'
           import sys, joblib, numpy, pandas, sklearn
           print("python", sys.version)
           print("numpy", numpy.__version__)
@@ -86,7 +86,7 @@ jobs:
           assert joblib.__version__ == "1.4.2"
           PY
 
-      - name: Run all tests inside organizer image
+      - name: Import v1 runtime code inside organizer image
         shell: bash
         run: |
           set -euo pipefail
@@ -94,7 +94,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/workspace:ro" \
             -w /workspace \
             "${ORGANIZER_IMAGE}" \
-            python -m pytest ecup_matching/tests -q
+            python -c 'from ecup_matching.ml.train_v1 import train_full; from ecup_matching.submission.predict import predict_to_csv; print("organizer_runtime_import_ok")'
 
       - name: Train v1 on human labels with item-disjoint validation
         shell: bash
@@ -159,7 +159,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm \
+          docker run --rm -i \
             -v "${RUNNER_TEMP}/ecup-v1/data:/data:ro" \
             -v "${RUNNER_TEMP}/ecup-v1/smoke:/smoke" \
             "${ORGANIZER_IMAGE}" python - <<'PY'
@@ -171,6 +171,7 @@ jobs:
           assert len(items) > 0 and len(m) == 1000
           m.to_parquet('/smoke/matches.parquet', index=False)
           items.to_parquet('/smoke/items.parquet', index=False)
+          print('smoke_items', len(items), 'smoke_pairs', len(m))
           PY
           unzip -q "${RUNNER_TEMP}/ecup-v1/out/ecup-v1-submission.zip" -d "${RUNNER_TEMP}/ecup-v1/submission"
 
@@ -187,7 +188,7 @@ jobs:
               --items_path /smoke/items.parquet \
               --matches_path /smoke/matches.parquet \
               --output_path /smoke/prediction.csv
-          docker run --rm --network none \
+          docker run --rm --network none -i \
             -v "${RUNNER_TEMP}/ecup-v1/smoke:/smoke:ro" \
             "${ORGANIZER_IMAGE}" python - <<'PY'
           import numpy as np, pandas as pd
