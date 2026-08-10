@@ -1,5 +1,7 @@
 import pandas as pd
+import pyarrow as pa
 
+from ecup_matching.ml import data_subset
 from ecup_matching.ml.data_subset import select_items_by_ids
 
 
@@ -27,3 +29,48 @@ def test_select_items_by_ids_reports_missing(tmp_path):
         assert False, "expected missing ID failure"
     except KeyError as exc:
         assert "missing" in str(exc).lower()
+
+
+def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
+    monkeypatch, tmp_path
+):
+    batch = pa.RecordBatch.from_pydict(
+        {
+            "id": [10, 11, 12],
+            "name": ["wanted", "unused-a", "unused-b"],
+            "attributes": ["{}", "x" * 1000, "y" * 1000],
+            "category": ["x", "x", "y"],
+        }
+    )
+
+    class GuardedBatch:
+        def __init__(self, inner, *, filtered=False):
+            self.inner = inner
+            self.filtered = filtered
+            self.schema = inner.schema
+            self.num_rows = inner.num_rows
+
+        def column(self, index):
+            return self.inner.column(index)
+
+        def filter(self, mask):
+            return GuardedBatch(self.inner.filter(mask), filtered=True)
+
+        def to_pandas(self):
+            if not self.filtered:
+                raise AssertionError("heavy columns were materialized before ID filtering")
+            return self.inner.to_pandas()
+
+    class FakeParquet:
+        schema_arrow = batch.schema
+
+        def iter_batches(self, **_kwargs):
+            yield GuardedBatch(batch)
+
+    monkeypatch.setattr(data_subset.pq, "ParquetFile", lambda _path: FakeParquet())
+
+    out = select_items_by_ids(tmp_path / "unused.parquet", {10})
+
+    assert out.to_dict("records") == [
+        {"id": 10, "name": "wanted", "attributes": "{}", "category": "x"}
+    ]

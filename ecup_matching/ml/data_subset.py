@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 
@@ -30,9 +32,11 @@ def select_items_by_ids(
     pieces: list[pd.DataFrame] = []
     found: set[object] = set()
     for batch in parquet.iter_batches(batch_size=batch_size, columns=list(ITEM_COLUMNS)):
-        frame = batch.to_pandas()
-        selected = frame[frame["id"].isin(requested)]
-        if len(selected):
+        id_column = batch.column(batch.schema.get_field_index("id"))
+        requested_values = pa.array(list(requested - found), type=id_column.type)
+        selected_batch = batch.filter(pc.is_in(id_column, value_set=requested_values))
+        if selected_batch.num_rows:
+            selected = selected_batch.to_pandas()
             pieces.append(selected)
             found.update(selected["id"].tolist())
         if found == requested:
