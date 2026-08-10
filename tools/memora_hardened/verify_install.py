@@ -63,13 +63,28 @@ with storage.connect() as conn:
         metadata={"note": "secret=DoNotPersist456"},
         tags=["ghp_" + "A" * 36],
     )
-    fetched = storage.get_memory(conn, created["id"])
+    fetched_after_create = storage.get_memory(conn, created["id"])
+    updated = storage.update_memory(
+        conn,
+        created["id"],
+        content="updated verification password=NeverStoreUpdate789",
+        metadata={"note": "secret=DoNotPersistUpdate987"},
+        tags=["ghp_" + "B" * 36],
+    )
+    fetched_after_update = storage.get_memory(conn, created["id"])
     print(json.dumps({
         "embedding_model": storage.EMBEDDING_MODEL,
         "llm_enabled": storage.LLM_ENABLED,
-        "content": fetched["content"],
-        "metadata": fetched["metadata"],
-        "tags": fetched["tags"],
+        "create": {
+            "content": fetched_after_create["content"],
+            "metadata": fetched_after_create["metadata"],
+            "tags": fetched_after_create["tags"],
+        },
+        "update": {
+            "content": fetched_after_update["content"],
+            "metadata": fetched_after_update["metadata"],
+            "tags": fetched_after_update["tags"],
+        },
     }, ensure_ascii=False))
 '''
         output = subprocess.check_output([str(python), "-c", code], env=env, text=True)
@@ -77,11 +92,19 @@ with storage.connect() as conn:
         if result["embedding_model"] != "tfidf" or result["llm_enabled"] is not False:
             raise RuntimeError(f"unsafe effective defaults: {result}")
         serialized = json.dumps(result, ensure_ascii=False)
-        for secret in ("NeverStoreThis123", "DoNotPersist456", "ghp_" + "A" * 36):
+        forbidden = (
+            "NeverStoreThis123",
+            "DoNotPersist456",
+            "ghp_" + "A" * 36,
+            "NeverStoreUpdate789",
+            "DoNotPersistUpdate987",
+            "ghp_" + "B" * 36,
+        )
+        for secret in forbidden:
             if secret in serialized:
                 raise RuntimeError("secret redaction verification failed")
-        if "[REDACTED]" not in serialized:
-            raise RuntimeError("expected redaction marker missing")
+        if serialized.count("[REDACTED]") < 6:
+            raise RuntimeError("expected create/update redaction markers missing")
 
         dir_mode = stat.S_IMODE(db_dir.stat().st_mode)
         db_mode = stat.S_IMODE(db_path.stat().st_mode)
@@ -95,7 +118,8 @@ with storage.connect() as conn:
         "upstream_commit": manifest["upstream_commit"],
         "mcp_version": manifest["mcp_version"],
         "graph_removed": True,
-        "redaction_verified": True,
+        "create_redaction_verified": True,
+        "update_redaction_verified": True,
         "permissions_verified": True,
         "custom_tags_verified": True,
     }
