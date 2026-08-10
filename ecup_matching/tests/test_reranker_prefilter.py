@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from ecup_matching.ml.train_reranker_v2 import _prefilter_weak
+from ecup_matching.ml.train_reranker_v2 import _prefilter_weak, _prefilter_weak_parquet
 
 
 def _legacy_prefilter(
@@ -45,3 +45,27 @@ def test_memory_bounded_prefilter_preserves_the_existing_sample_exactly() -> Non
 
     pd.testing.assert_frame_equal(actual, expected)
 
+
+def test_streaming_parquet_prefilter_preserves_the_existing_sample_exactly(tmp_path) -> None:
+    weak = pd.DataFrame(
+        {
+            "id1": np.arange(1_000),
+            "id2": np.arange(20_000, 21_000),
+            "target": np.resize([0.01, 0.10, 0.20, 0.50, 0.75, 0.90, 0.99], 1_000),
+        }
+    )
+    path = tmp_path / "weak.parquet"
+    weak.to_parquet(path, index=False, row_group_size=137)
+    validation = {3, 18, 20_030, 20_111}
+
+    expected = _legacy_prefilter(weak, validation, 125, 2026)
+    actual, input_rows = _prefilter_weak_parquet(
+        path,
+        validation,
+        125,
+        2026,
+        batch_size=83,
+    )
+
+    assert input_rows == len(weak)
+    pd.testing.assert_frame_equal(actual, expected)

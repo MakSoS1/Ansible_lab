@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 from .category_attrs import learn_attribute_importance
 from .data_subset import select_items_by_ids
@@ -61,14 +62,9 @@ def _soft_category_weights(categories: pd.Series, source: pd.Series, weak_weight
     return weight / mean if mean > 0 else weight
 
 
-def _prefilter_weak(
-    weak: pd.DataFrame,
-    validation_item_ids: set[object],
-    max_presample_rows: int,
-    seed: int,
-) -> pd.DataFrame:
-    # Local duplicate of the vectorized gate kept intentionally dependency-light
-    # for GPU preprocessing.
+def _weak_prefilter_mask(
+    weak: pd.DataFrame, validation_item_ids: set[object]
+) -> np.ndarray:
     p = pd.to_numeric(weak["target"], errors="raise").astype(float)
     weight = np.zeros(len(weak), dtype=np.float32)
     weight[(p <= 0.03) | (p >= 0.97)] = 1.0
@@ -78,6 +74,18 @@ def _prefilter_weak(
     if validation_item_ids:
         keep &= ~weak["id1"].isin(validation_item_ids).to_numpy()
         keep &= ~weak["id2"].isin(validation_item_ids).to_numpy()
+    return keep
+
+
+def _prefilter_weak(
+    weak: pd.DataFrame,
+    validation_item_ids: set[object],
+    max_presample_rows: int,
+    seed: int,
+) -> pd.DataFrame:
+    # Local duplicate of the vectorized gate kept intentionally dependency-light
+    # for GPU preprocessing.
+    keep = _weak_prefilter_mask(weak, validation_item_ids)
     eligible_positions = np.flatnonzero(keep)
     if len(eligible_positions) > max_presample_rows:
         sampled_offsets = np.random.RandomState(seed).choice(
@@ -89,6 +97,70 @@ def _prefilter_weak(
         .copy()
         .reset_index(drop=True)
     )
+
+
+def _prefilter_weak_parquet(
+    path: Path,
+    validation_item_ids: set[object],
+    max_presample_rows: int,
+    seed: int,
+    *,
+    batch_size: int = 250_000,
+) -> tuple[pd.DataFrame, int]:
+    """Select the exact legacy weak sample without materializing all 11M rows."""
+    if max_presample_rows <= 0:
+        raise ValueError("max_presample_rows must be positive")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    columns = ["id1", "id2", "target"]
+    parquet = pq.ParquetFile(str(path))
+    missing = set(columns) - set(parquet.schema_arrow.names)
+    if missing:
+        raise ValueError(f"weak parquet missing columns: {sorted(missing)}")
+
+    eligible_count = 0
+    for batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
+        frame = batch.to_pandas()
+        eligible_count += int(_weak_prefilter_mask(frame, validation_item_ids).sum())
+
+    if eligible_count > max_presample_rows:
+        selected_ordinals = np.random.RandomState(seed).choice(
+            eligible_count, size=max_presample_rows, replace=False
+        )
+    else:
+        selected_ordinals = np.arange(eligible_count, dtype=np.int64)
+
+    sorted_order = np.argsort(selected_ordinals)
+    selected_sorted = np.asarray(selected_ordinals, dtype=np.int64)[sorted_order]
+    pieces: list[pd.DataFrame] = []
+    eligible_cursor = 0
+    selected_cursor = 0
+    for batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
+        frame = batch.to_pandas()
+        eligible_positions = np.flatnonzero(
+            _weak_prefilter_mask(frame, validation_item_ids)
+        )
+        next_eligible_cursor = eligible_cursor + len(eligible_positions)
+        selected_end = int(
+            np.searchsorted(selected_sorted, next_eligible_cursor, side="left")
+        )
+        if selected_end > selected_cursor:
+            ordinals = selected_sorted[selected_cursor:selected_end]
+            local_offsets = ordinals - eligible_cursor
+            raw_positions = eligible_positions[local_offsets]
+            piece = frame.iloc[raw_positions][columns].copy()
+            piece["_sample_order"] = sorted_order[selected_cursor:selected_end]
+            pieces.append(piece)
+        selected_cursor = selected_end
+        eligible_cursor = next_eligible_cursor
+
+    if eligible_cursor != eligible_count or selected_cursor != len(selected_ordinals):
+        raise RuntimeError("weak parquet changed during deterministic sampling")
+    if not pieces:
+        return pd.DataFrame(columns=columns), int(parquet.metadata.num_rows)
+    out = pd.concat(pieces, ignore_index=True)
+    out = out.sort_values("_sample_order", kind="stable").drop(columns="_sample_order")
+    return out.reset_index(drop=True), int(parquet.metadata.num_rows)
 
 
 def prepare_training_examples(
@@ -126,10 +198,12 @@ def prepare_training_examples(
     augmented = attach_pair_category(augmented, human_items)
     importance = learn_attribute_importance(human_items, clean, min_support=20)
 
-    weak_raw = pd.read_parquet(llm_matches_path, columns=["id1", "id2", "target"])
-    weak_input_rows = int(len(weak_raw))
-    weak = _prefilter_weak(weak_raw, valid_items, weak_presample_rows, SEED)
-    del weak_raw
+    weak, weak_input_rows = _prefilter_weak_parquet(
+        llm_matches_path,
+        valid_items,
+        weak_presample_rows,
+        SEED,
+    )
     weak, prep_report = prepare_weak_pairs(weak)
     weak, conflict_report = remove_human_conflicts(
         weak, clean[["id1", "id2", "target"]]
