@@ -1,3 +1,4 @@
+# Final benchmark marker: includes unequal-length partial-ratio elimination.
 name: E-CUP v2 optimized runtime benchmark
 
 on:
@@ -96,7 +97,7 @@ jobs:
           from pathlib import Path
           from huggingface_hub import HfApi
           root=Path(os.environ['RUNNER_TEMP'])/'v2'; runtime=int((root/'runtime.txt').read_text()); metrics=json.loads((root/'model/metrics.json').read_text())
-          payload={'benchmark_pairs':275000,'offline_runtime_seconds':runtime,'private_limit_seconds':780,'headroom_seconds':780-runtime,'headroom_fraction':(780-runtime)/780,'passes_25pct_headroom':runtime<=585,'submission_zip_bytes':(root/'ecup-v2-submission.zip').stat().st_size,'validation_macro_ap':metrics['selected_macro_average_precision'],'selected_candidate':metrics['selected_candidate'],'runtime_optimization':'single full legacy feature pass plus reverse-only fuzzy ratios','source_sha':os.environ['GITHUB_SHA']}
+          payload={'benchmark_pairs':275000,'offline_runtime_seconds':runtime,'private_limit_seconds':780,'headroom_seconds':780-runtime,'headroom_fraction':(780-runtime)/780,'passes_25pct_headroom':runtime<=585,'submission_zip_bytes':(root/'ecup-v2-submission.zip').stat().st_size,'validation_macro_ap':metrics['selected_macro_average_precision'],'selected_candidate':metrics['selected_candidate'],'runtime_optimization':'single full legacy feature pass; reverse-only directional fuzzy ratios; skip redundant unequal-length reverse partial ratio','source_sha':os.environ['GITHUB_SHA']}
           path=root/'v2-package-metrics.json'; path.write_text(json.dumps(payload,indent=2)); print(json.dumps(payload,indent=2))
           if runtime>=780: raise SystemExit(f'runtime {runtime}s exceeds private limit')
           api=HfApi(token=os.environ['HF_TOKEN']);repo=os.environ['HF_REPO_ID']
