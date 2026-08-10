@@ -14,8 +14,9 @@
   "validation_item_overlap": 0,
   "blend_alpha_neural": 0.45,
   "gpu_training_backend": "GitHub macos-15 Apple M1 MPS",
-  "private_artifact": "submissions/v3/ecup-v3-submission.zip",
-  "private_metrics": "submissions/v3/v3-package-metrics.json",
+  "private_artifact": "submissions/v3/canonical/b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660/ecup-v3-submission.zip",
+  "private_metrics": "submissions/v3/canonical/b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660/v3-package-metrics.json",
+  "convenience_alias": "submissions/v3/ecup-v3-submission.zip",
   "submission_sha256": "b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660",
-  "next_action": "Use v3 as the retained submission candidate. Optional future work: wait for the non-blocking 275k CPU stress run, then start v4 only if a new item-disjoint ablation can beat v3 without compromising organizer H100 runtime."
+  "next_action": "Use the immutable v3 artifact as the retained submission candidate. The old 275k CPU stress run is non-blocking supplemental evidence; start v4 only if a new item-disjoint ablation can beat v3 without compromising organizer H100 runtime."
 }
