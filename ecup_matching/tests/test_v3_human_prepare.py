@@ -11,7 +11,12 @@ def test_prepare_v3_human_only_data_avoids_full_item_and_weak_inputs(tmp_path: P
             "id": list(range(1, 25)),
             "name": [f"product {i}" for i in range(1, 25)],
             "attributes": ["{}"] * 24,
-            "category": ["Электроника"] * 12 + ["Аптека"] * 12,
+            "category": (
+                ["Электроника"] * 6
+                + ["Аптека"] * 6
+                + ["Электроника"] * 6
+                + ["Аптека"] * 6
+            ),
         }
     )
     pairs = pd.DataFrame(
