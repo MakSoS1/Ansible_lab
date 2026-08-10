@@ -1,6 +1,7 @@
 from scripts.lightning_secure_runner import (
     _decode_ciphertext_b64,
     _extract_lightning_username,
+    _resolve_studio,
     studio_training_commands,
 )
 
@@ -63,3 +64,47 @@ def test_extract_lightning_username_rejects_missing_or_suspicious_values():
             assert False, f"expected identity rejection for {payload!r}"
         except ValueError:
             pass
+
+
+def test_resolve_studio_prefers_existing_and_marks_it_non_destructive():
+    class ExistingStudio:
+        name = "already-there"
+
+    existing = ExistingStudio()
+
+    class Teamspace:
+        name = "default"
+        studios = [existing]
+
+    class User:
+        teamspaces = [Teamspace()]
+
+    class StudioFactory:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("existing studio must be preferred over creation")
+
+    studio, created = _resolve_studio(User(), StudioFactory, "maksim", "new-name")
+    assert studio is existing
+    assert created is False
+
+
+def test_resolve_studio_falls_back_across_teamspaces_when_creation_is_forbidden():
+    class Teamspace:
+        def __init__(self, name):
+            self.name = name
+            self.studios = []
+
+    class User:
+        teamspaces = [Teamspace("denied"), Teamspace("allowed")]
+
+    class StudioFactory:
+        def __init__(self, *, name, teamspace, user, create_ok):
+            if teamspace.name == "denied":
+                raise RuntimeError("403 forbidden")
+            self.name = name
+            self.teamspace = teamspace
+
+    studio, created = _resolve_studio(User(), StudioFactory, "maksim", "gpu-run")
+    assert studio.name == "gpu-run"
+    assert studio.teamspace.name == "allowed"
+    assert created is True
