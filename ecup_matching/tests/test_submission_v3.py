@@ -3,7 +3,6 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 from ecup_matching.build_submission_v3 import build_submission_v3
 from ecup_matching.submission.predict_v3 import apply_category_blend, categories_requiring_neural
@@ -70,6 +69,8 @@ def test_build_submission_v3_contains_only_offline_runtime_and_models(tmp_path: 
         assert "model_v2_manifest.json" in names
         assert "model_v3_manifest.json" in names
         assert "model_v3/model.safetensors" in names
+        assert "model_v3/tokenizer.json" in names
         assert "ecup_matching/submission/predict_v3.py" in names
         assert not any(name.endswith((".parquet", ".db", ".pem", ".b64")) for name in names)
-        assert not any("token" in name.lower() or "secret" in name.lower() for name in names)
+        suspicious = ("hf_token", "api_token", "access_token", "secret", "password", "credential")
+        assert not any(any(term in name.lower() for term in suspicious) for name in names)
