@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --network none odsai/ecup26-matching-baseline:1.0 python - <<'PY'
+          docker run --rm -i --network none odsai/ecup26-matching-baseline:1.0 python - <<'PY'
           import importlib.util, json, sys
           packages = ['torch','transformers','sentence_transformers','tokenizers','safetensors','numpy','pandas','sklearn','joblib']
           result = {'python': sys.version, 'packages': {}}
@@ -43,11 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --network none odsai/ecup26-matching-baseline:1.0 python - <<'PY'
-          try:
-              from transformers import AutoModelForSequenceClassification, AutoTokenizer
-              print('transformers_sequence_classifier_api_ok')
-          except Exception as exc:
-              print('transformers_sequence_classifier_api_failed', type(exc).__name__, str(exc))
-              raise
+          docker run --rm -i --network none odsai/ecup26-matching-baseline:1.0 python - <<'PY'
+          from transformers import AutoModelForSequenceClassification, AutoTokenizer
+          print('transformers_sequence_classifier_api_ok')
           PY
