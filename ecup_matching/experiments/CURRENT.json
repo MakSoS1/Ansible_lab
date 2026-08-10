@@ -1,13 +1,21 @@
 {
   "version": "v3",
-  "status": "in_progress",
-  "model": "compact-reranker-hard-negatives",
+  "status": "completed",
+  "model": "v2b-structured-plus-rubert-tiny2-stage1-global-blend",
   "plan": "ecup_matching/experiments/v3/PLAN.md",
   "implementation_plan": "docs/superpowers/plans/2026-08-10-ecup-v3-gpu-reranker.md",
   "results": "ecup_matching/experiments/v3/RESULTS.md",
   "previous": "v2",
   "baseline_version": "v2",
   "baseline_macro_average_precision": 0.5010008994958702,
-  "expected_private_artifact": "submissions/v3/ecup-v3-submission.zip",
-  "next_action": "Use the private isolated home-RTX dispatcher to prepare leakage-safe compact neural data, run model-mined hard-negative RuBERT-tiny2 training, select a validated blend with v2b, then package and benchmark the v3 submission offline."
+  "macro_average_precision": 0.5254642645846543,
+  "delta_vs_baseline": 0.024463365088784106,
+  "validation_rows": 73131,
+  "validation_item_overlap": 0,
+  "blend_alpha_neural": 0.45,
+  "gpu_training_backend": "GitHub macos-15 Apple M1 MPS",
+  "private_artifact": "submissions/v3/ecup-v3-submission.zip",
+  "private_metrics": "submissions/v3/v3-package-metrics.json",
+  "submission_sha256": "b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660",
+  "next_action": "Use v3 as the retained submission candidate. Optional future work: wait for the non-blocking 275k CPU stress run, then start v4 only if a new item-disjoint ablation can beat v3 without compromising organizer H100 runtime."
 }
