@@ -1,0 +1,42 @@
+name: E-CUP Lightning SDK probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-lightning-sdk-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install current Lightning SDK
+        run: python -m pip install --upgrade lightning-sdk
+      - name: Inspect current SDK public API
+        run: |
+          python - <<'PY'
+          import inspect
+          import importlib.metadata
+          import lightning_sdk
+          from lightning_sdk import Studio, User, Teamspace, Machine
+          print('version', importlib.metadata.version('lightning-sdk'))
+          print('User', inspect.signature(User))
+          print('Studio', inspect.signature(Studio))
+          print('Teamspace', inspect.signature(Teamspace))
+          print('Machine members', [x for x in dir(Machine) if x.isupper()])
+          print('User public', [x for x in dir(User) if not x.startswith('_')])
+          print('Studio public', [x for x in dir(Studio) if not x.startswith('_')])
+          print('Teamspace public', [x for x in dir(Teamspace) if not x.startswith('_')])
+          PY
+          lightning --help | head -120
+          lightning studio --help | head -160
+          lightning studio list --help | head -160
