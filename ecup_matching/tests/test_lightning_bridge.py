@@ -1,4 +1,4 @@
-from scripts.lightning_secure_runner import studio_training_commands
+from scripts.lightning_secure_runner import _decode_ciphertext_b64, studio_training_commands
 
 
 def test_studio_training_commands_are_pinned_and_secret_free():
@@ -30,3 +30,16 @@ def test_studio_training_commands_shell_quote_untrusted_strings():
     assert "'feature safe'" in joined
     assert "'abc; touch /tmp/pwned'" in joined
     assert "'safe workdir'" in joined
+
+
+def test_ciphertext_decode_accepts_only_outer_ascii_whitespace():
+    raw = b"encrypted-bytes"
+    encoded = b"ZW5jcnlwdGVkLWJ5dGVz"
+    assert _decode_ciphertext_b64(encoded + b"\n") == raw
+    assert _decode_ciphertext_b64(b"  " + encoded + b"\r\n") == raw
+
+    try:
+        _decode_ciphertext_b64(b"ZW5j\ncnlwdGVkLWJ5dGVz")
+        assert False, "embedded whitespace must still fail strict validation"
+    except ValueError:
+        pass
