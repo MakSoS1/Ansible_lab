@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .category_attrs import weighted_attribute_stats
-from .features import FEATURE_NAMES, _pair_features, normalize_items
+from .features import FEATURE_NAMES, _pair_features, _partial_ratio, _ratio, normalize_items
 from .textnorm import ItemNorm
 
 
@@ -22,25 +22,35 @@ FEATURE_NAMES_V2: tuple[str, ...] = (*FEATURE_NAMES, *EXTRA_FEATURE_NAMES_V2)
 
 
 def _symmetric_base_features(a: ItemNorm, b: ItemNorm) -> dict[str, object]:
-    """Symmetrize legacy v1 pair features without changing the v1 implementation.
+    """Match the original two-pass v2 symmetry with one full feature pass.
 
-    ``difflib.SequenceMatcher`` can choose different matching blocks depending
-    on argument order, so some v1 fuzzy ratios are direction-dependent. Product
-    identity is symmetric; v2 evaluates both directions and averages every
-    numeric feature. Category is selected deterministically for the defensive
-    cross-category case (official pairs are same-category).
+    All legacy v1 features are symmetric except the four SequenceMatcher-based
+    fuzzy ratios. Compute the expensive complete vector once and average only
+    those four values with their reverse-direction evaluations.
     """
-    ab = _pair_features(a, b)
-    ba = _pair_features(b, a)
-    category_a = str(ab["category"])
-    category_b = str(ba["category"])
-    result: dict[str, object] = {
-        "category": category_a if category_a == category_b else min(category_a, category_b)
+    base = _pair_features(a, b)
+    result = dict(base)
+
+    category_a = str(a.category or b.category or "__missing__")
+    category_b = str(b.category or a.category or "__missing__")
+    result["category"] = category_a if category_a == category_b else min(category_a, category_b)
+
+    sorted_a = " ".join(sorted(a.name_tokens))
+    sorted_b = " ".join(sorted(b.name_tokens))
+    common_tokens = sorted(a.name_tokens & b.name_tokens)
+    only_a = sorted(a.name_tokens - b.name_tokens)
+    only_b = sorted(b.name_tokens - a.name_tokens)
+    token_set_a = " ".join(common_tokens + only_a)
+    token_set_b = " ".join(common_tokens + only_b)
+
+    reverse_values = {
+        "fuzz_ratio": _ratio(b.name, a.name),
+        "fuzz_partial_ratio": _partial_ratio(b.name, a.name),
+        "fuzz_token_sort": _ratio(sorted_b, sorted_a),
+        "fuzz_token_set": _ratio(token_set_b, token_set_a),
     }
-    for name in FEATURE_NAMES:
-        if name == "category":
-            continue
-        result[name] = (float(ab[name]) + float(ba[name])) / 2.0
+    for name, reverse in reverse_values.items():
+        result[name] = (float(base[name]) + float(reverse)) / 2.0
     return result
 
 
@@ -60,9 +70,6 @@ def _extra_features(
         + float(weighted_conflict >= 0.35)
     )
 
-    # A hard negative is deliberately defined as a pair that looks very
-    # similar lexically while carrying one or more identity contradictions.
-    # This is symmetric and bounded to a small, stable range for tree models.
     lexical_similarity = (
         float(base["fuzz_token_set"])
         + float(base["name_token_jaccard"])
