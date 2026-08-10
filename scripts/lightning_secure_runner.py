@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import json
 import os
 import shlex
@@ -72,6 +73,22 @@ def studio_training_commands(
     ]
 
 
+def _decode_ciphertext_b64(data: bytes) -> bytes:
+    """Strictly decode base64 while tolerating transport whitespace at the edges.
+
+    GitHub's text file representation conventionally ends with a newline. We
+    permit only leading/trailing ASCII whitespace introduced by that transport;
+    embedded whitespace or non-base64 characters still fail closed.
+    """
+    stripped = data.strip(b" \t\r\n")
+    if not stripped:
+        raise ValueError("encrypted credential response is empty")
+    try:
+        return base64.b64decode(stripped, validate=True)
+    except binascii.Error as exc:
+        raise ValueError("encrypted credential response is not strict base64") from exc
+
+
 def decrypt_credentials(private_key_path: Path, ciphertext_path: Path) -> dict[str, str]:
     """Decrypt an RSA-OAEP payload. Plaintext never leaves this process."""
     try:
@@ -83,7 +100,7 @@ def decrypt_credentials(private_key_path: Path, ciphertext_path: Path) -> dict[s
     private_key = serialization.load_pem_private_key(
         private_key_path.read_bytes(), password=None
     )
-    ciphertext = base64.b64decode(ciphertext_path.read_bytes(), validate=True)
+    ciphertext = _decode_ciphertext_b64(ciphertext_path.read_bytes())
     plaintext = private_key.decrypt(
         ciphertext,
         padding.OAEP(
@@ -95,8 +112,6 @@ def decrypt_credentials(private_key_path: Path, ciphertext_path: Path) -> dict[s
     try:
         payload = json.loads(plaintext.decode("utf-8"))
     finally:
-        # Python cannot guarantee secure memory erasure, but we deliberately
-        # keep plaintext lifetime short and never persist or print it.
         del plaintext
     expected = {"LIGHTNING_USER_ID", "LIGHTNING_API_KEY"}
     if set(payload) != expected:
@@ -163,7 +178,6 @@ def run_lightning(
             print(f"studio command {number}/{len(commands)}", flush=True)
             output = studio.run(command)
             if output:
-                # Commands contain no credentials; output is safe training/install telemetry.
                 print(output[-20_000:], flush=True)
 
         if output_dir.exists():
