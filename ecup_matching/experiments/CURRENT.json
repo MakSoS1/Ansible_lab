@@ -1,0 +1,11 @@
+{
+  "version": "v1",
+  "status": "completed",
+  "model": "v1-structured-hgb",
+  "plan": "docs/superpowers/plans/2026-08-10-ecup-first-submission.md",
+  "results": "ecup_matching/experiments/v1/RESULTS.md",
+  "macro_average_precision": 0.49616548946964434,
+  "private_artifact": "submissions/v1/ecup-v1-submission.zip",
+  "next_version": "v2",
+  "next_action": "Filtered/confidence-weighted matches_llm weak labels plus hard-negative mining on the fixed item-disjoint human validation."
+}
