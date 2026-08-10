@@ -34,6 +34,7 @@ jobs:
         run: python -m pytest ecup_matching/tests -q
 
   profile-human:
+    if: github.event_name == 'workflow_dispatch'
     needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -89,6 +90,7 @@ jobs:
         run: rm -rf "${RUNNER_TEMP}/ecup-human" "${RUNNER_TEMP}/ecup-profile"
 
   mirror-hf:
+    if: github.event_name == 'workflow_dispatch'
     needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 360
