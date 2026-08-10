@@ -1,3 +1,4 @@
+# Lightning bridge regressions are intentionally dependency-free unit tests.
 from scripts.lightning_secure_runner import (
     _decode_ciphertext_b64,
     _extract_lightning_username,
@@ -42,7 +43,6 @@ def test_ciphertext_decode_accepts_only_outer_ascii_whitespace():
     encoded = b"ZW5jcnlwdGVkLWJ5dGVz"
     assert _decode_ciphertext_b64(encoded + b"\n") == raw
     assert _decode_ciphertext_b64(b"  " + encoded + b"\r\n") == raw
-
     try:
         _decode_ciphertext_b64(b"ZW5j\ncnlwdGVkLWJ5dGVz")
         assert False, "embedded whitespace must still fail strict validation"
@@ -69,20 +69,15 @@ def test_extract_lightning_username_rejects_missing_or_suspicious_values():
 def test_resolve_studio_prefers_existing_and_marks_it_non_destructive():
     class ExistingStudio:
         name = "already-there"
-
     existing = ExistingStudio()
-
     class Teamspace:
         name = "default"
         studios = [existing]
-
     class User:
         teamspaces = [Teamspace()]
-
     class StudioFactory:
         def __init__(self, *args, **kwargs):
             raise AssertionError("existing studio must be preferred over creation")
-
     studio, created = _resolve_studio(User(), StudioFactory, "maksim", "new-name")
     assert studio is existing
     assert created is False
@@ -93,17 +88,14 @@ def test_resolve_studio_falls_back_across_teamspaces_when_creation_is_forbidden(
         def __init__(self, name):
             self.name = name
             self.studios = []
-
     class User:
         teamspaces = [Teamspace("denied"), Teamspace("allowed")]
-
     class StudioFactory:
         def __init__(self, *, name, teamspace, user, create_ok):
             if teamspace.name == "denied":
                 raise RuntimeError("403 forbidden")
             self.name = name
             self.teamspace = teamspace
-
     studio, created = _resolve_studio(User(), StudioFactory, "maksim", "gpu-run")
     assert studio.name == "gpu-run"
     assert studio.teamspace.name == "allowed"
