@@ -1,4 +1,4 @@
-# Retry marker: current Lightning SDK identity discovery is pinned and tested.
+# Retry marker: prefer an existing accessible Studio before any create attempt.
 name: E-CUP v2 Lightning GPU reranker
 
 on:
@@ -25,14 +25,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
       - name: Set up host Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
-
       - name: Verify repository before requesting credentials
         shell: bash
         run: |
@@ -41,7 +39,6 @@ jobs:
           python -m pytest ecup_matching/tests -q
           python scripts/memory_policy.py
           test -n "${HF_TOKEN:-}" || { echo '::error::Missing HF_TOKEN Actions secret'; exit 1; }
-
       - name: Install pinned current bridge dependencies
         shell: bash
         run: |
@@ -52,7 +49,6 @@ jobs:
           assert importlib.metadata.version('lightning-sdk') == '2026.8.5'
           print('lightning_sdk_version_ok')
           PY
-
       - name: Generate ephemeral RSA bridge key and publish public half only
         id: bridge
         shell: bash
@@ -80,7 +76,6 @@ jobs:
             echo "ciphertext=${RUNNER_TEMP}/lightning-${BRIDGE_ID}.ciphertext.b64"
           } >> "$GITHUB_OUTPUT"
           echo "Ephemeral Lightning public key published for bridge $BRIDGE_ID"
-
       - name: Wait for RSA-OAEP encrypted credential response
         shell: bash
         env:
@@ -99,13 +94,9 @@ jobs:
             fi
             sleep 5
           done
-          if [ "$found" -ne 1 ]; then
-            echo '::error::Encrypted Lightning credential response was not received in time'
-            exit 1
-          fi
+          if [ "$found" -ne 1 ]; then echo '::error::Encrypted Lightning credential response was not received in time'; exit 1; fi
           test -s "$CIPHERTEXT"
           echo 'Encrypted Lightning credential response received'
-
       - name: Run Lightning GPU training through in-memory credential bridge
         shell: bash
         env:
@@ -116,19 +107,10 @@ jobs:
           RESULT_JSON: ${{ runner.temp }}/lightning-v2-result.json
         run: |
           set -euo pipefail
-          python scripts/lightning_secure_runner.py \
-            --private-key "$PRIVATE_KEY" \
-            --ciphertext "$CIPHERTEXT" \
-            --repo-url 'https://github.com/MakSoS1/Ansible_lab.git' \
-            --branch "$TARGET_BRANCH" \
-            --sha "$TARGET_SHA" \
-            --output-dir "$OUT_DIR" \
-            --studio-name "ecup-v2-${BRIDGE_ID}" \
-            --result-json "$RESULT_JSON"
+          python scripts/lightning_secure_runner.py --private-key "$PRIVATE_KEY" --ciphertext "$CIPHERTEXT" --repo-url 'https://github.com/MakSoS1/Ansible_lab.git' --branch "$TARGET_BRANCH" --sha "$TARGET_SHA" --output-dir "$OUT_DIR" --studio-name "ecup-v2-${BRIDGE_ID}" --result-json "$RESULT_JSON"
           test -f "$OUT_DIR/metrics.json"
           test -f "$OUT_DIR/model/config.json"
           test -f "$OUT_DIR/validation_predictions.parquet"
-
       - name: Validate GPU metrics
         shell: bash
         env:
@@ -143,14 +125,12 @@ jobs:
           score = float(metrics['selected_macro_average_precision'])
           assert math.isfinite(score) and 0.0 <= score <= 1.0
           assert len(metrics['stage1']['per_category_ap']) == 20
-          if metrics['stage2'] is not None:
-              assert len(metrics['stage2']['per_category_ap']) == 20
+          if metrics['stage2'] is not None: assert len(metrics['stage2']['per_category_ap']) == 20
           print('selected_stage', metrics['selected_stage'])
           print('selected_macro_average_precision', score)
           print('delta_vs_v1', metrics['delta_vs_v1'])
           print('cuda_device', metrics['cuda_device'])
           PY
-
       - name: Upload reranker artifacts to private Hugging Face
         shell: bash
         env:
@@ -161,30 +141,15 @@ jobs:
           import os
           from pathlib import Path
           from huggingface_hub import HfApi
-          out = Path(os.environ['OUT_DIR'])
-          repo = os.environ['HF_REPO_ID']
-          remote = f"experiments/v2/reranker/{os.environ['TARGET_SHA'][:12]}"
+          out = Path(os.environ['OUT_DIR']); repo = os.environ['HF_REPO_ID']; remote = f"experiments/v2/reranker/{os.environ['TARGET_SHA'][:12]}"
           api = HfApi(token=os.environ['HF_TOKEN'])
-          api.upload_folder(
-              folder_path=str(out),
-              path_in_repo=remote,
-              repo_id=repo,
-              repo_type='dataset',
-              commit_message='Upload E-CUP v2 Lightning reranker artifacts',
-          )
+          api.upload_folder(folder_path=str(out), path_in_repo=remote, repo_id=repo, repo_type='dataset', commit_message='Upload E-CUP v2 Lightning reranker artifacts')
           visible = set(api.list_repo_files(repo_id=repo, repo_type='dataset'))
-          required = [
-              f'{remote}/metrics.json',
-              f'{remote}/model/config.json',
-              f'{remote}/validation_predictions.parquet',
-          ]
-          for path in required:
-              if path not in visible:
-                  raise RuntimeError(f'private HF verification failed: {path}')
+          for path in [f'{remote}/metrics.json', f'{remote}/model/config.json', f'{remote}/validation_predictions.parquet']:
+              if path not in visible: raise RuntimeError(f'private HF verification failed: {path}')
               print('verified_private_hf', path)
           print('private_artifact_prefix', remote)
           PY
-
       - name: Upload non-secret GPU metrics artifact
         uses: actions/upload-artifact@v4
         with:
@@ -194,7 +159,6 @@ jobs:
             ${{ runner.temp }}/lightning-v2-result.json
           if-no-files-found: error
           retention-days: 7
-
       - name: Cleanup credential material and downloaded model from runner
         if: always()
         shell: bash
