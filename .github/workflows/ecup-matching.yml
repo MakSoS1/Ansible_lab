@@ -96,7 +96,6 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
       HF_XET_HIGH_PERFORMANCE: "1"
-      ECUP_MIRROR_DIR: ${{ runner.temp }}/ecup-mirror
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -121,8 +120,10 @@ jobs:
           fi
 
       - name: Mirror all organizer parquet files to private Hugging Face dataset
+        env:
+          ECUP_MIRROR_DIR: ${{ runner.temp }}/ecup-mirror
         run: python -m ecup_matching.hf_sync
 
       - name: Remove competition data from runner
         if: always()
-        run: rm -rf "${ECUP_MIRROR_DIR}"
+        run: rm -rf "${RUNNER_TEMP}/ecup-mirror"
