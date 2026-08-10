@@ -1,4 +1,4 @@
-# Retry marker: strict base64 decoder now tolerates transport edge newlines only.
+# Retry marker: current Lightning SDK identity discovery is pinned and tested.
 name: E-CUP v2 Lightning GPU reranker
 
 on:
@@ -42,11 +42,16 @@ jobs:
           python scripts/memory_policy.py
           test -n "${HF_TOKEN:-}" || { echo '::error::Missing HF_TOKEN Actions secret'; exit 1; }
 
-      - name: Install bridge dependencies
+      - name: Install pinned current bridge dependencies
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install 'cryptography>=43,<47' 'lightning-sdk>=0.2,<1'
+          python -m pip install 'cryptography>=43,<47' 'lightning-sdk==2026.8.5'
+          python - <<'PY'
+          import importlib.metadata
+          assert importlib.metadata.version('lightning-sdk') == '2026.8.5'
+          print('lightning_sdk_version_ok')
+          PY
 
       - name: Generate ephemeral RSA bridge key and publish public half only
         id: bridge
