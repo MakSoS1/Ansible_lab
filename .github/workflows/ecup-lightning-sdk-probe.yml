@@ -32,12 +32,6 @@ jobs:
           print('Studio', inspect.signature(Studio))
           print('Teamspace', inspect.signature(Teamspace))
           print('Machine members', [x for x in dir(Machine) if x.isupper()])
-          print('User public', [x for x in dir(User) if not x.startswith('_')])
-          print('Studio public', [x for x in dir(Studio) if not x.startswith('_')])
-          print('Teamspace public', [x for x in dir(Teamspace) if not x.startswith('_')])
           PY
-          lightning user --help | head -180 || true
-          lightning teamspace --help | head -180 || true
-          lightning teamspace list --help | head -180 || true
-          lightning auth --help | head -180 || true
-          lightning studio list --help | head -180
+          lightning auth whoami --help | head -180 || true
+          lightning studio list --help | head -180 || true
