@@ -28,6 +28,7 @@ def test_safe_env_strips_cloud_and_llm_credentials(tmp_path: Path):
         "MEMORA_EMBEDDING_MODEL": "openai",
         "MEMORA_LLM_ENABLED": "true",
         "MEMORA_AUTO_CAPTURE": "true",
+        "MEMORA_ALLOW_ANY_TAG": "0",
     }
 
     safe = build_safe_env(tmp_path, inherited)
@@ -35,6 +36,7 @@ def test_safe_env_strips_cloud_and_llm_credentials(tmp_path: Path):
     assert safe["MEMORA_EMBEDDING_MODEL"] == "tfidf"
     assert safe["MEMORA_LLM_ENABLED"] == "false"
     assert safe["MEMORA_AUTO_CAPTURE"] == "false"
+    assert safe["MEMORA_ALLOW_ANY_TAG"] == "1"
     assert safe["MEMORA_DB_PATH"] == str(tmp_path / ".agent-memory" / "memories.db")
     for key in (
         "OPENAI_API_KEY",
