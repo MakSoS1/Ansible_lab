@@ -1,0 +1,134 @@
+name: E-CUP v3 Lightning Docker Job probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-lightning-job-probe.yml
+
+permissions:
+  contents: write
+
+jobs:
+  direct-job-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TARGET_BRANCH: ecup-matching-2026
+      TARGET_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout exact direct-job source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - name: Verify repository before requesting credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r ecup_matching/requirements-ci.txt
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+      - name: Install pinned Lightning bridge dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'cryptography>=43,<47' 'lightning-sdk==2026.8.5'
+          python - <<'PY'
+          import importlib.metadata
+          assert importlib.metadata.version('lightning-sdk') == '2026.8.5'
+          print('lightning_sdk_version_ok')
+          PY
+      - name: Generate ephemeral RSA bridge key and publish public half only
+        id: bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRIDGE_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          PRIVATE_KEY="${RUNNER_TEMP}/lightning-job-${BRIDGE_ID}.private.pem"
+          REQUEST_PATH=".lightning-bridge/request-${BRIDGE_ID}.pem"
+          RESPONSE_PATH=".lightning-bridge/response-${BRIDGE_ID}.b64"
+          mkdir -p .lightning-bridge
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$PRIVATE_KEY" >/dev/null 2>&1
+          openssl pkey -in "$PRIVATE_KEY" -pubout -out "$REQUEST_PATH" >/dev/null 2>&1
+          chmod 600 "$PRIVATE_KEY"
+          git config user.name 'ecup-lightning-job-bridge'
+          git config user.email 'ecup-lightning-job-bridge@users.noreply.github.com'
+          git add "$REQUEST_PATH"
+          git commit -m "ci: publish ephemeral Lightning Job bridge public key ${BRIDGE_ID}"
+          git push origin "HEAD:${TARGET_BRANCH}"
+          {
+            echo "bridge_id=$BRIDGE_ID"
+            echo "private_key=$PRIVATE_KEY"
+            echo "request_path=$REQUEST_PATH"
+            echo "response_path=$RESPONSE_PATH"
+            echo "ciphertext=${RUNNER_TEMP}/lightning-job-${BRIDGE_ID}.ciphertext.b64"
+          } >> "$GITHUB_OUTPUT"
+          echo "Ephemeral Lightning Job public key published for bridge $BRIDGE_ID"
+      - name: Wait for RSA-OAEP encrypted credential response
+        shell: bash
+        env:
+          RESPONSE_PATH: ${{ steps.bridge.outputs.response_path }}
+          CIPHERTEXT: ${{ steps.bridge.outputs.ciphertext }}
+        run: |
+          set -euo pipefail
+          found=0
+          for attempt in $(seq 1 180); do
+            git fetch --quiet origin "$TARGET_BRANCH"
+            if git cat-file -e "origin/${TARGET_BRANCH}:${RESPONSE_PATH}" 2>/dev/null; then
+              git show "origin/${TARGET_BRANCH}:${RESPONSE_PATH}" > "$CIPHERTEXT"
+              chmod 600 "$CIPHERTEXT"
+              found=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$found" -ne 1 ]; then echo '::error::Encrypted Lightning credential response was not received in time'; exit 1; fi
+          test -s "$CIPHERTEXT"
+          echo 'Encrypted Lightning credential response received'
+      - name: Submit tiny direct CPU Docker Job without Studio
+        shell: bash
+        env:
+          PRIVATE_KEY: ${{ steps.bridge.outputs.private_key }}
+          CIPHERTEXT: ${{ steps.bridge.outputs.ciphertext }}
+          BRIDGE_ID: ${{ steps.bridge.outputs.bridge_id }}
+          RESULT_JSON: ${{ runner.temp }}/lightning-job-probe-result.json
+        run: |
+          set -euo pipefail
+          python scripts/lightning_job_runner.py \
+            --private-key "$PRIVATE_KEY" \
+            --ciphertext "$CIPHERTEXT" \
+            --job-name "ecup-v3-probe-${BRIDGE_ID}" \
+            --result-json "$RESULT_JSON" \
+            --timeout-seconds 600
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_JSON']).read_text())
+          assert result['studio_used'] is False
+          assert result['mode'] == 'docker-job'
+          assert result['status'] in {'completed','succeeded','success'}
+          print('direct_docker_job_probe_ok')
+          print('machine', result['machine'])
+          PY
+      - name: Upload non-secret probe result
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v3-lightning-direct-job-probe
+          path: ${{ runner.temp }}/lightning-job-probe-result.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Cleanup local credential material
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${{ steps.bridge.outputs.private_key }}" || true
+          rm -f "${{ steps.bridge.outputs.ciphertext }}" || true
+          rm -f "${RUNNER_TEMP}/lightning-job-probe-result.json" || true
