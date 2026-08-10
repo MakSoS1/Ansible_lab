@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numbers
 from typing import Mapping
 
 import pandas as pd
@@ -8,8 +9,11 @@ from .features import normalize_items
 from .textnorm import ItemNorm, clean_text
 
 
-def _item_order_key(item: ItemNorm) -> tuple[str, str]:
-    return (type(item.item_id).__name__, repr(item.item_id))
+def _item_order_key(item: ItemNorm) -> tuple[int, object, str]:
+    value = item.item_id
+    if isinstance(value, numbers.Real) and not isinstance(value, bool):
+        return (0, float(value), "")
+    return (1, 0.0, f"{type(value).__name__}:{value!s}")
 
 
 def _attribute_weight(
