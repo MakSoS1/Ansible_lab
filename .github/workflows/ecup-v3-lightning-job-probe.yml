@@ -52,21 +52,37 @@ jobs:
           set -euo pipefail
           BRIDGE_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           PRIVATE_KEY="${RUNNER_TEMP}/lightning-job-${BRIDGE_ID}.private.pem"
+          PUBLIC_TMP="${RUNNER_TEMP}/lightning-job-${BRIDGE_ID}.public.pem"
           REQUEST_PATH=".lightning-bridge/request-${BRIDGE_ID}.pem"
           RESPONSE_PATH=".lightning-bridge/response-${BRIDGE_ID}.b64"
-          mkdir -p .lightning-bridge
           umask 077
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$PRIVATE_KEY" >/dev/null 2>&1
-          openssl pkey -in "$PRIVATE_KEY" -pubout -out "$REQUEST_PATH" >/dev/null 2>&1
-          chmod 600 "$PRIVATE_KEY"
+          openssl pkey -in "$PRIVATE_KEY" -pubout -out "$PUBLIC_TMP" >/dev/null 2>&1
+          chmod 600 "$PRIVATE_KEY" "$PUBLIC_TMP"
           git config user.name 'ecup-lightning-job-bridge'
           git config user.email 'ecup-lightning-job-bridge@users.noreply.github.com'
-          git add "$REQUEST_PATH"
-          git commit -m "ci: publish ephemeral Lightning Job bridge public key ${BRIDGE_ID}"
-          git push origin "HEAD:${TARGET_BRANCH}"
+          published=0
+          for attempt in 1 2 3 4 5; do
+            git fetch --quiet origin "$TARGET_BRANCH"
+            git reset --hard "origin/${TARGET_BRANCH}" >/dev/null
+            mkdir -p .lightning-bridge
+            cp "$PUBLIC_TMP" "$REQUEST_PATH"
+            git add "$REQUEST_PATH"
+            git commit -m "ci: publish ephemeral Lightning Job bridge public key ${BRIDGE_ID}" >/dev/null
+            if git push origin "HEAD:${TARGET_BRANCH}"; then
+              published=1
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          if [ "$published" -ne 1 ]; then
+            echo '::error::Could not publish ephemeral Lightning Job public key after retries'
+            exit 1
+          fi
           {
             echo "bridge_id=$BRIDGE_ID"
             echo "private_key=$PRIVATE_KEY"
+            echo "public_tmp=$PUBLIC_TMP"
             echo "request_path=$REQUEST_PATH"
             echo "response_path=$RESPONSE_PATH"
             echo "ciphertext=${RUNNER_TEMP}/lightning-job-${BRIDGE_ID}.ciphertext.b64"
@@ -130,5 +146,6 @@ jobs:
         shell: bash
         run: |
           rm -f "${{ steps.bridge.outputs.private_key }}" || true
+          rm -f "${{ steps.bridge.outputs.public_tmp }}" || true
           rm -f "${{ steps.bridge.outputs.ciphertext }}" || true
           rm -f "${RUNNER_TEMP}/lightning-job-probe-result.json" || true
