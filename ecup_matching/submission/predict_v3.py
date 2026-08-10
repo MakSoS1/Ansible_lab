@@ -12,20 +12,35 @@ from ecup_matching.ml.features import normalize_items
 from ecup_matching.ml.features_v2 import FEATURE_NAMES_V2, build_pair_features_v2
 from ecup_matching.ml.model_io import load_model_bundle
 from ecup_matching.ml.reranker_data import serialize_pair
+from ecup_matching.ml.textnorm import clean_text
 
 
-def categories_requiring_neural(manifest: Mapping[str, object]) -> set[str]:
+def _normalized_category_alphas(manifest: Mapping[str, object]) -> tuple[float, dict[str, float]]:
     raw = manifest.get("category_alphas")
     if not isinstance(raw, Mapping):
         raise RuntimeError("v3 manifest is missing category_alphas")
     global_alpha = float(raw.get("__global__", 0.0))
+    if not 0.0 <= global_alpha <= 1.0:
+        raise RuntimeError(f"invalid global neural alpha: {global_alpha}")
+    category_alphas: dict[str, float] = {}
+    for category, alpha_raw in raw.items():
+        if str(category) == "__global__":
+            continue
+        key = clean_text(category)
+        alpha = float(alpha_raw)
+        if not 0.0 <= alpha <= 1.0:
+            raise RuntimeError(f"invalid neural alpha for category {category!r}: {alpha}")
+        if key in category_alphas and category_alphas[key] != alpha:
+            raise RuntimeError(f"conflicting neural alphas after category normalization: {category!r}")
+        category_alphas[key] = alpha
+    return global_alpha, category_alphas
+
+
+def categories_requiring_neural(manifest: Mapping[str, object]) -> set[str]:
+    global_alpha, category_alphas = _normalized_category_alphas(manifest)
     if global_alpha > 0.0:
         return {"*"}
-    return {
-        str(category)
-        for category, alpha in raw.items()
-        if str(category) != "__global__" and float(alpha) > 0.0
-    }
+    return {category for category, alpha in category_alphas.items() if alpha > 0.0}
 
 
 def apply_category_blend(
@@ -34,22 +49,15 @@ def apply_category_blend(
     neural_scores,
     manifest: Mapping[str, object],
 ) -> np.ndarray:
-    category = np.asarray(categories).astype(str)
+    category = np.asarray([clean_text(value) for value in categories], dtype=object)
     structured = np.asarray(structured_scores, dtype=np.float64)
     neural = np.asarray(neural_scores, dtype=np.float64)
     if not (len(category) == len(structured) == len(neural)):
         raise ValueError("category, structured and neural arrays must have equal length")
-    raw = manifest.get("category_alphas")
-    if not isinstance(raw, Mapping):
-        raise RuntimeError("v3 manifest is missing category_alphas")
-    global_alpha = float(raw.get("__global__", 0.0))
-    if not 0.0 <= global_alpha <= 1.0:
-        raise RuntimeError(f"invalid global neural alpha: {global_alpha}")
+    global_alpha, category_alphas = _normalized_category_alphas(manifest)
     out = structured.copy()
     for name in np.unique(category):
-        alpha = float(raw.get(str(name), global_alpha))
-        if not 0.0 <= alpha <= 1.0:
-            raise RuntimeError(f"invalid neural alpha for category {name!r}: {alpha}")
+        alpha = float(category_alphas.get(str(name), global_alpha))
         if alpha <= 0.0:
             continue
         mask = category == name
@@ -66,7 +74,7 @@ def _pair_categories(matches: pd.DataFrame, item_cache) -> np.ndarray:
         right = item_cache.get(row.id2)
         if left is None or right is None:
             raise KeyError(f"pair references missing item: {row.id1!r}, {row.id2!r}")
-        categories.append(str(left.category or right.category or ""))
+        categories.append(clean_text(left.category or right.category or ""))
     return np.asarray(categories, dtype=object)
 
 
