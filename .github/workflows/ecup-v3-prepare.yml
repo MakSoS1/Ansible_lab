@@ -15,6 +15,10 @@ on:
         description: Weak-label rows before final compact sampling
         required: false
         default: '220000'
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-prepare.yml
 
 permissions:
   contents: read
