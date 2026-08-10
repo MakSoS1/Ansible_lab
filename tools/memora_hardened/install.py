@@ -10,6 +10,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from tools.memora_hardened.harden import PINNED_COMMIT, PROFILE, harden_tree
 
 UPSTREAM = "https://github.com/agentic-box/memora.git"
