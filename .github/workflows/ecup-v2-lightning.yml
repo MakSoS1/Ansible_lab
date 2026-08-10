@@ -1,3 +1,4 @@
+# Retry marker: canonical numeric item ordering verified in repository tests.
 name: E-CUP v2 Lightning GPU reranker
 
 on:
