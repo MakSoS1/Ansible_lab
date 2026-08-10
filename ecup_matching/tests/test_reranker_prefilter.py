@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
+from ecup_matching.ml import train_reranker_v2
 from ecup_matching.ml.train_reranker_v2 import _prefilter_weak, _prefilter_weak_parquet
 
 
@@ -69,3 +71,55 @@ def test_streaming_parquet_prefilter_preserves_the_existing_sample_exactly(tmp_p
 
     assert input_rows == len(weak)
     pd.testing.assert_frame_equal(actual, expected)
+
+
+def test_streaming_prefilter_converts_only_selected_rows_to_pandas(monkeypatch, tmp_path):
+    batch = pa.RecordBatch.from_pydict(
+        {
+            "id1": [1, 2, 3],
+            "id2": [11, 12, 13],
+            "target": [0.99, 0.50, 0.01],
+        }
+    )
+
+    class GuardedBatch:
+        def __init__(self, inner, *, selected=False):
+            self.inner = inner
+            self.selected = selected
+            self.schema = inner.schema
+            self.num_rows = inner.num_rows
+
+        def column(self, index):
+            return self.inner.column(index)
+
+        def take(self, indices):
+            return GuardedBatch(self.inner.take(indices), selected=True)
+
+        def to_pandas(self):
+            if not self.selected:
+                raise AssertionError("weak batch was materialized before Arrow filtering")
+            return self.inner.to_pandas()
+
+    class FakeMetadata:
+        num_rows = batch.num_rows
+
+    class FakeParquet:
+        schema_arrow = batch.schema
+        metadata = FakeMetadata()
+
+        def iter_batches(self, **_kwargs):
+            yield GuardedBatch(batch)
+
+    monkeypatch.setattr(
+        train_reranker_v2.pq, "ParquetFile", lambda _path: FakeParquet()
+    )
+
+    out, input_rows = _prefilter_weak_parquet(
+        tmp_path / "unused.parquet", set(), 2, 2026
+    )
+
+    assert input_rows == 3
+    assert out.to_dict("records") == [
+        {"id1": 1, "id2": 11, "target": 0.99},
+        {"id1": 3, "id2": 13, "target": 0.01},
+    ]

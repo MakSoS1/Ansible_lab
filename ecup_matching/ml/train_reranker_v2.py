@@ -12,6 +12,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from .category_attrs import learn_attribute_importance
@@ -99,6 +101,24 @@ def _prefilter_weak(
     )
 
 
+def _weak_prefilter_mask_arrow(
+    batch: pa.RecordBatch, validation_item_ids: set[object]
+) -> pa.BooleanArray:
+    target = pc.cast(
+        batch.column(batch.schema.get_field_index("target")), pa.float64()
+    )
+    keep = pc.or_(pc.less_equal(target, 0.30), pc.greater_equal(target, 0.70))
+    if validation_item_ids:
+        for name in ("id1", "id2"):
+            ids = batch.column(batch.schema.get_field_index(name))
+            validation_values = pa.array(list(validation_item_ids), type=ids.type)
+            keep = pc.and_(
+                keep,
+                pc.invert(pc.is_in(ids, value_set=validation_values)),
+            )
+    return pc.fill_null(keep, False)
+
+
 def _prefilter_weak_parquet(
     path: Path,
     validation_item_ids: set[object],
@@ -120,8 +140,8 @@ def _prefilter_weak_parquet(
 
     eligible_count = 0
     for batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
-        frame = batch.to_pandas()
-        eligible_count += int(_weak_prefilter_mask(frame, validation_item_ids).sum())
+        keep = _weak_prefilter_mask_arrow(batch, validation_item_ids)
+        eligible_count += int(pc.sum(pc.cast(keep, pa.int64())).as_py() or 0)
 
     if eligible_count > max_presample_rows:
         selected_ordinals = np.random.RandomState(seed).choice(
@@ -136,9 +156,10 @@ def _prefilter_weak_parquet(
     eligible_cursor = 0
     selected_cursor = 0
     for batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
-        frame = batch.to_pandas()
         eligible_positions = np.flatnonzero(
-            _weak_prefilter_mask(frame, validation_item_ids)
+            _weak_prefilter_mask_arrow(batch, validation_item_ids).to_numpy(
+                zero_copy_only=False
+            )
         )
         next_eligible_cursor = eligible_cursor + len(eligible_positions)
         selected_end = int(
@@ -148,7 +169,7 @@ def _prefilter_weak_parquet(
             ordinals = selected_sorted[selected_cursor:selected_end]
             local_offsets = ordinals - eligible_cursor
             raw_positions = eligible_positions[local_offsets]
-            piece = frame.iloc[raw_positions][columns].copy()
+            piece = batch.take(pa.array(raw_positions, type=pa.int64())).to_pandas()
             piece["_sample_order"] = sorted_order[selected_cursor:selected_end]
             pieces.append(piece)
         selected_cursor = selected_end
