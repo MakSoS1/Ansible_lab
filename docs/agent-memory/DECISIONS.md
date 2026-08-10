@@ -43,3 +43,21 @@
 **Decision:** Before adding a Transformer to inference, test filtered/confidence-weighted LLM labels and hard negatives on the fast structured anchor.
 
 **Reason:** The 11M soft labels are the largest unused supervision source; if they improve the cheap model, the gain is effectively free at inference time.
+
+## D009 — Retain confidence curriculum; reject static hard-negative reweighting
+
+**Decision:** v2 retains `v2b-weak-curriculum` (Macro AP `0.5010008995`) and rejects the v2c heuristic hard-negative weight boost (`0.4957263069`).
+
+**Reason:** 2024-inspired product-aware features improved the fixed item-disjoint score, and 300k confidence-filtered weak labels added another small gain. A fixed heuristic hard-negative weight erased the gain. Future hard negatives must therefore be **model-mined examples** for a reranker/second-stage training curriculum rather than static sample-weight multipliers.
+
+## D010 — GPU reranker is deferred until Lightning exposes an accessible Studio
+
+**Decision:** Keep the implemented RuBERT-tiny2 soft-label reranker, model-driven hard-negative stage and secure Lightning bridge, but do not fabricate a neural metric or make it part of v2.
+
+**Reason:** Current Lightning authentication succeeds and Teamspace discovery works, but the account exposes no reusable Studio through the SDK and denies `create_cloud_space` with HTTP 403. No GPU training actually started. v2 therefore ships the verified structured model, while v3 can resume the neural path as soon as a Studio exists.
+
+## D011 — Runtime optimizations must be feature-equivalent
+
+**Decision:** Optimize the structured v2 inference implementation only when regression tests prove equality to the selected model's original feature vector.
+
+**Reason:** The first 275k organizer-image benchmark was close to the private runtime limit. The accepted single-pass symmetry optimization replaces a duplicated full `_pair_features` pass with reverse evaluation of only the directional fuzzy features and is regression-tested against the previous vector at `1e-15` tolerance. This reduces runtime risk without retraining or changing validation predictions.
