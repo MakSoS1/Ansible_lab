@@ -19,12 +19,14 @@ jobs:
       HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
       PYTORCH_ENABLE_MPS_FALLBACK: '1'
       TOKENIZERS_PARALLELISM: 'false'
-      HF_HOME: ${{ runner.temp }}/hf-home
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Configure private temporary cache
+        shell: bash
+        run: echo "HF_HOME=$RUNNER_TEMP/hf-home" >> "$GITHUB_ENV"
       - name: Require private HF token
         shell: bash
         run: |
@@ -152,7 +154,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, math, os
+          import json, os
           from pathlib import Path
           import pandas as pd
           root = Path(os.environ['RUNNER_TEMP']) / 'v3-neural'
