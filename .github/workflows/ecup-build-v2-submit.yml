@@ -1,0 +1,236 @@
+name: E-CUP build v2 submission
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-build-v2-submit.yml
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  ORGANIZER_IMAGE: odsai/ecup26-matching-baseline:1.0
+  STRUCTURED_PREFIX: experiments/v2/structured/3ad39ca999e0
+
+jobs:
+  build-v2-submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+
+      - name: Set up host Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+
+      - name: Verify current repository
+        run: |
+          python -m pip install -r ecup_matching/requirements-ci.txt
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+
+      - name: Require private Hugging Face token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo '::error::Missing HF_TOKEN Actions secret'; exit 1; }
+
+      - name: Download retained v2b model and human smoke data from private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ecup-v2/model" "${RUNNER_TEMP}/ecup-v2/data" "${RUNNER_TEMP}/ecup-v2/smoke" "${RUNNER_TEMP}/ecup-v2/benchmark" "${RUNNER_TEMP}/ecup-v2/submission"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          repo = os.environ['HF_REPO_ID']; token = os.environ['HF_TOKEN']; root = Path(os.environ['RUNNER_TEMP']) / 'ecup-v2'
+          remote = {
+              f"{os.environ['STRUCTURED_PREFIX']}/model.joblib": root/'model'/'model.joblib',
+              f"{os.environ['STRUCTURED_PREFIX']}/manifest.json": root/'model'/'manifest.json',
+              f"{os.environ['STRUCTURED_PREFIX']}/metrics.json": root/'model'/'structured-metrics.json',
+              'items_human.parquet': root/'data'/'items_human.parquet',
+              'matches.parquet': root/'data'/'matches.parquet',
+          }
+          for filename, target in remote.items():
+              downloaded = Path(hf_hub_download(repo_id=repo, filename=filename, repo_type='dataset', token=token))
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(downloaded.read_bytes())
+              if target.stat().st_size == 0: raise RuntimeError(f'empty download: {filename}')
+              print('downloaded_private', filename, target.stat().st_size)
+          PY
+
+      - name: Verify retained candidate identity
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])/'ecup-v2'/'model'
+          m = json.loads((root/'structured-metrics.json').read_text())
+          manifest = json.loads((root/'manifest.json').read_text())
+          assert m['selected_candidate'] == 'v2b-weak-curriculum', m['selected_candidate']
+          assert abs(float(m['selected_macro_average_precision']) - 0.5010008994958702) < 1e-12
+          assert m['validation_item_overlap'] == 0
+          assert manifest['selected_candidate'] == 'v2b-weak-curriculum'
+          print('retained_macro_ap', m['selected_macro_average_precision'])
+          print('delta_vs_v1', m['delta_vs_v1'])
+          PY
+
+      - name: Pull exact organizer runtime image
+        run: docker pull "${ORGANIZER_IMAGE}"
+
+      - name: Verify v2 runtime imports in organizer image
+        shell: bash
+        run: |
+          docker run --rm -v "${GITHUB_WORKSPACE}:/workspace:ro" -w /workspace "${ORGANIZER_IMAGE}" \
+            python -c 'from ecup_matching.build_submission_v2 import build_submission_v2; from ecup_matching.submission.predict_v2 import predict_to_csv_v2; print("v2_organizer_import_ok")'
+
+      - name: Build v2 ZIP inside exact organizer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace:ro" \
+            -v "${RUNNER_TEMP}/ecup-v2/model:/model:ro" \
+            -v "${RUNNER_TEMP}/ecup-v2:/out" \
+            -w /workspace "${ORGANIZER_IMAGE}" \
+            python -m ecup_matching.build_submission_v2 \
+              --model /model/model.joblib \
+              --manifest /model/manifest.json \
+              --output /out/ecup-v2-submission.zip
+          unzip -l "${RUNNER_TEMP}/ecup-v2/ecup-v2-submission.zip"
+          unzip -q "${RUNNER_TEMP}/ecup-v2/ecup-v2-submission.zip" -d "${RUNNER_TEMP}/ecup-v2/submission"
+          test "$(stat -c%s "${RUNNER_TEMP}/ecup-v2/ecup-v2-submission.zip")" -lt $((5 * 1024 * 1024 * 1024))
+
+      - name: Create smoke and private-scale benchmark inputs
+        shell: bash
+        run: |
+          docker run --rm -i \
+            -v "${RUNNER_TEMP}/ecup-v2/data:/data:ro" \
+            -v "${RUNNER_TEMP}/ecup-v2/smoke:/smoke" \
+            -v "${RUNNER_TEMP}/ecup-v2/benchmark:/benchmark" \
+            "${ORGANIZER_IMAGE}" python - <<'PY'
+          import pandas as pd
+          matches = pd.read_parquet('/data/matches.parquet')[['id1','id2']]
+          items = pd.read_parquet('/data/items_human.parquet')
+          for count, root in [(1000, '/smoke'), (275000, '/benchmark')]:
+              m = matches.iloc[:count].copy().reset_index(drop=True)
+              ids = set(m.id1) | set(m.id2)
+              subset = items[items.id.isin(ids)].copy()
+              assert len(m) == count and len(subset) > 0
+              m.to_parquet(root + '/matches.parquet', index=False)
+              subset.to_parquet(root + '/items.parquet', index=False)
+              print(root, 'pairs', len(m), 'items', len(subset))
+          PY
+
+      - name: Run 1k packaged smoke offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none \
+            -v "${RUNNER_TEMP}/ecup-v2/submission:/submission:ro" \
+            -v "${RUNNER_TEMP}/ecup-v2/smoke:/smoke" \
+            -w /submission "${ORGANIZER_IMAGE}" \
+            python -u run.py --items_path /smoke/items.parquet --matches_path /smoke/matches.parquet --output_path /smoke/prediction.csv
+          docker run --rm --network none -i -v "${RUNNER_TEMP}/ecup-v2/smoke:/smoke:ro" "${ORGANIZER_IMAGE}" python - <<'PY'
+          import numpy as np, pandas as pd
+          p=pd.read_csv('/smoke/prediction.csv'); m=pd.read_parquet('/smoke/matches.parquet')
+          assert list(p.columns)==['id1','id2','predict']; assert len(p)==len(m)==1000
+          assert p[['id1','id2']].equals(m[['id1','id2']]); assert np.isfinite(p.predict).all(); assert p.predict.between(0,1).all()
+          print('v2_offline_smoke_ok', len(p))
+          PY
+
+      - name: Benchmark 275k pairs offline in exact organizer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          docker run --rm --network none \
+            -v "${RUNNER_TEMP}/ecup-v2/submission:/submission:ro" \
+            -v "${RUNNER_TEMP}/ecup-v2/benchmark:/benchmark" \
+            -w /submission "${ORGANIZER_IMAGE}" \
+            python -u run.py --items_path /benchmark/items.parquet --matches_path /benchmark/matches.parquet --output_path /benchmark/prediction.csv
+          end=$(date +%s)
+          runtime=$((end-start))
+          python - <<PY
+          import json, os
+          from pathlib import Path
+          runtime=${runtime}
+          root=Path(os.environ['RUNNER_TEMP'])/'ecup-v2'
+          structured=json.loads((root/'model'/'structured-metrics.json').read_text())
+          payload={
+            'benchmark_pairs':275000,
+            'offline_runtime_seconds':runtime,
+            'private_limit_seconds':780,
+            'headroom_seconds':780-runtime,
+            'headroom_fraction':(780-runtime)/780,
+            'passes_25pct_headroom': runtime <= 585,
+            'submission_zip_bytes':(root/'ecup-v2-submission.zip').stat().st_size,
+            'validation_macro_ap':structured['selected_macro_average_precision'],
+            'selected_candidate':structured['selected_candidate'],
+          }
+          (root/'v2-package-metrics.json').write_text(json.dumps(payload,indent=2))
+          print(json.dumps(payload,indent=2))
+          if runtime > 585:
+              raise SystemExit(f'v2 runtime {runtime}s fails 25% headroom target')
+          PY
+
+      - name: Validate 275k benchmark output
+        shell: bash
+        run: |
+          docker run --rm --network none -i -v "${RUNNER_TEMP}/ecup-v2/benchmark:/benchmark:ro" "${ORGANIZER_IMAGE}" python - <<'PY'
+          import numpy as np, pandas as pd
+          p=pd.read_csv('/benchmark/prediction.csv'); m=pd.read_parquet('/benchmark/matches.parquet')
+          assert len(p)==len(m)==275000; assert list(p.columns)==['id1','id2','predict']
+          assert p[['id1','id2']].equals(m[['id1','id2']]); assert np.isfinite(p.predict).all(); assert p.predict.between(0,1).all()
+          print('v2_275k_output_ok')
+          PY
+
+      - name: Upload final v2 submit and manifests to private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; root=Path(os.environ['RUNNER_TEMP'])/'ecup-v2'; api=HfApi(token=token)
+          files={
+            root/'ecup-v2-submission.zip':'submissions/v2/ecup-v2-submission.zip',
+            root/'model'/'manifest.json':'submissions/v2/model_v2_manifest.json',
+            root/'model'/'structured-metrics.json':'submissions/v2/v2-validation-metrics.json',
+            root/'v2-package-metrics.json':'submissions/v2/v2-package-metrics.json',
+          }
+          for local,remote in files.items():
+              if not local.is_file() or local.stat().st_size==0: raise RuntimeError(f'missing {local}')
+              api.upload_file(path_or_fileobj=str(local),path_in_repo=remote,repo_id=repo,repo_type='dataset',commit_message=f'Add E-CUP v2 artifact: {remote}')
+          visible=set(api.list_repo_files(repo_id=repo,repo_type='dataset'))
+          for remote in files.values():
+              if remote not in visible: raise RuntimeError(f'HF verification failed: {remote}')
+              print('verified_private_hf',remote)
+          PY
+
+      - name: Upload safe v2 metrics as GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v2-final-metrics
+          path: |
+            ${{ runner.temp }}/ecup-v2/model/structured-metrics.json
+            ${{ runner.temp }}/ecup-v2/v2-package-metrics.json
+            ${{ runner.temp }}/ecup-v2/model/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Cleanup private artifacts from runner
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/ecup-v2"
