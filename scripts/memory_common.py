@@ -23,9 +23,29 @@ SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"gho_[A-Za-z0-9]{36}"), "GitHub OAuth token"),
     (re.compile(r"github_pat_[A-Za-z0-9_]{22,}"), "GitHub fine-grained PAT"),
     (re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"), "Slack token"),
-    (re.compile(r"\bpassword\s*[:=]\s*[^\s,;]{4,}", re.IGNORECASE), "Password in plaintext"),
-    (re.compile(r"\bsecret\s*[:=]\s*[^\s,;]{4,}", re.IGNORECASE), "Secret in plaintext"),
 ]
+
+_ASSIGNMENT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bpassword\s*[:=]\s*([^\s,;]+)", re.IGNORECASE), "Password in plaintext"),
+    (re.compile(r"\bsecret\s*[:=]\s*([^\s,;]+)", re.IGNORECASE), "Secret in plaintext"),
+]
+
+
+def _looks_like_documentation_placeholder(raw_value: str) -> bool:
+    value = raw_value.strip().strip("`'\"")
+    if not value:
+        return True
+    if value.upper() in {"[REDACTED]", "REDACTED", "***", "NONE", "NULL"}:
+        return True
+    if value.startswith("<") and value.endswith(">"):
+        return True
+    if value.startswith("${") and value.endswith("}"):
+        return True
+    if value.startswith("$") and re.fullmatch(r"\$[A-Z][A-Z0-9_]{2,}", value):
+        return True
+    if re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", value):
+        return True
+    return False
 
 
 def scan_text_for_secrets(text: str) -> list[str]:
@@ -33,6 +53,11 @@ def scan_text_for_secrets(text: str) -> list[str]:
     for pattern, label in SECRET_PATTERNS:
         if pattern.search(text):
             findings.append(label)
+    for pattern, label in _ASSIGNMENT_PATTERNS:
+        for match in pattern.finditer(text):
+            if not _looks_like_documentation_placeholder(match.group(1)):
+                findings.append(label)
+                break
     return sorted(set(findings))
 
 
