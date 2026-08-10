@@ -1,7 +1,10 @@
 import json
 
+import numpy as np
 import pandas as pd
 
+import ecup_matching.ml.features_v2 as features_v2
+from ecup_matching.ml.features import FEATURE_NAMES, _pair_features, normalize_items
 from ecup_matching.ml.features_v2 import FEATURE_NAMES_V2, build_pair_features_v2
 
 
@@ -42,3 +45,35 @@ def test_v2_features_are_symmetric():
     forward = build_pair_features_v2(items, pd.DataFrame({"id1": [1], "id2": [2]}), attribute_importance=importance)
     reverse = build_pair_features_v2(items, pd.DataFrame({"id1": [2], "id2": [1]}), attribute_importance=importance)
     pd.testing.assert_frame_equal(forward, reverse)
+
+
+def test_single_pass_symmetry_matches_old_bidirectional_reference(monkeypatch):
+    cache = normalize_items(_items())
+    a, b = cache[1], cache[2]
+    ab = _pair_features(a, b)
+    ba = _pair_features(b, a)
+    expected = {
+        name: (
+            (str(ab["category"]) if str(ab["category"]) == str(ba["category"]) else min(str(ab["category"]), str(ba["category"])))
+            if name == "category"
+            else (float(ab[name]) + float(ba[name])) / 2.0
+        )
+        for name in FEATURE_NAMES
+    }
+
+    original = features_v2._pair_features
+    calls = 0
+
+    def counted(left, right):
+        nonlocal calls
+        calls += 1
+        return original(left, right)
+
+    monkeypatch.setattr(features_v2, "_pair_features", counted)
+    actual = features_v2._symmetric_base_features(a, b)
+
+    assert calls == 1, "optimized v2 symmetry must compute the full legacy feature vector once"
+    assert actual["category"] == expected["category"]
+    for name in FEATURE_NAMES:
+        if name != "category":
+            assert np.isclose(float(actual[name]), float(expected[name]), rtol=0.0, atol=1e-15), name
