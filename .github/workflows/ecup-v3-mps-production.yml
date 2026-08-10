@@ -1,0 +1,185 @@
+name: E-CUP v3 production Apple MPS reranker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-mps-production.yml
+
+permissions:
+  contents: read
+
+jobs:
+  train-v3:
+    runs-on: macos-15
+    timeout-minutes: 300
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      PREPARED_PREFIX: experiments/v3/prepared/13edb087498b
+      PYTORCH_ENABLE_MPS_FALLBACK: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require private HF token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo '::error::Missing HF_TOKEN'; exit 1; }
+      - name: Install pinned MPS training stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install \
+            'torch==2.9.1' \
+            'transformers==4.57.1' \
+            'huggingface_hub>=0.34,<1' \
+            'pandas>=2.2,<3' \
+            'pyarrow>=17,<24' \
+            'scikit-learn>=1.5,<2' \
+            'safetensors>=0.4,<1'
+      - name: Verify current source and Apple GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+          python - <<'PY'
+          import json, platform, torch, transformers
+          result = {
+              'machine': platform.machine(),
+              'torch': torch.__version__,
+              'transformers': transformers.__version__,
+              'mps_built': bool(torch.backends.mps.is_built()),
+              'mps_available': bool(torch.backends.mps.is_available()),
+              'mps_device_count': int(torch.mps.device_count()),
+          }
+          print(json.dumps(result, indent=2))
+          assert platform.machine() == 'arm64'
+          assert torch.backends.mps.is_available()
+          a = torch.randn(1536, 1536, device='mps')
+          b = torch.randn(1536, 1536, device='mps')
+          _ = a @ b
+          torch.mps.synchronize()
+          print('production_mps_preflight_ok')
+          PY
+      - name: Download compact private training data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v3-prepared" "$RUNNER_TEMP/v3-neural"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          root = Path(os.environ['RUNNER_TEMP']) / 'v3-prepared'
+          prefix = os.environ['PREPARED_PREFIX']
+          for name in (
+              'train_examples.parquet',
+              'validation_examples.parquet',
+              'structured_validation_predictions.parquet',
+              'manifest.json',
+          ):
+              remote = f'{prefix}/{name}'
+              local = hf_hub_download(
+                  repo_id=os.environ['HF_REPO_ID'], repo_type='dataset', filename=remote,
+                  token=os.environ['HF_TOKEN'], local_dir=root,
+              )
+              print('downloaded_private', remote, Path(local).stat().st_size)
+          PY
+      - name: Train stage1 and model-mined hard-negative stage2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.ml.train_v3_reranker \
+            --train "$RUNNER_TEMP/v3-prepared/$PREPARED_PREFIX/train_examples.parquet" \
+            --validation "$RUNNER_TEMP/v3-prepared/$PREPARED_PREFIX/validation_examples.parquet" \
+            --structured-validation "$RUNNER_TEMP/v3-prepared/$PREPARED_PREFIX/structured_validation_predictions.parquet" \
+            --output-dir "$RUNNER_TEMP/v3-neural" \
+            --model cointegrated/rubert-tiny2 \
+            --max-length 160 \
+            --train-batch-size 24 \
+            --eval-batch-size 96 \
+            --stage1-steps 1600 \
+            --stage2-steps 300 \
+            --stage1-lr 2e-5 \
+            --stage2-lr 8e-6 \
+            --hard-negative-count 12000
+      - name: Validate model-mined result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math, os
+          from pathlib import Path
+          import pandas as pd
+          root = Path(os.environ['RUNNER_TEMP']) / 'v3-neural'
+          metrics = json.loads((root / 'metrics.json').read_text())
+          pred = pd.read_parquet(root / 'validation_predictions.parquet')
+          assert metrics['accelerator'] == 'mps'
+          assert metrics['validation_item_overlap'] == 0
+          assert metrics['validation_rows'] == 73131
+          assert len(pred) == 73131
+          assert len(metrics['selected_per_category_ap']) == 20
+          assert math.isfinite(metrics['selected_macro_average_precision'])
+          assert pred['selected_score'].between(0.0, 1.0).all()
+          assert (root / 'model' / 'model.safetensors').exists()
+          print('selected_candidate', metrics['selected_candidate'])
+          print('selected_model_stage', metrics['selected_model_stage'])
+          print('selected_macro_ap', metrics['selected_macro_average_precision'])
+          print('delta_vs_v2', metrics['delta_vs_v2'])
+          print('accepted_as_improvement', metrics['accepted_as_improvement'])
+          print('stage1_macro_ap', metrics['stage1_validation']['macro_average_precision'])
+          print('stage2_macro_ap', metrics['stage2_validation']['macro_average_precision'])
+          print('hard_negative_mining', metrics['hard_negative_mining'])
+          print('selected_category_alphas', metrics['selected_category_alphas'])
+          print('training_seconds', metrics['total_seconds'])
+          PY
+      - name: Upload complete v3 neural result privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          sha = os.environ['GITHUB_SHA'][:12]
+          prefix = f'experiments/v3/neural/{sha}'
+          root = Path(os.environ['RUNNER_TEMP']) / 'v3-neural'
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          api.upload_folder(
+              repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+              folder_path=str(root), path_in_repo=prefix,
+              commit_message=f'Store production E-CUP v3 MPS reranker {sha}',
+          )
+          visible = set(api.list_repo_files(repo_id=os.environ['HF_REPO_ID'], repo_type='dataset'))
+          required = {
+              f'{prefix}/metrics.json',
+              f'{prefix}/manifest.json',
+              f'{prefix}/validation_predictions.parquet',
+              f'{prefix}/model/model.safetensors',
+              f'{prefix}/model/config.json',
+          }
+          missing = required - visible
+          if missing: raise RuntimeError(f'private HF verification failed: {sorted(missing)}')
+          print('neural_prefix', prefix)
+          for remote in sorted(required): print('verified_private_hf', remote)
+          PY
+      - name: Upload safe metrics evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v3-production-neural-metrics
+          path: |
+            ${{ runner.temp }}/v3-neural/metrics.json
+            ${{ runner.temp }}/v3-neural/manifest.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Cleanup private training material
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/v3-prepared" "$RUNNER_TEMP/v3-neural"
