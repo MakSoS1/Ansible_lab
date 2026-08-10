@@ -69,7 +69,14 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
             observed["batch_size"] = kwargs["batch_size"]
             yield GuardedBatch(batch)
 
+    class FakeMemoryPool:
+        def release_unused(self):
+            observed["release_calls"] = observed.get("release_calls", 0) + 1
+
     monkeypatch.setattr(data_subset.pq, "ParquetFile", lambda _path: FakeParquet())
+    monkeypatch.setattr(
+        data_subset.pa, "default_memory_pool", lambda: FakeMemoryPool()
+    )
 
     out = select_items_by_ids(tmp_path / "unused.parquet", {10})
 
@@ -77,3 +84,4 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
         {"id": 10, "name": "wanted", "attributes": "{}", "category": "x"}
     ]
     assert observed["batch_size"] <= 5_000
+    assert observed["release_calls"] >= 1

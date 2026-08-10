@@ -39,7 +39,11 @@ def select_items_by_ids(
             selected = selected_batch.to_pandas()
             pieces.append(selected)
             found.update(selected["id"].tolist())
-        if found == requested:
+            del selected
+        complete = found == requested
+        del id_column, requested_values, selected_batch, batch
+        pa.default_memory_pool().release_unused()
+        if complete:
             break
 
     missing = requested - found
