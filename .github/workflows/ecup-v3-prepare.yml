@@ -4,17 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       max_train_rows:
-        description: Compact neural training row budget
+        description: Compact authoritative-human neural training row budget
         required: false
         default: '180000'
-      weak_presample_rows:
-        description: Weak-label presample before product loading
-        required: false
-        default: '350000'
-      weak_final_rows:
-        description: Weak-label rows before final compact sampling
-        required: false
-        default: '220000'
   push:
     branches: [ecup-matching-2026]
     paths:
@@ -26,7 +18,7 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
@@ -49,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${HF_TOKEN:-}" || { echo '::error::Missing HF_TOKEN'; exit 1; }
-      - name: Download private organizer data and v2 validation anchor
+      - name: Download only human organizer data and v2 validation anchor
         shell: bash
         run: |
           set -euo pipefail
@@ -58,18 +50,14 @@ jobs:
           import os
           from pathlib import Path
           from huggingface_hub import hf_hub_download
-
           repo = os.environ['HF_REPO_ID']
           token = os.environ['HF_TOKEN']
           root = Path(os.environ['RUNNER_TEMP']) / 'v3-input'
-          paths = [
+          for remote in (
               'items_human.parquet',
               'matches.parquet',
-              'matches_llm.parquet',
-              'items.parquet',
               'experiments/v2/structured/3ad39ca999e0/validation_predictions.parquet',
-          ]
-          for remote in paths:
+          ):
               local = hf_hub_download(
                   repo_id=repo,
                   repo_type='dataset',
@@ -77,26 +65,20 @@ jobs:
                   token=token,
                   local_dir=root,
               )
-              size = Path(local).stat().st_size
-              print(f'downloaded {remote} bytes={size}')
+              print(f'downloaded {remote} bytes={Path(local).stat().st_size}')
           PY
-      - name: Build compact leakage-safe serialized examples
+      - name: Build fast human-only leakage-safe serialized examples
         shell: bash
         env:
           MAX_TRAIN_ROWS: ${{ inputs.max_train_rows || '180000' }}
-          WEAK_PRESAMPLE_ROWS: ${{ inputs.weak_presample_rows || '350000' }}
-          WEAK_FINAL_ROWS: ${{ inputs.weak_final_rows || '220000' }}
         run: |
           set -euo pipefail
           python -m ecup_matching.v3_prepare \
+            --human-only \
             --human-items "$RUNNER_TEMP/v3-input/items_human.parquet" \
             --human-matches "$RUNNER_TEMP/v3-input/matches.parquet" \
-            --llm-matches "$RUNNER_TEMP/v3-input/matches_llm.parquet" \
-            --full-items "$RUNNER_TEMP/v3-input/items.parquet" \
             --output-dir "$RUNNER_TEMP/v3-prepared" \
             --max-train-rows "$MAX_TRAIN_ROWS" \
-            --weak-presample-rows "$WEAK_PRESAMPLE_ROWS" \
-            --weak-final-rows "$WEAK_FINAL_ROWS" \
             --max-attrs 10 \
             --max-chars 700 \
             --priority-fraction 0.60
@@ -111,17 +93,19 @@ jobs:
           train = pd.read_parquet(root / 'train_examples.parquet')
           valid = pd.read_parquet(root / 'validation_examples.parquet')
           structured = pd.read_parquet(root / 'structured_validation_predictions.parquet')
+          assert manifest['mode'] == 'human-only'
+          assert manifest['weak_rows'] == 0
           assert manifest['validation_item_overlap'] == 0
           assert len(valid) == 73131
           assert len(train) == int(manifest['train_rows'])
           assert len(structured) == len(valid)
           assert 'v2b-weak-curriculum' in structured.columns
-          assert train[['text_a','text_b']].notna().all().all()
-          assert valid[['text_a','text_b']].notna().all().all()
+          assert (train['source'] == 'human').all()
           print('prepared_contract_ok')
           print('train_rows', len(train))
           print('validation_rows', len(valid))
-          print('source_counts', train['source'].value_counts().to_dict())
+          print('human_positive_rows_retained', manifest['human_positive_rows_retained'])
+          print('priority_category_counts', manifest['priority_category_counts'])
           print('train_bytes', (root / 'train_examples.parquet').stat().st_size)
           print('validation_bytes', (root / 'validation_examples.parquet').stat().st_size)
           PY
@@ -133,7 +117,6 @@ jobs:
           import os
           from pathlib import Path
           from huggingface_hub import CommitOperationAdd, HfApi
-
           repo = os.environ['HF_REPO_ID']
           token = os.environ['HF_TOKEN']
           sha = os.environ['GITHUB_SHA'][:12]
@@ -146,15 +129,14 @@ jobs:
               'manifest.json',
           ]
           api = HfApi(token=token)
-          operations = [
-              CommitOperationAdd(path_in_repo=f'{prefix}/{name}', path_or_fileobj=str(root / name))
-              for name in names
-          ]
           api.create_commit(
               repo_id=repo,
               repo_type='dataset',
-              operations=operations,
-              commit_message=f'Prepare E-CUP v3 neural data {sha}',
+              operations=[
+                  CommitOperationAdd(path_in_repo=f'{prefix}/{name}', path_or_fileobj=str(root / name))
+                  for name in names
+              ],
+              commit_message=f'Prepare E-CUP v3 human-only neural data {sha}',
           )
           visible = set(api.list_repo_files(repo_id=repo, repo_type='dataset'))
           for name in names:
@@ -171,8 +153,7 @@ jobs:
           path: ${{ runner.temp }}/v3-prepared/manifest.json
           if-no-files-found: error
           retention-days: 14
-      - name: Cleanup raw and derived runner data
+      - name: Cleanup private runner data
         if: always()
         shell: bash
-        run: |
-          rm -rf "$RUNNER_TEMP/v3-input" "$RUNNER_TEMP/v3-prepared"
+        run: rm -rf "$RUNNER_TEMP/v3-input" "$RUNNER_TEMP/v3-prepared"
