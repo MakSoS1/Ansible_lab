@@ -32,7 +32,9 @@ _ASSIGNMENT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 
 
 def _looks_like_documentation_placeholder(raw_value: str) -> bool:
-    value = raw_value.strip().strip("`'\"")
+    value = raw_value.strip()
+    value = value.rstrip(".,;:")
+    value = value.strip("`'\"")
     if not value:
         return True
     if value.upper() in {"[REDACTED]", "REDACTED", "***", "NONE", "NULL"}:
