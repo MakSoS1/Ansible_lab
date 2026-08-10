@@ -1,0 +1,116 @@
+name: E-CUP v3 priority-category MPS sprint
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-mps-priority-sprint.yml
+
+permissions:
+  contents: read
+
+jobs:
+  priority-sprint:
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      PREPARED_PREFIX: experiments/v3/prepared/13edb087498b
+      PYTORCH_ENABLE_MPS_FALLBACK: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install and preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet \
+            'torch==2.9.1' 'transformers==4.57.1' 'huggingface_hub>=0.34,<1' \
+            'pandas>=2.2,<3' 'pyarrow>=17,<24' 'scikit-learn>=1.5,<2' \
+            'safetensors>=0.4,<1' 'pytest>=8.3,<10'
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+          python - <<'PY'
+          import torch, platform
+          assert platform.machine()=='arm64' and torch.backends.mps.is_available()
+          print('priority_sprint_mps_ok')
+          PY
+      - name: Fetch and filter priority training rows
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          mkdir -p "$RUNNER_TEMP/prepared" "$RUNNER_TEMP/neural"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import pandas as pd
+          from huggingface_hub import hf_hub_download
+          root=Path(os.environ['RUNNER_TEMP'])/'prepared'; prefix=os.environ['PREPARED_PREFIX']
+          names=('train_examples.parquet','validation_examples.parquet','structured_validation_predictions.parquet')
+          paths={}
+          for name in names:
+              remote=f'{prefix}/{name}'
+              paths[name]=Path(hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=remote,token=os.environ['HF_TOKEN'],local_dir=root))
+          priority={'Электроника','Одежда','Обувь','Ювелирные изделия','Галантерея и аксессуары','Мебель'}
+          train=pd.read_parquet(paths['train_examples.parquet'])
+          train=train[train.category.astype(str).isin(priority)].reset_index(drop=True)
+          assert len(train)>50000 and (train.source=='human').all()
+          train.to_parquet(root/'priority_train.parquet',index=False)
+          print('priority_train_rows',len(train),'positives',int((train.target.astype(float)>=0.5).sum()))
+          PY
+      - name: Train sprint with real model-mined hard negatives
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.ml.train_v3_reranker \
+            --train "$RUNNER_TEMP/prepared/priority_train.parquet" \
+            --validation "$RUNNER_TEMP/prepared/$PREPARED_PREFIX/validation_examples.parquet" \
+            --structured-validation "$RUNNER_TEMP/prepared/$PREPARED_PREFIX/structured_validation_predictions.parquet" \
+            --output-dir "$RUNNER_TEMP/neural" \
+            --model cointegrated/rubert-tiny2 \
+            --max-length 128 \
+            --train-batch-size 40 \
+            --eval-batch-size 128 \
+            --stage1-steps 250 \
+            --stage2-steps 50 \
+            --stage1-lr 4e-5 \
+            --stage2-lr 1.2e-5 \
+            --hard-negative-count 5000
+      - name: Validate and store sprint privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          root=Path(os.environ['RUNNER_TEMP'])/'neural'; m=json.loads((root/'metrics.json').read_text()); man=json.loads((root/'manifest.json').read_text())
+          assert m['validation_rows']==73131 and m['validation_item_overlap']==0
+          print('sprint_macro_ap',m['selected_macro_average_precision'])
+          print('sprint_delta_vs_v2',m['delta_vs_v2'])
+          print('sprint_candidate',m['selected_candidate'])
+          print('sprint_alphas',man['category_alphas'])
+          sha=os.environ['GITHUB_SHA'][:12]; prefix=f'experiments/v3/neural-sprint/{sha}'
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          api.upload_folder(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',folder_path=str(root),path_in_repo=prefix,commit_message=f'Store E-CUP v3 priority sprint {sha}')
+          visible=set(api.list_repo_files(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset'))
+          for rel in ('metrics.json','manifest.json','validation_predictions.parquet','model/model.safetensors'):
+              assert f'{prefix}/{rel}' in visible
+          print('sprint_prefix',prefix)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v3-priority-sprint-metrics
+          path: |
+            ${{ runner.temp }}/neural/metrics.json
+            ${{ runner.temp }}/neural/manifest.json
+          retention-days: 14
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/prepared" "$RUNNER_TEMP/neural"
