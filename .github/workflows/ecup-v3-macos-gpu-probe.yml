@@ -1,0 +1,50 @@
+name: E-CUP v3 GitHub Apple GPU probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-macos-gpu-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  mps-probe:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Probe Apple Silicon and Metal
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          uname -m
+          sysctl -n machdep.cpu.brand_string || true
+          system_profiler SPDisplaysDataType || true
+          python -m pip install --quiet 'torch>=2.8,<2.12'
+          python - <<'PY'
+          import json, platform, torch
+          result = {
+              'machine': platform.machine(),
+              'torch': torch.__version__,
+              'mps_built': bool(torch.backends.mps.is_built()),
+              'mps_available': bool(torch.backends.mps.is_available()),
+              'mps_device_count': int(torch.mps.device_count()) if hasattr(torch, 'mps') else 0,
+          }
+          print(json.dumps(result, indent=2))
+          if platform.machine() != 'arm64':
+              raise RuntimeError(f'expected Apple Silicon arm64 runner, got {platform.machine()}')
+          if not torch.backends.mps.is_available():
+              raise RuntimeError('GitHub Apple Silicon runner does not expose usable MPS GPU')
+          a = torch.randn(2048, 2048, device='mps')
+          b = torch.randn(2048, 2048, device='mps')
+          c = a @ b
+          torch.mps.synchronize()
+          print('mps_matmul_ok', tuple(c.shape), float(c[0, 0].cpu()))
+          PY
