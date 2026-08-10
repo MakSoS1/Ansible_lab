@@ -8,6 +8,9 @@ on:
     paths:
       - ".github/workflows/ecup-matching.yml"
       - "ecup_matching/**"
+      - "AGENTS.md"
+      - "docs/agent-memory/**"
+      - "scripts/memory_policy.py"
 
 permissions:
   contents: read
@@ -32,6 +35,9 @@ jobs:
 
       - name: Run tests
         run: python -m pytest ecup_matching/tests -q
+
+      - name: Enforce experiment documentation and memory policy
+        run: python scripts/memory_policy.py
 
   profile-human:
     if: github.event_name == 'workflow_dispatch'
