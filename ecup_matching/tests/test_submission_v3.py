@@ -8,9 +8,9 @@ from ecup_matching.build_submission_v3 import build_submission_v3
 from ecup_matching.submission.predict_v3 import apply_category_blend, categories_requiring_neural
 
 
-def test_categories_requiring_neural_uses_only_positive_alphas():
-    manifest = {"category_alphas": {"A": 0.0, "B": 0.45, "C": 1.0}}
-    assert categories_requiring_neural(manifest) == {"B", "C"}
+def test_categories_requiring_neural_uses_normalized_positive_alphas():
+    manifest = {"category_alphas": {"Автотовары": 0.0, "Электроника": 0.45, "Ювелирные изделия": 1.0}}
+    assert categories_requiring_neural(manifest) == {"электроника", "ювелирные изделия"}
 
 
 def test_categories_requiring_neural_marks_global_blend():
@@ -18,11 +18,11 @@ def test_categories_requiring_neural_marks_global_blend():
     assert categories_requiring_neural(manifest) == {"*"}
 
 
-def test_apply_category_blend_preserves_structured_rows_with_zero_alpha():
-    categories = np.array(["A", "B", "C", "B"], dtype=object)
+def test_apply_category_blend_matches_normalized_runtime_categories():
+    categories = np.array(["автотовары", "электроника", "ювелирные изделия", "электроника"], dtype=object)
     structured = np.array([0.1, 0.2, 0.3, 0.4])
     neural = np.array([0.9, 0.8, 0.7, 0.6])
-    manifest = {"category_alphas": {"A": 0.0, "B": 0.5, "C": 1.0}}
+    manifest = {"category_alphas": {"Автотовары": 0.0, "Электроника": 0.5, "Ювелирные изделия": 1.0}}
     out = apply_category_blend(categories, structured, neural, manifest)
     np.testing.assert_allclose(out, [0.1, 0.5, 0.7, 0.5])
     assert ((out >= 0.0) & (out <= 1.0)).all()
