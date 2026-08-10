@@ -15,7 +15,7 @@ ITEM_COLUMNS = ("id", "name", "attributes", "category")
 def select_items_by_ids(
     parquet_path: Path,
     item_ids: Iterable[object],
-    batch_size: int = 100_000,
+    batch_size: int = 5_000,
 ) -> pd.DataFrame:
     """Scan a large item parquet and materialize only requested item IDs."""
     requested = set(item_ids)

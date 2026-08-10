@@ -42,6 +42,7 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
             "category": ["x", "x", "y"],
         }
     )
+    observed = {}
 
     class GuardedBatch:
         def __init__(self, inner, *, filtered=False):
@@ -64,7 +65,8 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
     class FakeParquet:
         schema_arrow = batch.schema
 
-        def iter_batches(self, **_kwargs):
+        def iter_batches(self, **kwargs):
+            observed["batch_size"] = kwargs["batch_size"]
             yield GuardedBatch(batch)
 
     monkeypatch.setattr(data_subset.pq, "ParquetFile", lambda _path: FakeParquet())
@@ -74,3 +76,4 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
     assert out.to_dict("records") == [
         {"id": 10, "name": "wanted", "attributes": "{}", "category": "x"}
     ]
+    assert observed["batch_size"] <= 5_000
