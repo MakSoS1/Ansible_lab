@@ -10,7 +10,11 @@ on:
       - "CLAUDE.md"
       - "GEMINI.md"
       - ".github/copilot-instructions.md"
+      - ".mcp.json"
+      - ".gitignore"
       - "docs/agent-memory/**"
+      - "docs/superpowers/specs/2026-08-10-ecup-memora-memory-design.md"
+      - "docs/superpowers/plans/2026-08-10-ecup-memora-memory.md"
       - "tools/memora_hardened/**"
       - "scripts/memory*.py"
       - "scripts/memora*.py"
@@ -22,17 +26,160 @@ on:
 permissions:
   contents: read
 
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
 jobs:
-  memory-contract-tests:
+  hardened-memora:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout E-CUP branch
+        uses: actions/checkout@v4
+
+      - name: Set up host Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
-      - name: Install repository test dependencies
+
+      - name: Install repository test and HF dependencies
         run: python -m pip install -r ecup_matching/requirements-ci.txt
+
       - name: Run complete repository test suite
         run: python -m pytest ecup_matching/tests -q
+
+      - name: Validate universal agent memory policy
+        run: python scripts/memory_policy.py
+
+      - name: Require private Hugging Face write token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::error::Missing Actions secret HF_TOKEN"
+            exit 1
+          fi
+
+      - name: Install exact pinned and hardened Memora
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME="${RUNNER_TEMP}/ecup-memora-runtime"
+          python tools/memora_hardened/install.py --prefix "$RUNTIME" --install-dev
+          test -f "$RUNTIME/runtime-manifest.json"
+          test -n "$(find "$RUNTIME/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+
+      - name: Verify checked-out upstream commit and removed cloud graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME="${RUNNER_TEMP}/ecup-memora-runtime"
+          test "$(git -C "$RUNTIME/src" rev-parse HEAD)" = "bc64ff745a9b2c0e6245e0137654f041fba0c155"
+          test ! -e "$RUNTIME/src/memora-graph"
+          grep -q 'mcp>=1.0.0,<2' "$RUNTIME/src/pyproject.toml"
+          grep -q 'MEMORA_EMBEDDING_MODEL.*, "tfidf"' "$RUNTIME/src/memora/storage.py"
+          grep -q 'MEMORA_LLM_ENABLED.*, "false"' "$RUNTIME/src/memora/storage.py"
+
+      - name: Run pinned upstream Python test suite on hardened source
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME="${RUNNER_TEMP}/ecup-memora-runtime"
+          "$RUNTIME/venv/bin/python" -m pytest "$RUNTIME/src/tests" -q
+
+      - name: Verify effective hardened runtime behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/memora_hardened/verify_install.py --prefix "${RUNNER_TEMP}/ecup-memora-runtime"
+
+      - name: Restore prior private memory checkpoint if it exists
+        run: python scripts/memory_bootstrap.py --allow-empty
+
+      - name: Ingest canonical project state into Memora
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME="${RUNNER_TEMP}/ecup-memora-runtime"
+          "$RUNTIME/venv/bin/python" scripts/memory_ingest.py
+
+      - name: Verify local memory DB is private and healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(stat -c '%a' .agent-memory)" = "700"
+          test "$(stat -c '%a' .agent-memory/memories.db)" = "600"
+          python - <<'PY'
+          from pathlib import Path
+          from scripts.memory_common import scan_sqlite_for_secrets, sqlite_integrity
+          db = Path('.agent-memory/memories.db')
+          sqlite_integrity(db)
+          findings = scan_sqlite_for_secrets(db)
+          if findings:
+              raise SystemExit('secret scan findings: ' + '; '.join(findings[:20]))
+          print('local_memory_integrity_ok')
+          print('local_memory_secret_scan_ok')
+          PY
+
+      - name: Checkpoint v1/current project memory to private HF
+        run: python scripts/memory_checkpoint.py --iteration v1
+
+      - name: Upload hardened Memora wheel and runtime manifest to private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from huggingface_hub import CommitOperationAdd, HfApi
+
+          runtime = Path(os.environ['RUNNER_TEMP']) / 'ecup-memora-runtime'
+          manifest_path = runtime / 'runtime-manifest.json'
+          manifest = json.loads(manifest_path.read_text())
+          wheels = sorted((runtime / 'dist').glob('*.whl'))
+          if len(wheels) != 1:
+              raise RuntimeError(f'expected one wheel, found {len(wheels)}')
+          wheel = wheels[0]
+          remote_wheel = f"agent-memory/runtime/{wheel.name}"
+          remote_manifest = 'agent-memory/runtime/runtime-manifest.json'
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          api.create_commit(
+              repo_id=os.environ['HF_REPO_ID'],
+              repo_type='dataset',
+              operations=[
+                  CommitOperationAdd(path_in_repo=remote_wheel, path_or_fileobj=str(wheel)),
+                  CommitOperationAdd(path_in_repo=remote_manifest, path_or_fileobj=str(manifest_path)),
+              ],
+              commit_message=f"Store hardened Memora runtime {manifest['profile']}",
+          )
+          visible = set(api.list_repo_files(repo_id=os.environ['HF_REPO_ID'], repo_type='dataset'))
+          for remote in (remote_wheel, remote_manifest, 'agent-memory/latest/memories.db', 'agent-memory/latest/manifest.json'):
+              if remote not in visible:
+                  raise RuntimeError(f'private HF verification failed: {remote}')
+              print('verified_private_hf', remote)
+          print('runtime_upstream_commit', manifest['upstream_commit'])
+          print('runtime_mcp_version', manifest['mcp_version'])
+          print('runtime_wheel_sha256', manifest['wheel_sha256'])
+          PY
+
+      - name: Upload non-secret verification manifests as GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-hardened-memora-verification
+          path: |
+            ${{ runner.temp }}/ecup-memora-runtime/runtime-manifest.json
+            ${{ runner.temp }}/ecup-memora-runtime/src/HARDENED_ECUP_PROFILE.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Cleanup Memora DB and runtime from runner
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "${GITHUB_WORKSPACE}/.agent-memory"
+          rm -rf "${RUNNER_TEMP}/ecup-memora-runtime"
