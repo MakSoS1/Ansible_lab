@@ -21,6 +21,29 @@ EXTRA_FEATURE_NAMES_V2: tuple[str, ...] = (
 FEATURE_NAMES_V2: tuple[str, ...] = (*FEATURE_NAMES, *EXTRA_FEATURE_NAMES_V2)
 
 
+def _symmetric_base_features(a: ItemNorm, b: ItemNorm) -> dict[str, object]:
+    """Symmetrize legacy v1 pair features without changing the v1 implementation.
+
+    ``difflib.SequenceMatcher`` can choose different matching blocks depending
+    on argument order, so some v1 fuzzy ratios are direction-dependent. Product
+    identity is symmetric; v2 evaluates both directions and averages every
+    numeric feature. Category is selected deterministically for the defensive
+    cross-category case (official pairs are same-category).
+    """
+    ab = _pair_features(a, b)
+    ba = _pair_features(b, a)
+    category_a = str(ab["category"])
+    category_b = str(ba["category"])
+    result: dict[str, object] = {
+        "category": category_a if category_a == category_b else min(category_a, category_b)
+    }
+    for name in FEATURE_NAMES:
+        if name == "category":
+            continue
+        result[name] = (float(ab[name]) + float(ba[name])) / 2.0
+    return result
+
+
 def _extra_features(
     a: ItemNorm,
     b: ItemNorm,
@@ -67,7 +90,7 @@ def build_pair_features_v2(
         if id1 not in cache or id2 not in cache:
             raise KeyError(f"pair references missing item: {id1!r}, {id2!r}")
         a, b = cache[id1], cache[id2]
-        base = _pair_features(a, b)
+        base = _symmetric_base_features(a, b)
         rows.append({**base, **_extra_features(a, b, base, attribute_importance)})
 
     frame = pd.DataFrame(rows, columns=FEATURE_NAMES_V2)
