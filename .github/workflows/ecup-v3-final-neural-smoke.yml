@@ -66,10 +66,9 @@ jobs:
             python -u run.py --items_path /bench/items1k.parquet --matches_path /bench/matches1k.parquet --output_path /bench/prediction.csv 2>&1 | tee "$RUNNER_TEMP/smoke/run.log"
           grep -F 'neural device=cpu rows=1,000' "$RUNNER_TEMP/smoke/run.log"
           grep -F 'neural_pairs=1,000' "$RUNNER_TEMP/smoke/run.log"
-          python - <<'PY'
-          import os,pandas as pd,numpy as np
-          from pathlib import Path
-          p=pd.read_csv(Path(os.environ['RUNNER_TEMP'])/'smoke/prediction.csv'); assert len(p)==1000 and p.predict.between(0,1).all() and np.isfinite(p.predict).all() and p.predict.nunique()>100
+          docker run --rm --network none -i -v "$RUNNER_TEMP/smoke:/bench:ro" "$ORGANIZER_IMAGE" python - <<'PY'
+          import pandas as pd,numpy as np
+          p=pd.read_csv('/bench/prediction.csv'); assert len(p)==1000 and p.predict.between(0,1).all() and np.isfinite(p.predict).all() and p.predict.nunique()>100
           print('final_neural_smoke_verified')
           PY
       - name: Cleanup
