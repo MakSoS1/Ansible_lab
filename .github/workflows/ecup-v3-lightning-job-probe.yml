@@ -101,14 +101,25 @@ jobs:
             if git cat-file -e "origin/${TARGET_BRANCH}:${RESPONSE_PATH}" 2>/dev/null; then
               git show "origin/${TARGET_BRANCH}:${RESPONSE_PATH}" > "$CIPHERTEXT"
               chmod 600 "$CIPHERTEXT"
-              found=1
-              break
+              if CIPHERTEXT="$CIPHERTEXT" python - <<'PY'
+          import base64, os
+          from pathlib import Path
+          raw = Path(os.environ['CIPHERTEXT']).read_bytes().strip()
+          decoded = base64.b64decode(raw, validate=True)
+          if len(decoded) != 512:
+              raise SystemExit(f'expected RSA-4096 ciphertext length 512, got {len(decoded)}')
+          print('encrypted_response_shape_ok')
+          PY
+              then
+                found=1
+                break
+              fi
+              rm -f "$CIPHERTEXT"
             fi
             sleep 5
           done
-          if [ "$found" -ne 1 ]; then echo '::error::Encrypted Lightning credential response was not received in time'; exit 1; fi
-          test -s "$CIPHERTEXT"
-          echo 'Encrypted Lightning credential response received'
+          if [ "$found" -ne 1 ]; then echo '::error::Valid encrypted Lightning credential response was not received in time'; exit 1; fi
+          echo 'Validated encrypted Lightning credential response received'
       - name: Submit tiny direct CPU Docker Job without Studio
         shell: bash
         env:
