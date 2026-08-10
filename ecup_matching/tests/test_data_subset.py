@@ -31,6 +31,24 @@ def test_select_items_by_ids_reports_missing(tmp_path):
         assert "missing" in str(exc).lower()
 
 
+def test_select_items_by_ids_can_skip_heavy_attributes_for_name_only_smoke(tmp_path):
+    path = tmp_path / "items.parquet"
+    pd.DataFrame(
+        {
+            "id": [1, 2],
+            "name": ["wanted", "unused"],
+            "attributes": ["x" * 1000, "y" * 1000],
+            "category": ["x", "y"],
+        }
+    ).to_parquet(path, index=False)
+
+    out = select_items_by_ids(path, {1}, include_attributes=False)
+
+    assert out.to_dict("records") == [
+        {"id": 1, "name": "wanted", "attributes": "{}", "category": "x"}
+    ]
+
+
 def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
     monkeypatch, tmp_path
 ):

@@ -184,9 +184,13 @@ def _prefilter_weak_parquet(
     return out.reset_index(drop=True), int(parquet.metadata.num_rows)
 
 
-def _load_pair_items(items_path: Path, pairs: pd.DataFrame) -> pd.DataFrame:
+def _load_pair_items(
+    items_path: Path, pairs: pd.DataFrame, *, include_attributes: bool = True
+) -> pd.DataFrame:
     pair_ids = set(pairs["id1"]) | set(pairs["id2"])
-    return select_items_by_ids(items_path, pair_ids)
+    return select_items_by_ids(
+        items_path, pair_ids, include_attributes=include_attributes
+    )
 
 
 def prepare_training_examples(
@@ -203,7 +207,10 @@ def prepare_training_examples(
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     """Build leakage-safe outer-train and fixed-validation reranker examples."""
     matches = pd.read_parquet(human_matches_path, columns=["id1", "id2", "target"])
-    human_items = _load_pair_items(human_items_path, matches)
+    include_attributes = max_attrs > 0
+    human_items = _load_pair_items(
+        human_items_path, matches, include_attributes=include_attributes
+    )
     matches = attach_pair_category(matches, human_items)
     train_idx, valid_idx = fixed_v1_split(matches)
     outer_train = matches.iloc[train_idx].reset_index(drop=True)
@@ -233,7 +240,9 @@ def prepare_training_examples(
         weak, clean[["id1", "id2", "target"]]
     )
     weak_ids = set(weak["id1"]) | set(weak["id2"])
-    weak_items = select_items_by_ids(full_items_path, weak_ids)
+    weak_items = select_items_by_ids(
+        full_items_path, weak_ids, include_attributes=include_attributes
+    )
     weak = attach_pair_category(weak, weak_items)
     weak = sample_weak_training(weak, max_rows=weak_final_rows, seed=SEED)
     final_weak_ids = set(weak["id1"]) | set(weak["id2"])
