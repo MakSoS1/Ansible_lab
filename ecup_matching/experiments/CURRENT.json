@@ -1,14 +1,13 @@
 {
-  "version": "v2",
-  "status": "completed",
-  "model": "v2b-weak-curriculum",
-  "plan": "ecup_matching/experiments/v2/PLAN.md",
-  "implementation_plan": "docs/superpowers/plans/2026-08-10-ecup-v2-2024-transfer.md",
-  "results": "ecup_matching/experiments/v2/RESULTS.md",
-  "baseline_version": "v1",
-  "baseline_macro_average_precision": 0.49616548946964434,
-  "selected_macro_average_precision": 0.5010008994958702,
-  "private_artifact": "submissions/v2/ecup-v2-submission.zip",
-  "next_version": "v3",
-  "next_action": "Use model-mined hard negatives plus the compact reranker when Lightning exposes an accessible Studio; prioritize Electronics, Apparel, Footwear, Jewelry, Accessories and Furniture while retaining organizer runtime margin."
+  "version": "v3",
+  "status": "in_progress",
+  "model": "compact-reranker-hard-negatives",
+  "plan": "ecup_matching/experiments/v3/PLAN.md",
+  "implementation_plan": "docs/superpowers/plans/2026-08-10-ecup-v3-gpu-reranker.md",
+  "results": "ecup_matching/experiments/v3/RESULTS.md",
+  "previous": "v2",
+  "baseline_version": "v2",
+  "baseline_macro_average_precision": 0.5010008994958702,
+  "expected_private_artifact": "submissions/v3/ecup-v3-submission.zip",
+  "next_action": "Prepare leakage-safe compact neural data, run model-mined hard-negative RuBERT-tiny2 training on free GPU compute, select a validated blend with v2b, then package and benchmark the v3 submission offline."
 }
