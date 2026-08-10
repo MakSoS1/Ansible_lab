@@ -34,6 +34,7 @@ def build_safe_env(repo_root: Path, inherited: Mapping[str, str]) -> dict[str, s
             "MEMORA_EMBEDDING_MODEL": "tfidf",
             "MEMORA_LLM_ENABLED": "false",
             "MEMORA_AUTO_CAPTURE": "false",
+            "MEMORA_ALLOW_ANY_TAG": "1",
         }
     )
     safe.pop("MEMORA_STORAGE_URI", None)
