@@ -11,15 +11,18 @@ We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product
 - Branch: `ecup-matching-2026`; **do not modify or merge `main`** unless the user explicitly asks.
 - Private data/artifact repo: `Maksim123321/e-cup-2026-matching-private`.
 - Dataset mirrored: `matches.parquet`, `matches_llm.parquet`, `items.parquet`, `items_human.parquet` plus official baseline ZIPs.
-- Current completed experiment: **v1 / `v1-structured-hgb`**.
+- Current completed experiment and best offline model: **v2 / `v2b-weak-curriculum`**.
 - Human pairs: 365,654.
 - Leakage-resistant split: 292,523 train / 73,131 validation / **0 overlapping item IDs**.
-- v1 validation Macro AP: **0.4961654895**.
-- v1 submit: private HF `submissions/v1/ecup-v1-submission.zip`.
-- v1 package was executed offline in exact organizer image `odsai/ecup26-matching-baseline:1.0`.
-- Hardened Memora memory is **operational and CI-verified**: upstream commit `bc64ff745a9b2c0e6245e0137654f041fba0c155`, MCP `1.29.0`, TF-IDF/local SQLite only, Graph/LLM/auto-capture disabled, private checkpoint under `agent-memory/latest/` in HF.
-- Dedicated memory CI verified 28 repository tests, 51 pinned-upstream Memora tests, behavioral secret redaction, `0700/0600` permissions, SQLite integrity/secret scan, HF checkpoint, and hardened wheel upload.
-- Next experiment: **v2 — filtered 11M LLM weak labels + confidence curriculum + hard-negative mining**, keeping the fast structured model as an anchor. Then prepare multilingual bi-encoder features for v3.
+- v1 validation Macro AP: `0.4961654895`.
+- v2a human + 2024-inspired product-aware features: `0.5006971263`.
+- **v2b selected Macro AP: `0.5010008995`** using 300k confidence-filtered LLM weak labels.
+- v2c naive static hard-negative reweighting: `0.4957263069` — rejected.
+- v2 submit: private HF `submissions/v2/ecup-v2-submission.zip`.
+- Verified v2 organizer-image benchmark: 275,000 pairs / 537,300 items / **334 s** with network disabled against a 780 s private limit; output schema/order/range checks passed.
+- Hardened Memora memory is operational and CI-verified: pinned upstream commit `bc64ff745a9b2c0e6245e0137654f041fba0c155`, MCP `1.29.0`, TF-IDF/local SQLite only, Graph/LLM/auto-capture disabled, private checkpoint under `agent-memory/latest/` in HF.
+- Lightning neural code exists, but GPU training did not start: authentication/Teamspace discovery worked, no reusable Studio was exposed, and Studio creation returned HTTP 403.
+- **Next experiment: v3 — model-mined hard negatives + compact reranker when a GPU Studio is accessible**, retaining v2b as the fast structured anchor. Prioritize Electronics, Apparel, Footwear, Jewelry, Accessories and Furniture.
 
 ## Mandatory reading order
 
@@ -59,7 +62,7 @@ Never run an arbitrary/unpinned Memora installation. Never enable Cloud Graph, C
 
 ## Mandatory iteration protocol
 
-Before v2/v3/etc. implementation:
+Before v3/v4/etc. implementation:
 
 1. Update `ecup_matching/experiments/CURRENT.json` to the new version with `status: "in_progress"`.
 2. Create `ecup_matching/experiments/vN/PLAN.md` with hypothesis, exact data, split, features/model, runtime budget, expected metric movement, and abort criteria.
@@ -80,6 +83,8 @@ python scripts/memory_policy.py
 python scripts/memory_ingest.py
 python scripts/memory_checkpoint.py --iteration vN
 ```
+
+The dedicated memory workflow reads the current version dynamically from `CURRENT.json`, so retained iterations are checkpointed under the correct vN label.
 
 A completed iteration is **not complete** if documentation policy or the private memory checkpoint fails. Normal CI also runs `memory_policy.py`, so future agents cannot silently mark a v2+ iteration complete without its required PLAN/RESULTS/state handoff.
 
