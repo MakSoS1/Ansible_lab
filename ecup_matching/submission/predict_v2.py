@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ecup_matching.ml.features_v2 import FEATURE_NAMES_V2, build_features_v2_chunked
+from ecup_matching.ml.features import normalize_items
+from ecup_matching.ml.features_v2 import FEATURE_NAMES_V2, build_pair_features_v2
 from ecup_matching.ml.model_io import load_model_bundle
 
 
@@ -30,36 +31,44 @@ def predict_to_csv_v2(
     importance = manifest.get("attribute_importance")
     if not isinstance(importance, dict):
         raise RuntimeError("v2 manifest is missing attribute_importance")
+    item_cache = normalize_items(items)
     print(
-        f"[v2] loaded {len(items):,} items and {len(matches):,} pairs "
+        f"[v2] loaded+normalized {len(items):,} items and {len(matches):,} pairs "
         f"in {time.perf_counter()-load_started:.2f}s",
         flush=True,
     )
 
-    feat_started = time.perf_counter()
-    features = build_features_v2_chunked(
-        items,
-        matches,
-        attribute_importance=importance,
-        chunk_size=chunk_size,
-    )
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    scores_parts: list[np.ndarray] = []
+    feature_seconds = 0.0
+    predict_seconds = 0.0
+    for start in range(0, len(matches), chunk_size):
+        pair_chunk = matches.iloc[start : start + chunk_size]
+        feat_started = time.perf_counter()
+        features = build_pair_features_v2(
+            items,
+            pair_chunk,
+            attribute_importance=importance,
+            item_cache=item_cache,
+        )
+        feature_seconds += time.perf_counter() - feat_started
+        pred_started = time.perf_counter()
+        chunk_scores = model.predict_proba(features)[:, 1]
+        predict_seconds += time.perf_counter() - pred_started
+        if not np.isfinite(chunk_scores).all():
+            raise RuntimeError("v2 prediction contains NaN or infinity")
+        scores_parts.append(np.clip(chunk_scores.astype(np.float64), 0.0, 1.0))
+        print(
+            f"[v2] processed {min(start + len(pair_chunk), len(matches)):,}/{len(matches):,} pairs",
+            flush=True,
+        )
+
+    scores = np.concatenate(scores_parts) if scores_parts else np.empty(0, dtype=np.float64)
     print(
-        f"[v2] built {len(features):,} feature rows in "
-        f"{time.perf_counter()-feat_started:.2f}s",
+        f"[v2] feature_seconds={feature_seconds:.2f} predict_seconds={predict_seconds:.2f}",
         flush=True,
     )
-
-    pred_started = time.perf_counter()
-    scores = model.predict_proba(features)[:, 1]
-    if not np.isfinite(scores).all():
-        raise RuntimeError("v2 prediction contains NaN or infinity")
-    scores = np.clip(scores.astype(np.float64), 0.0, 1.0)
-    print(
-        f"[v2] predicted {len(scores):,} rows in "
-        f"{time.perf_counter()-pred_started:.2f}s",
-        flush=True,
-    )
-
     result = matches[["id1", "id2"]].copy()
     result["predict"] = scores
     output_path = Path(output_path)
