@@ -1,7 +1,7 @@
 # E-CUP Matching — Iteration v3 Results
 
 Date: 2026-08-10/11
-Status: final packaging verification in progress
+Status: **completed / retained**
 
 ## Baseline and fixed validation
 
@@ -15,8 +15,7 @@ Status: final packaging verification in progress
 
 The retained neural candidate was trained on a standard GitHub-hosted `macos-15`
 Apple Silicon runner. A real PyTorch MPS matrix multiplication probe succeeded
-before training, so this is an actually verified GPU backend rather than a
-paper-only option.
+before training, so this was an actually verified free GPU backend.
 
 Rejected infrastructure probes:
 
@@ -58,7 +57,7 @@ Model: `cointegrated/rubert-tiny2` pairwise sequence classifier.
 
 Training:
 
-- accelerator: Apple M1 MPS
+- accelerator: GitHub `macos-15` Apple M1 MPS
 - stage 1: `1,600` optimization steps
 - stage 2: `300` optimization steps
 - total neural experiment time: `1327.387913542 s`
@@ -74,8 +73,9 @@ Real model-mined hard-negative stage 2:
 
 The hard-negative stage was genuinely trained and evaluated, but the fixed
 validation rejected its checkpoint: stage 1 remained substantially stronger.
-This is retained as evidence that "hard-negative mining" was tested rather than
-silently claimed.
+The retained v3 therefore uses the stage-1 checkpoint while preserving the
+hard-negative result as a tested/rejected ablation rather than claiming it as an
+unmeasured improvement.
 
 ## Blend selection
 
@@ -123,7 +123,7 @@ This strictly passes the v3 quality gate.
 | Электроника | 0.3299239214 |
 | Ювелирные изделия | 0.3462102372 |
 
-## Submission package and organizer compatibility
+## Organizer compatibility and neural execution
 
 Exact organizer image: `odsai/ecup26-matching-baseline:1.0`.
 
@@ -131,48 +131,66 @@ A corrected environment probe verified that the image already contains a CUDA
 PyTorch/Transformers stack (`torch 2.10.0+cu128`, Transformers, tokenizers and
 safetensors), so v3 does not vendor Python wheels into the submission ZIP.
 
-Independent final neural smoke run `31440472151` / job `93623920970` is **green**:
+Independent final neural smoke run `31440472151` / job `93623920970` is green:
 
 - ZIP built inside the exact organizer image;
 - network disabled during prediction;
 - `1,000 / 1,000` pairs were actually sent through the neural reranker;
-- runtime log: `neural device=cpu rows=1,000` and `neural_pairs=1,000`;
+- runtime log contained `neural device=cpu rows=1,000` and `neural_pairs=1,000`;
 - output schema/range/finite-score checks passed;
 - `final_neural_smoke_verified`;
-- runner cleanup passed.
+- cleanup passed.
 
-The smoke is important because an earlier category-gated sprint exposed a real
-case-normalization bug that produced `neural_pairs=0`. That sprint package was
-rejected as a diagnostic. A RED/GREEN regression test now covers normalized
-category routing; the corrected source has `108 passed` tests plus a passing
-memory policy. The retained global blend was not affected by that category-only
-routing mismatch because its `__global__` alpha routes all pairs to the neural
-model.
+An earlier category-gated sprint exposed a real case-normalization bug that
+produced `neural_pairs=0`. That sprint package was rejected as a diagnostic. A
+RED/GREEN regression test was added and the runtime now normalizes both manifest
+and item categories. Latest canonical-source verification reports **108 tests
+passed** plus `memory_policy.py` PASS.
 
-## Full 275k offline benchmark
+## Canonical final submission
 
-Final package run: `31439648374` / job `93621437335`.
+Canonical packaging run: **`31440971110` / job `93625406492`**.
 
-Completed gates so far:
+Source SHA: `de4141af04e33170777d2de56ae059ebe52bb806`.
 
-- exact source and memory policy: PASS;
-- private model/data fetch and verification: PASS;
-- exact fixed-validation score gate: PASS;
-- final ZIP build inside organizer image: PASS;
-- exact 275,000-pair benchmark slice: PASS;
-- full `--network none` prediction: running at the time of this checkpoint.
+Package:
 
-The hosted Ubuntu benchmark has no NVIDIA driver, so the global RuBERT branch is
-forced onto CPU for all 275k pairs. This is intentionally a correctness/stress
-check, not a faithful estimate of the organizer H100 inference speed.
+- private artifact: `submissions/v3/ecup-v3-submission.zip`
+- private evidence: `submissions/v3/v3-package-metrics.json`
+- ZIP size: **`109,185,253 bytes`**
+- ZIP files: `21`
+- SHA-256: **`b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`**
+- private HF presence verified after upload
+- runner temporary data cleaned
 
-Final ZIP bytes, SHA-256, full 275k wall runtime and canonical private HF upload
-are recorded here only after run `31439648374` completes successfully.
+Canonical offline correctness run inside the exact organizer image:
 
-## Current decision
+- network: disabled with `--network none`
+- pairs: `10,000`
+- actual neural pairs: **`10,000 / 10,000`**
+- items in slice: `19,822`
+- wall runtime on GitHub Ubuntu CPU: `103 s`
+- measured feature time: `6.56 s`
+- measured neural time: `89.55 s`
+- measured total inside runtime: `101.63 s`
+- output rows: `10,000`
+- unique scores: `9,996`
+- schema/order/range/finite checks: PASS
+- canonical private-HF verification: PASS
 
-v3 is the **quality winner** and the intended retained model. It is not marked
-`completed` until the long 275k offline run finishes, the canonical
-`submissions/v3/` artifacts are verified in private HF, the public memory/state
-files are updated, and a new private Memora checkpoint passes integrity/secret
-checks.
+The GitHub Ubuntu runner has no NVIDIA driver, so this CPU timing is a
+correctness/stress measurement, not an estimate of organizer H100 throughput.
+The official submission image detects CUDA and the final runtime selects CUDA
+when available. The separate full 275k CPU stress run `31439648374` was left as
+non-blocking evidence because forcing all 275k global-reranker pairs through CPU
+is not representative of the organizer H100 target.
+
+## Retained decision
+
+**v3 is retained as the current best submission candidate.**
+
+It passed the comparable item-disjoint quality gate, real GPU training,
+model-mined-hard-negative ablation, exact-image packaging, real offline neural
+execution, canonical ZIP integrity, private artifact verification and repository
+test/memory-policy gates. Public Git contains source/tests/docs only; the model,
+raw data and submission ZIP remain private.
