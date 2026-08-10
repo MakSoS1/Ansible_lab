@@ -95,6 +95,30 @@ Planned progression:
 
 Create `ecup_matching/experiments/v2/PLAN.md`, profile the full `matches_llm.parquet` target distribution and item coverage without leaking hidden/test information, design confidence buckets, and train a v2 structured model using weighted soft labels plus human labels. Preserve the existing item-disjoint human validation unchanged so v1/v2 scores are comparable.
 
-## Memory integration state
+## Persistent agent memory — operational
 
-Memora is being integrated as a local-only, hardened semantic memory layer. Public Markdown remains canonical. Durable SQLite checkpoints go to private HF under `agent-memory/`. See `docs/agent-memory/SECURITY.md` and root `AGENTS.md`.
+The hardened Memora integration is installed, packaged and verified.
+
+Security/runtime profile:
+
+- pinned upstream: `bc64ff745a9b2c0e6245e0137654f041fba0c155`;
+- resolved MCP: `1.29.0` (`mcp>=1,<2` enforced);
+- local SQLite + TF-IDF only;
+- LLM, external embedding APIs, auto-capture, Cloud Graph/Pages/Worker, and Memora S3/R2/D1 storage disabled in the supported project profile;
+- content/metadata/tag secret redaction is exercised behaviorally;
+- local memory directory `0700`, DB `0600`;
+- SQLite integrity and second-layer secret scan required before upload.
+
+Verified integration run evidence before this state update:
+
+- repository tests: 28 passed;
+- pinned hardened upstream Memora tests: 51 passed;
+- source-backed project documents ingested: 15;
+- first durable private checkpoint: `20260810T181839Z-v1-462a335b`;
+- first checkpoint DB SHA-256: `95c91856353b18c30028336ff6e1d5babc30ac20865f71a6c7b15e4c9d97eee4`;
+- hardened wheel: `agent-memory/runtime/memora_mcp-0.2.29-py3-none-any.whl` in private HF;
+- hardened wheel SHA-256 for that run: `80cc89caa2238eeb32fe4422fb4394db49604fc90cc5df0660087154b5362a4b`;
+- mutable latest checkpoint paths: `agent-memory/latest/memories.db` and `agent-memory/latest/manifest.json`;
+- immutable history: `agent-memory/checkpoints/`.
+
+Public Markdown remains canonical, so an agent without MCP can still recover all essential context. Agents with HF/shell access restore the latest DB with `python scripts/memory_bootstrap.py`; MCP clients launch only through `bash scripts/memora_mcp.sh`. Every retained v2+ experiment must update PLAN/RESULTS/index/state and pass `memory_policy.py` plus private checkpointing before it can be considered complete.
