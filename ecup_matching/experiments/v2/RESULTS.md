@@ -1,7 +1,7 @@
 # E-CUP Matching — Iteration v2 Results
 
 Date: 2026-08-10
-Status: model selection complete; final package benchmark/upload in progress
+Status: **completed**
 
 ## Summary
 
@@ -97,7 +97,26 @@ The GPU code remains ready for the next iteration once an accessible Studio exis
 
 Structured training and evaluation run took approximately 953 seconds on GitHub Actions CPU, including feature construction for all ablations and weak-label selection.
 
-Final organizer-image ZIP runtime benchmark and private `submissions/v2/` upload are completed by `.github/workflows/ecup-build-v2-submit.yml`; exact runtime/ZIP numbers are appended here after that verification gate completes.
+The retained submission is private at:
+
+- `submissions/v2/ecup-v2-submission.zip`
+- `submissions/v2/v2-package-metrics.json`
+
+Verified organizer-image benchmark evidence from GitHub Actions run `31427285112`, job `93581880597`, source commit `4fa9bb11292d828d01ba1e38131e3613315b2182`:
+
+- organizer image: `odsai/ecup26-matching-baseline:1.0`;
+- benchmark pairs: **275,000**;
+- benchmark items: **537,300**;
+- offline network: disabled;
+- output schema/order/range: verified;
+- measured wall runtime: **334 seconds**;
+- private limit: **780 seconds**;
+- headroom: **446 seconds / 57.18%**;
+- ZIP size: **603,415 bytes**;
+- validation Macro AP embedded in package metrics: **0.5010008994958702**;
+- selected candidate: `v2b-weak-curriculum`.
+
+The runtime optimization is feature-equivalent: one complete legacy feature pass plus reverse evaluation only for directional fuzzy ratios. Regression tests compare the optimized vector to the previous two-pass implementation at `1e-15` tolerance. A later micro-optimization skips a redundant reverse partial-ratio call when unequal input lengths make the operation direction-independent; its regression tests pass, but the 334-second benchmark above remains the conservative verified runtime evidence until that later source receives its own completed benchmark.
 
 ## Conclusions
 
@@ -106,3 +125,5 @@ Final organizer-image ZIP runtime benchmark and private `submissions/v2/` upload
 - **Rejected:** naive static hard-negative sample weighting.
 - **Deferred for infrastructure, not model quality:** GPU cross-encoder/reranker and neural/structured blend.
 - **Current best validation model:** `v2b-weak-curriculum`, Macro AP `0.5010008994958702`.
+- **Submission artifact:** `submissions/v2/ecup-v2-submission.zip` in the private HF dataset.
+- **Next iteration:** v3 should use model-mined hard negatives plus the compact reranker once an accessible GPU Studio exists, with the weak six categories prioritized.
