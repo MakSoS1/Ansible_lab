@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from scripts.memora_safe_server import build_safe_env
@@ -80,6 +82,28 @@ def test_completed_v2_requires_plan_and_results(tmp_path: Path):
     (exp / "PLAN.md").write_text("# v2 plan\n", encoding="utf-8")
     (exp / "RESULTS.md").write_text("# v2 results\n", encoding="utf-8")
     assert validate_repository(tmp_path) == []
+
+
+def test_memory_cli_scripts_work_when_invoked_by_documented_file_path():
+    root = Path(__file__).resolve().parents[2]
+    scripts = [
+        "tools/memora_hardened/install.py",
+        "tools/memora_hardened/verify_install.py",
+        "scripts/memory_bootstrap.py",
+        "scripts/memory_ingest.py",
+        "scripts/memory_checkpoint.py",
+        "scripts/memory_policy.py",
+    ]
+    for relative in scripts:
+        result = subprocess.run(
+            [sys.executable, relative, "--help"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert result.returncode == 0, f"{relative} failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
 
 
 def test_real_repository_current_state_is_policy_valid():
