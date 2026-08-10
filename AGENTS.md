@@ -17,6 +17,8 @@ We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product
 - v1 validation Macro AP: **0.4961654895**.
 - v1 submit: private HF `submissions/v1/ecup-v1-submission.zip`.
 - v1 package was executed offline in exact organizer image `odsai/ecup26-matching-baseline:1.0`.
+- Hardened Memora memory is **operational and CI-verified**: upstream commit `bc64ff745a9b2c0e6245e0137654f041fba0c155`, MCP `1.29.0`, TF-IDF/local SQLite only, Graph/LLM/auto-capture disabled, private checkpoint under `agent-memory/latest/` in HF.
+- Dedicated memory CI verified 28 repository tests, 51 pinned-upstream Memora tests, behavioral secret redaction, `0700/0600` permissions, SQLite integrity/secret scan, HF checkpoint, and hardened wheel upload.
 - Next experiment: **v2 — filtered 11M LLM weak labels + confidence curriculum + hard-negative mining**, keeping the fast structured model as an anchor. Then prepare multilingual bi-encoder features for v3.
 
 ## Mandatory reading order
@@ -33,17 +35,19 @@ We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product
 
 Markdown above is canonical and must always be enough to recover the project. Memora adds semantic retrieval/history.
 
-If shell access and `HF_TOKEN` are available:
+If shell access and `HF_TOKEN` are available, restore the latest verified SQLite checkpoint first:
 
 ```bash
 python scripts/memory_bootstrap.py
 ```
 
-To install/rebuild the hardened Memora runtime:
+To install/rebuild the exact hardened Memora runtime:
 
 ```bash
 python tools/memora_hardened/install.py --prefix .agent-memory/runtime
 ```
+
+A verified hardened wheel and runtime manifest are also preserved privately under `agent-memory/runtime/` in the HF dataset.
 
 MCP clients must start Memora only through:
 
@@ -77,7 +81,7 @@ python scripts/memory_ingest.py
 python scripts/memory_checkpoint.py --iteration vN
 ```
 
-A completed iteration is **not complete** if documentation policy or the private memory checkpoint fails.
+A completed iteration is **not complete** if documentation policy or the private memory checkpoint fails. Normal CI also runs `memory_policy.py`, so future agents cannot silently mark a v2+ iteration complete without its required PLAN/RESULTS/state handoff.
 
 ## Security invariants
 
@@ -99,5 +103,6 @@ A completed iteration is **not complete** if documentation policy or the private
 - Agent memory/state: `docs/agent-memory/`
 - Hardened Memora tooling: `tools/memora_hardened/`
 - Memory lifecycle scripts: `scripts/memory_*.py`
+- Durable private memory: HF `agent-memory/latest/` and immutable `agent-memory/checkpoints/`.
 
 When uncertain, preserve reproducibility, leakage resistance, private artifacts, and this memory protocol.
