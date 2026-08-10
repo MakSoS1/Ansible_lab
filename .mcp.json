@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "memora": {
+      "command": "bash",
+      "args": ["scripts/memora_mcp.sh"],
+      "env": {}
+    }
+  }
+}
