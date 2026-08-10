@@ -78,10 +78,17 @@ def _prefilter_weak(
     if validation_item_ids:
         keep &= ~weak["id1"].isin(validation_item_ids).to_numpy()
         keep &= ~weak["id2"].isin(validation_item_ids).to_numpy()
-    out = weak.loc[keep, ["id1", "id2", "target"]].copy().reset_index(drop=True)
-    if len(out) > max_presample_rows:
-        out = out.sample(n=max_presample_rows, random_state=seed).reset_index(drop=True)
-    return out
+    eligible_positions = np.flatnonzero(keep)
+    if len(eligible_positions) > max_presample_rows:
+        sampled_offsets = np.random.RandomState(seed).choice(
+            len(eligible_positions), size=max_presample_rows, replace=False
+        )
+        eligible_positions = eligible_positions[sampled_offsets]
+    return (
+        weak.iloc[eligible_positions][["id1", "id2", "target"]]
+        .copy()
+        .reset_index(drop=True)
+    )
 
 
 def prepare_training_examples(
