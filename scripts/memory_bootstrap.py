@@ -4,8 +4,12 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.memory_common import (
     HF_REPO_ID,
