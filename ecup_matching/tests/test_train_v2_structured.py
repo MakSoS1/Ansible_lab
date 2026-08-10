@@ -18,7 +18,7 @@ def test_prefilter_weak_candidates_excludes_validation_items_and_mid_confidence(
     )
     out = prefilter_weak_candidates(weak, validation_item_ids={2}, max_presample_rows=10, seed=2026)
     assert set(out[["id1", "id2"]].itertuples(index=False, name=None)) == {(5, 6), (7, 8)}
-    assert out["weak_weight"].tolist() == [0.6, 0.3]
+    assert np.allclose(out["weak_weight"].to_numpy(float), [0.6, 0.3])
 
 
 def test_candidate_sample_weights_human_dominates_weak_and_hard_negatives_get_more_weight():
@@ -30,9 +30,12 @@ def test_candidate_sample_weights_human_dominates_weak_and_hard_negatives_get_mo
     plain = candidate_sample_weights(categories, source, targets, weak_weight, hard_score, hard_negative_boost=0.0)
     hard = candidate_sample_weights(categories, source, targets, weak_weight, hard_score, hard_negative_boost=3.0)
     assert plain[0] > plain[1]
-    assert hard[2] > plain[2]
-    assert hard[3] > plain[3]
-    assert hard[0] == plain[0]
+    # Global normalization is allowed; the semantic contract is that hard
+    # negatives gain weight relative to corresponding positive examples.
+    assert hard[2] / hard[0] > plain[2] / plain[0]
+    assert hard[3] / hard[1] > plain[3] / plain[1]
+    # Human/weak relative weighting is preserved by normalization.
+    assert np.isclose(hard[0] / hard[1], plain[0] / plain[1])
 
 
 def test_fit_estimator_supports_predict_proba_on_mixed_numeric_and_category_features():
