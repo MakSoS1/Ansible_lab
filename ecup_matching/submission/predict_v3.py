@@ -18,7 +18,14 @@ def categories_requiring_neural(manifest: Mapping[str, object]) -> set[str]:
     raw = manifest.get("category_alphas")
     if not isinstance(raw, Mapping):
         raise RuntimeError("v3 manifest is missing category_alphas")
-    return {str(category) for category, alpha in raw.items() if float(alpha) > 0.0}
+    global_alpha = float(raw.get("__global__", 0.0))
+    if global_alpha > 0.0:
+        return {"*"}
+    return {
+        str(category)
+        for category, alpha in raw.items()
+        if str(category) != "__global__" and float(alpha) > 0.0
+    }
 
 
 def apply_category_blend(
@@ -35,9 +42,12 @@ def apply_category_blend(
     raw = manifest.get("category_alphas")
     if not isinstance(raw, Mapping):
         raise RuntimeError("v3 manifest is missing category_alphas")
+    global_alpha = float(raw.get("__global__", 0.0))
+    if not 0.0 <= global_alpha <= 1.0:
+        raise RuntimeError(f"invalid global neural alpha: {global_alpha}")
     out = structured.copy()
     for name in np.unique(category):
-        alpha = float(raw.get(str(name), 0.0))
+        alpha = float(raw.get(str(name), global_alpha))
         if not 0.0 <= alpha <= 1.0:
             raise RuntimeError(f"invalid neural alpha for category {name!r}: {alpha}")
         if alpha <= 0.0:
@@ -73,7 +83,7 @@ def _predict_neural_subset(
     try:
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    except Exception as exc:  # pragma: no cover - exercised in organizer image
+    except Exception as exc:
         raise RuntimeError("v3 neural runtime requires torch and transformers") from exc
 
     if batch_size <= 0:
@@ -87,11 +97,7 @@ def _predict_neural_subset(
     max_length = int(manifest.get("max_length", 160))
     max_attrs = int(manifest.get("max_attrs", 10))
     max_chars = int(manifest.get("max_chars", 700))
-    print(
-        f"[v3] neural device={device.type} rows={len(candidate_positions):,} "
-        f"max_length={max_length}",
-        flush=True,
-    )
+    print(f"[v3] neural device={device.type} rows={len(candidate_positions):,} max_length={max_length}", flush=True)
 
     out = np.empty(len(candidate_positions), dtype=np.float32)
     with torch.inference_mode():
@@ -129,11 +135,7 @@ def _predict_neural_subset(
             scores = torch.sigmoid(logits).float().cpu().numpy()
             out[start : start + len(positions)] = scores
             if start == 0 or start + len(positions) == len(candidate_positions) or start % (batch_size * 20) == 0:
-                print(
-                    f"[v3] neural {min(start + len(positions), len(candidate_positions)):,}/"
-                    f"{len(candidate_positions):,}",
-                    flush=True,
-                )
+                print(f"[v3] neural {min(start + len(positions), len(candidate_positions)):,}/{len(candidate_positions):,}", flush=True)
     if not np.isfinite(out).all():
         raise RuntimeError("v3 neural prediction contains NaN or infinity")
     return np.clip(out.astype(np.float64), 0.0, 1.0)
@@ -154,9 +156,7 @@ def predict_to_csv_v3(
     total_started = time.perf_counter()
     items = pd.read_parquet(items_path, columns=["id", "name", "attributes", "category"])
     matches = pd.read_parquet(matches_path, columns=["id1", "id2"])
-    structured_model, structured_manifest = load_model_bundle(
-        structured_model_path, structured_manifest_path
-    )
+    structured_model, structured_manifest = load_model_bundle(structured_model_path, structured_manifest_path)
     expected = structured_manifest.get("feature_names")
     if list(expected or []) != list(FEATURE_NAMES_V2):
         raise RuntimeError("v3 structured manifest does not match runtime FEATURE_NAMES_V2")
@@ -177,26 +177,19 @@ def predict_to_csv_v3(
     for start in range(0, len(matches), structured_chunk_size):
         chunk = matches.iloc[start : start + structured_chunk_size]
         feat_started = time.perf_counter()
-        features = build_pair_features_v2(
-            items,
-            chunk,
-            attribute_importance=importance,
-            item_cache=item_cache,
-        )
+        features = build_pair_features_v2(items, chunk, attribute_importance=importance, item_cache=item_cache)
         feature_seconds += time.perf_counter() - feat_started
         scores = structured_model.predict_proba(features)[:, 1]
         if not np.isfinite(scores).all():
             raise RuntimeError("v3 structured prediction contains NaN or infinity")
         structured_parts.append(np.clip(scores.astype(np.float64), 0.0, 1.0))
-        print(
-            f"[v3] structured {min(start + len(chunk), len(matches)):,}/{len(matches):,}",
-            flush=True,
-        )
-    structured = (
-        np.concatenate(structured_parts) if structured_parts else np.empty(0, dtype=np.float64)
-    )
+        print(f"[v3] structured {min(start + len(chunk), len(matches)):,}/{len(matches):,}", flush=True)
+    structured = np.concatenate(structured_parts) if structured_parts else np.empty(0, dtype=np.float64)
 
-    candidate_mask = np.isin(categories, np.asarray(sorted(required_categories), dtype=object))
+    if "*" in required_categories:
+        candidate_mask = np.ones(len(categories), dtype=bool)
+    else:
+        candidate_mask = np.isin(categories, np.asarray(sorted(required_categories), dtype=object))
     candidate_positions = np.flatnonzero(candidate_mask)
     neural = structured.copy()
     neural_seconds = 0.0
@@ -222,8 +215,7 @@ def predict_to_csv_v3(
     result.to_csv(output_path, index=False)
     print(
         f"[v3] wrote {output_path} pairs={len(matches):,} neural_pairs={len(candidate_positions):,} "
-        f"feature_seconds={feature_seconds:.2f} neural_seconds={neural_seconds:.2f} "
-        f"total={time.perf_counter()-total_started:.2f}s",
+        f"feature_seconds={feature_seconds:.2f} neural_seconds={neural_seconds:.2f} total={time.perf_counter()-total_started:.2f}s",
         flush=True,
     )
     return result
