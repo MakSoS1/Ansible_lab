@@ -93,13 +93,24 @@ Verified organizer-image runtime benchmark from run `31427285112` / job `9358188
 
 Full v2 details: `ecup_matching/experiments/v2/RESULTS.md`.
 
-## Lightning / neural state
+## Neural / GPU state
 
 A compact `cointegrated/rubert-tiny2` pairwise reranker, weighted soft-label BCE curriculum and model-mined hard-negative second stage are implemented at code-contract level.
 
 Lightning SDK `2026.8.5` authentication and Teamspace discovery worked through the secure ephemeral RSA credential bridge. GPU training did not begin because the account exposed no reusable Studio and `create_cloud_space` returned HTTP 403. No neural metric was fabricated and no GPU credits were consumed by those failed orchestration attempts.
 
-The neural path is therefore deferred to v3 until an accessible Studio exists.
+The available GPU backend is now the home Windows 11 PC with an NVIDIA GeForce
+RTX 2060 SUPER (8 GiB), exposed only through a dedicated Ubuntu 24.04 WSL2
+self-hosted runner. GitHub orchestration lives in private
+`MakSoS1/gpu-dispatch`; this public repository has no runner. Dispatch is manual,
+validates an exact SHA from `ecup-matching-2026`, and executes public source in an
+offline, read-only, capability-free Docker container with no host secrets or
+Windows drive mounts. Local entry points are `make gpu-check`, `make gpu-smoke`
+and `make gpu-train`.
+
+CUDA has been verified through the hardened container on the RTX 2060 SUPER. The
+private dispatcher is the preferred v3 backend; Lightning/ZeroGPU remain failed
+or fallback probes rather than blockers.
 
 ## Current best solution direction
 
@@ -122,7 +133,11 @@ Priority weak categories from v2b:
 
 ## Immediate next action
 
-Start v3 only after creating `ecup_matching/experiments/v3/PLAN.md`. Preserve the exact item-disjoint human validation. Use model-mined false-positive hard negatives rather than static reweighting, run the compact reranker on GPU when an accessible Lightning Studio exists, and retain the v2b structured model as the always-available fast anchor.
+Use the isolated local GPU dispatcher for v3. Preserve the exact item-disjoint
+human validation, train the compact reranker with model-mined false-positive hard
+negatives, evaluate the validated v2b/neural blend, and retain v2b as the
+always-available fast anchor until v3 strictly improves Macro AP and passes the
+organizer runtime gate.
 
 ## Persistent agent memory — operational
 

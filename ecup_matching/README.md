@@ -59,6 +59,29 @@ python -m pytest ecup_matching/tests -q
 
 The unit tests use synthetic data and fake network/API objects; they do not download competition data.
 
+## Isolated local GPU
+
+GPU work is dispatched through the separate private repository
+`MakSoS1/gpu-dispatch`. The public repository has no self-hosted runner and
+cannot start work on pull requests, pushes, forks, or schedules. The private
+workflow accepts only a full commit SHA reachable from this branch and runs one
+fixed profile in an offline, read-only Docker container on the RTX host.
+
+From a pushed `ecup-matching-2026` branch, use:
+
+```bash
+make gpu-check
+make gpu-smoke
+make gpu-train
+make gpu-watch
+```
+
+`gpu-check` verifies CUDA, `gpu-smoke` performs a small end-to-end training run,
+and `gpu-train` runs the fixed full profile. `scripts/gpu_dispatch.py` refuses a
+different branch or an unpushed local commit. The trusted host-side dispatcher,
+runner registration, data cache and container policy are intentionally absent
+from this public repository.
+
 ## Solution research
 
 The full architecture comparison, ten candidate solution families, selected approach, validation design, runtime strategy, and ten-step iteration ladder are documented in:

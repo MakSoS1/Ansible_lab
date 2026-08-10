@@ -33,7 +33,8 @@ Training example policy:
 - never use any weak pair touching a validation item;
 - validation is never sampled or changed.
 
-Initial compact row budget is 180k–260k examples, chosen to fit the free ZeroGPU call budget. If measured GPU speed allows, increase within the same validation protocol.
+Initial compact row budget is 180k–260k examples, chosen to fit the 8 GiB local
+GPU. If measured GPU speed allows, increase within the same validation protocol.
 
 ## Model
 
@@ -66,9 +67,12 @@ Every alignment must be exact by `(id1,id2)` and validation target/category.
 
 ## GPU backend order
 
-1. Private Hugging Face ZeroGPU Gradio Space using only free quota.
-2. Kaggle free GPU only if a secure Kaggle credential is already available; no public dataset/notebook.
-3. Another provider only when it offers clearly free/promotional credits and secure automation without a paid charge. Do not silently spend money.
+1. Home RTX 2060 SUPER through private `MakSoS1/gpu-dispatch`, using an exact
+   public-branch SHA and the fixed offline Docker profile.
+2. Private Hugging Face ZeroGPU Gradio Space using only free quota if the local
+   runner is unavailable.
+3. Kaggle free GPU only if a secure Kaggle credential is already available; no public dataset/notebook.
+4. Another provider only when it offers clearly free/promotional credits and secure automation without a paid charge. Do not silently spend money.
 
 ## Primary metric
 

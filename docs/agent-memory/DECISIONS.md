@@ -61,3 +61,17 @@
 **Decision:** Optimize the structured v2 inference implementation only when regression tests prove equality to the selected model's original feature vector.
 
 **Reason:** The first 275k organizer-image benchmark was close to the private runtime limit. The accepted single-pass symmetry optimization replaces a duplicated full `_pair_features` pass with reverse evaluation of only the directional fuzzy features and is regression-tested against the previous vector at `1e-15` tolerance. This reduces runtime risk without retraining or changing validation predictions.
+
+## D012 — Public source is executed only through a private isolated GPU dispatcher
+
+**Decision:** Register the home RTX 2060 SUPER only to private
+`MakSoS1/gpu-dispatch`, never to public `MakSoS1/Ansible_lab`. Dispatch is manual
+and accepts only an exact SHA reachable from `ecup-matching-2026`. Public source
+runs in a network-disabled, read-only Docker container with no GitHub/HF token,
+Docker socket, Windows mount, host secret or Linux capability.
+
+**Reason:** A self-hosted runner attached directly to a public repository would
+turn a malicious workflow or contribution into host code execution. The private
+dispatcher keeps GitHub orchestration trusted while WSL isolation and a fixed
+container profile reduce the damage available to public training code. Container,
+kernel, WSL and GPU-driver escapes remain an explicit residual risk.

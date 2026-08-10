@@ -12,7 +12,12 @@ Status: in progress
 
 ## GPU backend
 
-Pending execution. Preferred backend: private Hugging Face ZeroGPU using only free quota. Lightning is not retried as primary because the authenticated account previously returned HTTP 403 for Studio creation and exposed no reusable Studio.
+Selected backend: home RTX 2060 SUPER through the private isolated
+`MakSoS1/gpu-dispatch` self-hosted runner. Hardened WSL/container CUDA check is
+verified. End-to-end training smoke and the retained v3 run are recorded below
+only after their metric gates pass. Lightning is not retried as primary because
+the authenticated account previously returned HTTP 403 for Studio creation and
+exposed no reusable Studio.
 
 ## Prepared data
 

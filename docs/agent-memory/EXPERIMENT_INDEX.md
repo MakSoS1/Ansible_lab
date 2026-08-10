@@ -6,7 +6,7 @@ This file is the short registry. Detailed metrics live in each experiment's `RES
 |---|---|---|---|---:|---:|---|---|
 | v1 | completed | structured/lexical HGB | item-disjoint connected-component split, 73,131 pairs | 0.4961654895 | 308.57 s train/eval; 1.78 s / 1k-pair organizer smoke | `submissions/v1/ecup-v1-submission.zip` | superseded by v2b |
 | v2 | completed | 2024-inspired product features + confidence-filtered LLM weak labels (`v2b-weak-curriculum`) | exact same item-disjoint validation, 73,131 pairs, 0 shared items | **0.5010008995** | structured train/ablations ~953 s; **334 s / 275k-pair offline organizer benchmark**; 446 s (57.18%) headroom to 780 s private limit | `submissions/v2/ecup-v2-submission.zip` | superseded as active iteration; remains anchor/fallback for v3 |
-| v3 | in_progress | compact RuBERT-tiny2 reranker + model-mined hard negatives + validated v2 blend/gating | exact same item-disjoint validation, 73,131 pairs, 0 shared items required | pending | pending | expected `submissions/v3/ecup-v3-submission.zip` | find safe free GPU, train, validate, package and benchmark; retain only if > v2b |
+| v3 | in_progress | compact RuBERT-tiny2 reranker + model-mined hard negatives + validated v2 blend/gating | exact same item-disjoint validation, 73,131 pairs, 0 shared items required | pending | pending | expected `submissions/v3/ecup-v3-submission.zip` | use private isolated home RTX, train, validate, package and benchmark; retain only if > v2b |
 
 ## v2 ablation headline
 

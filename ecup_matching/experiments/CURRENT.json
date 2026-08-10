@@ -9,5 +9,5 @@
   "baseline_version": "v2",
   "baseline_macro_average_precision": 0.5010008994958702,
   "expected_private_artifact": "submissions/v3/ecup-v3-submission.zip",
-  "next_action": "Prepare leakage-safe compact neural data, run model-mined hard-negative RuBERT-tiny2 training on free GPU compute, select a validated blend with v2b, then package and benchmark the v3 submission offline."
+  "next_action": "Use the private isolated home-RTX dispatcher to prepare leakage-safe compact neural data, run model-mined hard-negative RuBERT-tiny2 training, select a validated blend with v2b, then package and benchmark the v3 submission offline."
 }
