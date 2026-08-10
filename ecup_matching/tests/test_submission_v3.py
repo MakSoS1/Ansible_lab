@@ -13,6 +13,11 @@ def test_categories_requiring_neural_uses_only_positive_alphas():
     assert categories_requiring_neural(manifest) == {"B", "C"}
 
 
+def test_categories_requiring_neural_marks_global_blend():
+    manifest = {"category_alphas": {"__global__": 0.30}}
+    assert categories_requiring_neural(manifest) == {"*"}
+
+
 def test_apply_category_blend_preserves_structured_rows_with_zero_alpha():
     categories = np.array(["A", "B", "C", "B"], dtype=object)
     structured = np.array([0.1, 0.2, 0.3, 0.4])
@@ -21,6 +26,15 @@ def test_apply_category_blend_preserves_structured_rows_with_zero_alpha():
     out = apply_category_blend(categories, structured, neural, manifest)
     np.testing.assert_allclose(out, [0.1, 0.5, 0.7, 0.5])
     assert ((out >= 0.0) & (out <= 1.0)).all()
+
+
+def test_apply_category_blend_supports_global_alpha():
+    categories = np.array(["A", "B"], dtype=object)
+    structured = np.array([0.2, 0.4])
+    neural = np.array([0.8, 0.6])
+    manifest = {"category_alphas": {"__global__": 0.25}}
+    out = apply_category_blend(categories, structured, neural, manifest)
+    np.testing.assert_allclose(out, [0.35, 0.45])
 
 
 def test_build_submission_v3_contains_only_offline_runtime_and_models(tmp_path: Path):
