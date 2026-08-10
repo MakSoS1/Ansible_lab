@@ -1,0 +1,63 @@
+name: E-CUP inspect official baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - ".github/workflows/ecup-inspect-baseline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download official baseline archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ecup-baseline"
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/ecup-baseline/light.zip" \
+            "https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matching-baseline-lightweight.zip"
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/ecup-baseline/full.zip" \
+            "https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matching-baseline-submit.zip"
+          test -s "${RUNNER_TEMP}/ecup-baseline/light.zip"
+          test -s "${RUNNER_TEMP}/ecup-baseline/full.zip"
+
+      - name: List archive trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '===== LIGHTWEIGHT ZIP TREE ====='
+          unzip -l "${RUNNER_TEMP}/ecup-baseline/light.zip"
+          echo '===== FULL ZIP TREE ====='
+          unzip -l "${RUNNER_TEMP}/ecup-baseline/full.zip" | head -200
+
+      - name: Print lightweight source and configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ecup-baseline/light"
+          unzip -q "${RUNNER_TEMP}/ecup-baseline/light.zip" -d "${RUNNER_TEMP}/ecup-baseline/light"
+          echo '===== EXTRACTED FILES ====='
+          find "${RUNNER_TEMP}/ecup-baseline/light" -type f -printf '%P\n' | sort
+          while IFS= read -r f; do
+            case "$f" in
+              *.py|*.txt|*.md|*.json|*.yaml|*.yml|Dockerfile|*.toml|*.cfg|*.ini|*.sh)
+                if [ "$(stat -c%s "$f")" -le 250000 ]; then
+                  echo "===== FILE: ${f#${RUNNER_TEMP}/ecup-baseline/light/} ====="
+                  cat "$f"
+                  echo
+                fi
+                ;;
+            esac
+          done < <(find "${RUNNER_TEMP}/ecup-baseline/light" -type f | sort)
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/ecup-baseline"
