@@ -102,7 +102,7 @@ jobs:
           RESULT_JSON: ${{ runner.temp }}/lightning-job-probe-result.json
         run: |
           set -euo pipefail
-          python scripts/lightning_job_runner.py \
+          python -m scripts.lightning_job_runner \
             --private-key "$PRIVATE_KEY" \
             --ciphertext "$CIPHERTEXT" \
             --job-name "ecup-v3-probe-${BRIDGE_ID}" \
