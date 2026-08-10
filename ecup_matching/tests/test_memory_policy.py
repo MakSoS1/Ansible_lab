@@ -17,7 +17,10 @@ def test_secret_scanner_catches_high_risk_values():
 
 
 def test_secret_scanner_ignores_documented_names_and_placeholders():
-    safe_doc = "GitHub secret: `HF_TOKEN`; password=<your-password>; secret=${SECRET_NAME}; secret=[REDACTED]"
+    safe_doc = (
+        "GitHub secret: `HF_TOKEN`. "
+        "password=<your-password>; secret=${SECRET_NAME}; secret=[REDACTED]."
+    )
     assert scan_text_for_secrets(safe_doc) == []
 
 
