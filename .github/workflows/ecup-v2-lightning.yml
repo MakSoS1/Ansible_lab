@@ -1,4 +1,4 @@
-# Retry marker: canonical numeric item ordering verified in repository tests.
+# Retry marker: strict base64 decoder now tolerates transport edge newlines only.
 name: E-CUP v2 Lightning GPU reranker
 
 on:
