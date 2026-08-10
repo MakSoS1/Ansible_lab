@@ -1,0 +1,257 @@
+name: E-CUP train and build v1 submission
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - ".github/workflows/ecup-train-submit-v1.yml"
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  ORGANIZER_IMAGE: odsai/ecup26-matching-baseline:1.0
+
+jobs:
+  train-submit-v1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - name: Checkout isolated competition branch
+        uses: actions/checkout@v4
+
+      - name: Require private Hugging Face token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::error::Missing Actions secret HF_TOKEN"
+            exit 1
+          fi
+
+      - name: Set up host Python for Hub transfer
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Hub client only on host
+        run: python -m pip install 'huggingface_hub>=1.0,<2'
+
+      - name: Download human training data from private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ecup-v1/data" "${RUNNER_TEMP}/ecup-v1/out" "${RUNNER_TEMP}/ecup-v1/smoke" "${RUNNER_TEMP}/ecup-v1/submission"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+
+          repo = os.environ["HF_REPO_ID"]
+          token = os.environ["HF_TOKEN"]
+          out = Path(os.environ["RUNNER_TEMP"]) / "ecup-v1" / "data"
+          for name in ("items_human.parquet", "matches.parquet"):
+              path = hf_hub_download(
+                  repo_id=repo,
+                  filename=name,
+                  repo_type="dataset",
+                  token=token,
+                  local_dir=out,
+              )
+              p = Path(path)
+              if not p.is_file() or p.stat().st_size == 0:
+                  raise RuntimeError(f"empty download: {name}")
+              print(f"downloaded {name}: {p.stat().st_size} bytes")
+          PY
+
+      - name: Pull exact organizer runtime image
+        run: docker pull "${ORGANIZER_IMAGE}"
+
+      - name: Verify exact runtime versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm "${ORGANIZER_IMAGE}" python - <<'PY'
+          import sys, joblib, numpy, pandas, sklearn
+          print("python", sys.version)
+          print("numpy", numpy.__version__)
+          print("pandas", pandas.__version__)
+          print("sklearn", sklearn.__version__)
+          print("joblib", joblib.__version__)
+          assert sklearn.__version__ == "1.9.0"
+          assert joblib.__version__ == "1.4.2"
+          PY
+
+      - name: Run all tests inside organizer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace:ro" \
+            -w /workspace \
+            "${ORGANIZER_IMAGE}" \
+            python -m pytest ecup_matching/tests -q
+
+      - name: Train v1 on human labels with item-disjoint validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace:ro" \
+            -v "${RUNNER_TEMP}/ecup-v1/data:/data:ro" \
+            -v "${RUNNER_TEMP}/ecup-v1/out:/out" \
+            -w /workspace \
+            "${ORGANIZER_IMAGE}" \
+            python -m ecup_matching.ml.train_v1 \
+              --items /data/items_human.parquet \
+              --matches /data/matches.parquet \
+              --model-out /out/model_v1.joblib \
+              --manifest-out /out/model_v1_manifest.json \
+              --metrics-out /out/v1-metrics.json \
+              --metrics-md-out /out/v1-metrics.md \
+              --valid-pred-out /out/v1-valid-predictions.parquet \
+              --valid-fraction 0.20 \
+              --chunk-size 15000 \
+              --max-iter 350
+
+      - name: Verify training metrics and zero leakage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "ecup-v1" / "out" / "v1-metrics.json"
+          m = json.loads(p.read_text())
+          assert m["item_overlap"] == 0, m
+          assert len(m["per_category_ap"]) == 20, len(m["per_category_ap"])
+          assert math.isfinite(m["macro_average_precision"])
+          assert 0.0 <= m["macro_average_precision"] <= 1.0
+          print("macro_average_precision", m["macro_average_precision"])
+          print("train_rows", m["train_rows"])
+          print("valid_rows", m["valid_rows"])
+          print("item_overlap", m["item_overlap"])
+          for cat, score in m["per_category_ap"].items():
+              print("category_ap", cat, score)
+          PY
+
+      - name: Build organizer-compatible ZIP inside exact image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace:ro" \
+            -v "${RUNNER_TEMP}/ecup-v1/out:/out" \
+            -w /workspace \
+            "${ORGANIZER_IMAGE}" \
+            python -m ecup_matching.build_submission \
+              --model /out/model_v1.joblib \
+              --manifest /out/model_v1_manifest.json \
+              --output /out/ecup-v1-submission.zip
+          unzip -l "${RUNNER_TEMP}/ecup-v1/out/ecup-v1-submission.zip"
+          test "$(stat -c%s "${RUNNER_TEMP}/ecup-v1/out/ecup-v1-submission.zip")" -lt $((5 * 1024 * 1024 * 1024))
+
+      - name: Create hidden-test-style smoke inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${RUNNER_TEMP}/ecup-v1/data:/data:ro" \
+            -v "${RUNNER_TEMP}/ecup-v1/smoke:/smoke" \
+            "${ORGANIZER_IMAGE}" python - <<'PY'
+          import pandas as pd
+          m = pd.read_parquet('/data/matches.parquet').iloc[:1000][['id1','id2']].copy()
+          ids = set(m['id1']) | set(m['id2'])
+          items = pd.read_parquet('/data/items_human.parquet')
+          items = items[items['id'].isin(ids)].copy()
+          assert len(items) > 0 and len(m) == 1000
+          m.to_parquet('/smoke/matches.parquet', index=False)
+          items.to_parquet('/smoke/items.parquet', index=False)
+          PY
+          unzip -q "${RUNNER_TEMP}/ecup-v1/out/ecup-v1-submission.zip" -d "${RUNNER_TEMP}/ecup-v1/submission"
+
+      - name: Run packaged submission offline in organizer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none \
+            -v "${RUNNER_TEMP}/ecup-v1/submission:/submission:ro" \
+            -v "${RUNNER_TEMP}/ecup-v1/smoke:/smoke" \
+            -w /submission \
+            "${ORGANIZER_IMAGE}" \
+            python -u run.py \
+              --items_path /smoke/items.parquet \
+              --matches_path /smoke/matches.parquet \
+              --output_path /smoke/prediction.csv
+          docker run --rm --network none \
+            -v "${RUNNER_TEMP}/ecup-v1/smoke:/smoke:ro" \
+            "${ORGANIZER_IMAGE}" python - <<'PY'
+          import numpy as np, pandas as pd
+          p = pd.read_csv('/smoke/prediction.csv')
+          m = pd.read_parquet('/smoke/matches.parquet')
+          assert list(p.columns) == ['id1','id2','predict']
+          assert len(p) == len(m) == 1000
+          assert p[['id1','id2']].equals(m[['id1','id2']].reset_index(drop=True))
+          assert np.isfinite(p['predict']).all()
+          assert p['predict'].between(0, 1).all()
+          print('offline_smoke_rows', len(p))
+          print('prediction_min', p['predict'].min())
+          print('prediction_max', p['predict'].max())
+          PY
+
+      - name: Mirror v1 model, metrics and submit ZIP to private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+
+          repo = os.environ["HF_REPO_ID"]
+          token = os.environ["HF_TOKEN"]
+          out = Path(os.environ["RUNNER_TEMP"]) / "ecup-v1" / "out"
+          api = HfApi(token=token)
+          files = {
+              "model_v1.joblib": "submissions/v1/model_v1.joblib",
+              "model_v1_manifest.json": "submissions/v1/model_v1_manifest.json",
+              "v1-metrics.json": "submissions/v1/v1-metrics.json",
+              "v1-metrics.md": "submissions/v1/v1-metrics.md",
+              "ecup-v1-submission.zip": "submissions/v1/ecup-v1-submission.zip",
+          }
+          for local, remote in files.items():
+              path = out / local
+              if not path.is_file() or path.stat().st_size == 0:
+                  raise RuntimeError(f"missing output: {local}")
+              api.upload_file(
+                  path_or_fileobj=str(path),
+                  path_in_repo=remote,
+                  repo_id=repo,
+                  repo_type="dataset",
+                  commit_message=f"Add E-CUP v1 artifact: {local}",
+              )
+          visible = set(api.list_repo_files(repo_id=repo, repo_type="dataset"))
+          for remote in files.values():
+              if remote not in visible:
+                  raise RuntimeError(f"HF verification failed: {remote}")
+              print("verified_private_hf", remote)
+          PY
+
+      - name: Upload metrics only as GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v1-metrics
+          path: |
+            ${{ runner.temp }}/ecup-v1/out/v1-metrics.json
+            ${{ runner.temp }}/ecup-v1/out/v1-metrics.md
+            ${{ runner.temp }}/ecup-v1/out/model_v1_manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Cleanup competition data and model from runner
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/ecup-v1"
