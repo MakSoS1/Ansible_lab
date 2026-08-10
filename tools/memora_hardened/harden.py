@@ -39,7 +39,7 @@ def _rewrite_function(text: str, name: str, transform: Callable[[str], str]) -> 
     start, end, block = _function_block(text, name)
     new_block = transform(block)
     if new_block == block:
-        raise HardeningError(f"{name}: transformation made no change")
+        return text
     return text[:start] + new_block + text[end:]
 
 
@@ -140,35 +140,44 @@ def harden_storage_text(text: str) -> str:
     return text
 
 
+def _append_after_line(text: str, code: str, added: str, label: str) -> str:
+    if added in text:
+        return text
+    pattern = re.compile(rf"^(?P<indent>[ \t]*){re.escape(code)}[ \t]*$", re.MULTILINE)
+    matches = list(pattern.finditer(text))
+    if len(matches) != 1:
+        raise HardeningError(f"{label}: expected exactly one line anchor, found {len(matches)}")
+    match = matches[0]
+    indent = match.group("indent")
+    replacement = f"{indent}{code}\n{indent}{added}"
+    return text[: match.start()] + replacement + text[match.end() :]
+
+
 def harden_backends_text(text: str) -> str:
-    replacements = [
+    anchors = [
         (
-            "        self.db_path.parent.mkdir(parents=True, exist_ok=True)\n",
-            "        self.db_path.parent.mkdir(parents=True, exist_ok=True)\n"
-            "        os.chmod(self.db_path.parent, 0o700)\n",
+            "self.db_path.parent.mkdir(parents=True, exist_ok=True)",
+            "os.chmod(self.db_path.parent, 0o700)",
             "local DB directory mode",
         ),
         (
-            "        conn = sqlite3.connect(self.db_path, check_same_thread=check_same_thread)\n",
-            "        conn = sqlite3.connect(self.db_path, check_same_thread=check_same_thread)\n"
-            "        os.chmod(self.db_path, 0o600)\n",
+            "conn = sqlite3.connect(self.db_path, check_same_thread=check_same_thread)",
+            "os.chmod(self.db_path, 0o600)",
             "local DB file mode",
         ),
         (
-            "        self.cache_dir.mkdir(parents=True, exist_ok=True)\n",
-            "        self.cache_dir.mkdir(parents=True, exist_ok=True)\n"
-            "        os.chmod(self.cache_dir, 0o700)\n",
+            "self.cache_dir.mkdir(parents=True, exist_ok=True)",
+            "os.chmod(self.cache_dir, 0o700)",
             "cloud cache root mode",
         ),
         (
-            "        self.cache_path.parent.mkdir(parents=True, exist_ok=True)\n",
-            "        self.cache_path.parent.mkdir(parents=True, exist_ok=True)\n"
-            "        os.chmod(self.cache_path.parent, 0o700)\n",
+            "self.cache_path.parent.mkdir(parents=True, exist_ok=True)",
+            "os.chmod(self.cache_path.parent, 0o700)",
             "cloud cache DB directory mode",
         ),
     ]
-    for old, new, label in replacements:
-        text = _replace_once(text, old, new, label)
+    for code, added, label in anchors:
+        text = _append_after_line(text, code, added, label)
     return text
 
 
