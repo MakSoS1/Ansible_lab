@@ -5,13 +5,16 @@ import base64
 import binascii
 import json
 import os
+import re
 import shlex
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 
 BASE_URL = "https://storage.yandexcloud.net/ozon-ecup-2026/Matching"
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
 
 def studio_training_commands(
@@ -74,12 +77,7 @@ def studio_training_commands(
 
 
 def _decode_ciphertext_b64(data: bytes) -> bytes:
-    """Strictly decode base64 while tolerating transport whitespace at the edges.
-
-    GitHub's text file representation conventionally ends with a newline. We
-    permit only leading/trailing ASCII whitespace introduced by that transport;
-    embedded whitespace or non-base64 characters still fail closed.
-    """
+    """Strictly decode base64 while tolerating transport whitespace at the edges."""
     stripped = data.strip(b" \t\r\n")
     if not stripped:
         raise ValueError("encrypted credential response is empty")
@@ -123,6 +121,43 @@ def decrypt_credentials(private_key_path: Path, ciphertext_path: Path) -> dict[s
     return {key: payload[key] for key in expected}
 
 
+def _extract_lightning_username(identity: object) -> str:
+    """Extract a safe username from current or nested `whoami --json` output."""
+    candidates: list[str] = []
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            for key in ("username", "user_name", "name"):
+                candidate = value.get(key)
+                if isinstance(candidate, str):
+                    candidates.append(candidate.strip())
+            for key in ("user", "identity", "principal", "subject"):
+                if key in value:
+                    visit(value[key])
+
+    visit(identity)
+    for candidate in candidates:
+        if _USERNAME_RE.fullmatch(candidate):
+            return candidate
+    raise ValueError("Lightning authenticated identity did not contain a safe username")
+
+
+def _authenticated_username() -> str:
+    """Resolve current Lightning username without printing identity or credentials."""
+    try:
+        output = subprocess.check_output(
+            ["lightning", "auth", "whoami", "--json"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=dict(os.environ),
+            timeout=30,
+        )
+        identity = json.loads(output)
+    except (subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Lightning authenticated identity lookup failed") from exc
+    return _extract_lightning_username(identity)
+
+
 def _select_machine(studio, Machine) -> str:
     last_error: Exception | None = None
     for machine_name in ("L4", "A100", "T4"):
@@ -155,15 +190,19 @@ def run_lightning(
     try:
         from lightning_sdk import Machine, Studio, User
 
-        user = User()
-        teamspaces = list(user.teamspaces)
+        username = _authenticated_username()
+        user = User(name=username)
+        teamspaces = sorted(
+            list(user.teamspaces),
+            key=lambda item: str(getattr(item, "name", "")),
+        )
         if not teamspaces:
-            raise RuntimeError("authenticated Lightning user has no personal Teamspace")
+            raise RuntimeError("authenticated Lightning user has no accessible Teamspace")
         teamspace = teamspaces[0]
         studio = Studio(
             name=studio_name,
-            teamspace=teamspace.name,
-            user=user.name,
+            teamspace=teamspace,
+            user=user,
             create_ok=True,
         )
         machine_name = _select_machine(studio, Machine)
