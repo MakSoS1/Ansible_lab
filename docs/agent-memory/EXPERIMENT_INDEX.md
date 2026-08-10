@@ -1,15 +1,21 @@
 # E-CUP Matching — Experiment Index
 
-This is the canonical compact ledger. Every retained experiment must have a row here and a source-backed `experiments/vN/RESULTS.md`.
+This file is the short registry. Detailed metrics live in each experiment's `RESULTS.md`.
 
-| Iteration | Status | Model / hypothesis | Validation | Macro AP | Runtime note | Private artifacts | Git source |
-|---|---|---|---|---:|---|---|---|
-| v1 | completed | `v1-structured-hgb`; deterministic lexical/attribute/numeric features + sklearn HGB, human labels only | item-disjoint 292,523 train / 73,131 valid; overlap 0 | **0.4961654895** | train/eval 308.57 s; 1k-pair offline smoke 1.78 s | `submissions/v1/` in private HF | `ecup_matching/experiments/v1/RESULTS.md` |
-| v2 | planned | filtered/confidence-weighted 11M LLM weak labels + hard-negative mining on the fast structured anchor | reuse fixed item-disjoint human validation | — | target: preserve large organizer runtime headroom | `submissions/v2/` when complete | `ecup_matching/experiments/v2/` |
+| Version | Status | Model / idea | Validation | Macro AP | Runtime | Private artifact | Next decision |
+|---|---|---|---|---:|---:|---|---|
+| v1 | completed | structured/lexical HGB | item-disjoint connected-component split, 73,131 pairs | 0.4961654895 | 308.57 s train/eval; 1.78 s / 1k-pair organizer smoke | `submissions/v1/ecup-v1-submission.zip` | superseded by v2b |
+| v2 | completed | 2024-inspired product features + confidence-filtered LLM weak labels (`v2b-weak-curriculum`) | exact same item-disjoint validation, 73,131 pairs, 0 shared items | **0.5010008995** | structured train/ablations ~953 s; final 275k organizer benchmark recorded in v2 package metrics | `submissions/v2/ecup-v2-submission.zip` | v3: model-driven reranker/hard negatives once GPU Studio is accessible; keep reducing runtime |
 
-## Rules
+## v2 ablation headline
 
-- Never overwrite a prior experiment's evidence. Create a new iteration when training/data/validation changes materially.
-- All category AP values belong in the iteration `RESULTS.md`, even if only Macro AP is shown here.
-- `completed` requires results documentation, policy validation, private artifact verification, and a Memora checkpoint.
-- A worse experiment is still recorded if it taught something material; status can be `rejected` with the reason in RESULTS.
+- v2a, human + 2024-inspired product-aware features: `0.5006971263` Macro AP — accepted.
+- v2b, v2a + 300k confidence-filtered weak labels: `0.5010008995` — retained.
+- v2c, naive static hard-negative reweighting: `0.4957263069` — rejected.
+- Lightning neural reranker code is implemented, but the authenticated account exposed no reusable Studio and denied Studio creation with HTTP 403, so no neural metric was fabricated and no GPU credits were consumed.
+
+## Required interpretation
+
+- Headline scores are comparable because v1/v2 use the identical leakage-resistant human validation split.
+- `REVIEW` or threshold accuracy is irrelevant here; the competition metric is ranking Average Precision by category.
+- Private artifacts never belong in this public Git repository.
