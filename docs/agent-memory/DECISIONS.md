@@ -92,7 +92,7 @@
 
 **Decision:** Full tests and memory policy remain hard gates before ingest/checkpoint.
 
-**Incident:** runs `31481012401` and `31482891498` failed before ingest because memory-triggering commits landed during intentionally RED TDD; later GREEN code did not retroactively checkpoint.
+**Incident:** runs `31481012401` and `31482891498` failed before ingest because their memory-triggering commits landed during intentionally RED TDD; later GREEN code did not retroactively checkpoint.
 
 ## D022 — Infrastructure failures are not model-quality failures
 
@@ -120,13 +120,13 @@
 
 ## D026 — Machine-readable current/safe metrics are first-class Memora sources
 
-**Decision:** `ecup_matching/experiments/CURRENT.json` and `ecup_matching/experiments/v*/SAFE_METRICS.json` must be part of `scripts.memory_ingest.py::canonical_sources()`.
+**Decision:** `ecup_matching/experiments/CURRENT.json` and `ecup_matching/experiments/v*/SAFE_METRICS.json` must be part of `scripts/memory_ingest.py::canonical_sources()`.
 
 **Reason:** Before this audit those files could be correct in Git but invisible to semantic Memora retrieval. A regression test requires their inclusion.
 
 ## D027 — Explicit per-key attribute features are retained
 
-**Decision:** Keep fold-trained explicit per-key attribute match/conflict/missing features inside category specialists. This is distinct from rejected direct likelihood score shifting: the estimator decides when a key matters instead of receiving an unconditional logit correction.
+**Decision:** Keep fold-trained explicit per-key attribute match/conflict/missing features inside category specialists. This is distinct from rejected direct attribute likelihood score shifting: the estimator decides when a key matters instead of receiving an unconditional logit correction.
 
 **Evidence:** OOF `0.5683065131240066` vs category base `0.5476780661335778`, delta `+0.02062844699042876`; every fold improved. Run `31485990777`.
 
@@ -163,3 +163,13 @@
 **Evidence:** strict outer-OOF Macro AP **`0.6018115534135564`**, delta `+0.000857311611716427` vs category-shrunk alone. It improved category-shrunk on every outer fold: `0.6003179540`, `0.6073630563`, `0.6122052716`, `0.5973819202`, `0.6105222736`. Evidence run `31525549063`, artifact `9114783508`, private HF `experiments/v5/category-hgb-fusion/79de99434912`.
 
 **Safety state:** sealed gold remains unopened and `0` gold rows have been scored. Public/private leaderboard performance remains unknown until an actual platform submission; local OOF must not be relabeled as leaderboard evidence.
+
+## D033 — The 0.6018115534 model is now the verified production submission
+
+**Decision:** Promote v5 category-shrunk + HGB equal-rank fusion from development-best to verified production package. The exact competition ZIP to submit is `ecup-v5-category-hgb-fusion-0.6018115534-submission.zip` from private HF `submissions/v5/0.6018115534`.
+
+**Binary evidence:** competition ZIP SHA-256 `442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5`; final workflow run `31526323018`, job `93895429369`; Actions artifact `9116032675`, artifact digest `fc6a72f63146df414c5ff4de4aef62a4568e516a12d465830492941348824a46`.
+
+**Runtime evidence:** exact organizer image `odsai/ecup26-matching-baseline:1.0`; CI and organizer sklearn both `1.9.0`; HGB joblib loaded inside organizer image; full offline `run.py` smoke with `--network none` and read-only filesystem passed; output schema/row count/finite nonconstant predictions passed; full repository suite after smoke `230 passed, 1 warning`.
+
+**Consequence:** v2 is only historical hidden evidence, not current production best. The retained v5 fallbacks are category-shrunk `0.6009542418` and six-signal `0.5975445721`. Public/private leaderboard AP remains unknown until platform submission and must be stored separately from strict local OOF.
