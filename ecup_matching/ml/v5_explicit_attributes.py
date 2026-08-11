@@ -8,14 +8,15 @@ import pandas as pd
 
 from .category_attrs import _leaf_key
 from .features import normalize_items
-from .textnorm import ItemNorm
+from .textnorm import ItemNorm, canonical_attribute_value
 
 
 def _leaf_values(item: ItemNorm) -> dict[str, frozenset[str]]:
     values: dict[str, set[str]] = defaultdict(set)
     for key, value in item.attrs.items():
-        if value:
-            values[_leaf_key(key)].add(str(value))
+        canonical = canonical_attribute_value(value)
+        if canonical:
+            values[_leaf_key(key)].add(canonical)
     return {key: frozenset(v) for key, v in values.items()}
 
 
