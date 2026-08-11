@@ -1,10 +1,10 @@
 {
-  "version": "v6",
+  "version": "v7",
   "status": "in_progress",
-  "model": "v6-fast-gate95-category-shrunk-hgb",
-  "plan": "ecup_matching/experiments/v6/PLAN.md",
-  "results": "ecup_matching/experiments/v6/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v6/SAFE_METRICS.json",
+  "model": "v7-identity-first-full-context-teacher",
+  "plan": "ecup_matching/experiments/v7/PLAN.md",
+  "results": "ecup_matching/experiments/v7/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v7/SAFE_METRICS.json",
   "validation_protocol": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -24,78 +24,33 @@
     "competition_zip": "ecup-v5-category-hgb-fusion-0.6018115534-submission.zip",
     "competition_zip_sha256": "442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5",
     "private_hf_prefix": "submissions/v5/0.6018115534",
-    "organizer_image_smoke_passed": true,
-    "runtime_reason_for_v6": "quality passes but the production path is too slow for the runtime-constrained v6 objective"
+    "organizer_image_smoke_passed": true
   },
-  "selected_runtime_candidate": {
+  "runtime_best_reference": {
+    "version": "v6",
     "name": "v6-fast-gate95-category-shrunk-hgb",
     "strict_selection_oof_macro_average_precision": 0.6006003614522999,
     "quality_gate_macro_average_precision": 0.6,
     "quality_gate_passed": true,
     "teacher_coverage_requested": 0.95,
-    "teacher_fraction_on_development": 0.9500262964131693,
-    "selection_workflow_run_id": 31531141700,
-    "selection_job_id": 93911179929,
-    "selection_source_commit": "fb15ec43a90c892c416acb2d10fe04cc126a4398",
-    "private_selection_prefix": "experiments/v6/teacher-gate/95/fb15ec43a90c",
-    "fully_outer_cross_fitted_meta": true,
+    "structured_us_per_pair_after": 487.0,
+    "structured_speedup": 4.54,
+    "bitwise_identical_runtime_optimization": true,
+    "exact_full_gpu_runtime_verified": false
+  },
+  "candidate": {
+    "name": "v7-identity-first-full-context-teacher",
+    "base_model": "ai-forever/ruBert-base",
+    "base_model_revision": "43be4261797042e172adf7476c558734f3cbb2a0",
+    "max_length": 256,
+    "serialization": "identity-first canonical typed attributes before residual numeric and attribute tails",
+    "training": "five outer folds; authoritative human plus leakage-safe confidence-weighted weak curriculum; more exposure than retained 800-step teacher2",
+    "target_strict_oof_macro_average_precision": 0.7,
+    "keep_threshold_strict_oof_macro_average_precision": 0.6018115534135564,
+    "fully_outer_cross_fitted": true,
     "post_result_weight_tuning": false
-  },
-  "runtime_implementation": {
-    "teacher_gate": "target-free per-category disagreement gate",
-    "unselected_teacher_surrogate": "mean percentile rank of weak+sparse+explicit+contrastive+typed_explicit",
-    "length_bucketing": true,
-    "cuda_vram_aware_batches": true,
-    "cuda_oom_fallback": true,
-    "non_blocking_cuda_transfers": true,
-    "sdpa_when_supported": true,
-    "mixed_precision": false,
-    "rtx_2060_super_default_contrastive_batch": 256,
-    "rtx_2060_super_default_teacher_batch": 96,
-    "structured_chunk_size": 10000,
-    "structured_chunk_parallelism": "fork worker pool, unchanged chunk boundaries, serial fallback",
-    "shared_difflib_between_legacy_and_typed_passes": true,
-    "shared_item_norm_between_contrastive_and_teacher_text_caches": true,
-    "single_pass_item_parquet_selection": true,
-    "cuda_probe_deferred_until_after_fork": true
-  },
-  "latest_packaging_evidence": {
-    "workflow_run_id": 31535674086,
-    "source_commit": "4da50f66942472b8e8b70270cbeb00639930b6b5",
-    "production_meta_refit_passed": true,
-    "organizer_image_offline_readonly_smoke_passed": true,
-    "organizer_smoke_rows": 64,
-    "organizer_cpu_smoke_total_seconds": 24.14,
-    "candidate_zip_sha256_before_documentation_gate": "20c5f128e43c5303893301f012726381df06a4e20d027ea054acf36e0f6aae40",
-    "candidate_zip_bytes": 1143630143,
-    "full_test_suite": "264 passed, 1 failed, 91 warnings",
-    "full_test_failure_scope": "documentation memory policy only; model/runtime smoke passed",
-    "final_artifact_published": false,
-    "rtx_full_runtime_verified": false
-  },
-  "rejected_runtime_candidates": {
-    "structured_only": 0.5808404005946962,
-    "no_teacher": 0.5931387077244183,
-    "no_contrastive": 0.5928725263319,
-    "teacher_gate_25": 0.5929214688140778,
-    "teacher_gate_55": 0.5966896566149946,
-    "teacher_gate_85": 0.5999300791828578,
-    "teacher_distillation": 0.5931935841654697,
-    "student_teacher_hybrid_85": 0.5998746122650258
   },
   "sealed_gold_evaluated": false,
   "leaderboard_result_known": false,
-  "next_action": "Rebuild the v6 gate95 ZIP with the parallel structured runtime, confirm the exact organizer-image offline smoke, then benchmark those exact bytes on ecup-rtx2060 with a full reference matches.parquet run and capture per-phase timings. Predictions are unchanged by the runtime work, so strict OOF stays 0.6006003614522999; only measured wall time is new evidence. Keep sealed gold unopened.",
-  "measured_runtime_profile": {
-    "source": "local CPU profile of the real structured path on synthetic Ozon-shaped data",
-    "structured_us_per_pair_before": 2210.1,
-    "structured_us_per_pair_after": 487.0,
-    "speedup": 4.54,
-    "bitwise_identical_to_serial": true,
-    "projected_structured_seconds_private_before": 607.8,
-    "projected_structured_seconds_private_after": 44.3,
-    "private_time_budget_seconds": 780,
-    "public_time_budget_seconds": 360,
-    "gpu_full_run_verified": false
-  }
+  "next_action": "Write and run failing v7 tests for identity-first canonical serialization, weak-item leakage exclusion, and the 256-token/non-800-step training contract. Then implement only enough code to turn those tests green before launching any training. Preserve sealed gold and v6 runtime optimizations."
 }
