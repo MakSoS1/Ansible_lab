@@ -144,3 +144,20 @@ def test_explicit_leaf_cache_can_be_reused_without_changing_features_or_key_lear
         leaf_cache=leaf_cache,
     )
     pd.testing.assert_frame_equal(cached, uncached)
+
+
+def test_explicit_leaf_cache_can_reproduce_legacy_raw_value_evidence():
+    items = pd.DataFrame(
+        {
+            "id": [1, 2],
+            "name": ["ssd", "ssd"],
+            "category": ["electronics", "electronics"],
+            "attributes": ['{"storage":"128 GB"}', '{"storage":"0.128 TB"}'],
+        }
+    )
+    normalized = normalize_items(items)
+    typed = build_explicit_leaf_cache(normalized, canonical_values=True)
+    legacy = build_explicit_leaf_cache(normalized, canonical_values=False)
+
+    assert typed[1]["storage"] == typed[2]["storage"]
+    assert legacy[1]["storage"] != legacy[2]["storage"]
