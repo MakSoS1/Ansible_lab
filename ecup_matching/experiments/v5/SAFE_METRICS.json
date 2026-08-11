@@ -9,109 +9,123 @@
     "connected_components": 345654,
     "cross_split_item_overlap": 0,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "metric": "unweighted mean of sklearn average_precision_score over exactly 20 official categories",
     "gold_metric_opened": false,
     "gold_rows_scored": 0,
     "baseline_oof_macro_ap": 0.5315527708634168
   },
-  "production_anchor": {"version": "v2", "hidden_macro_ap": 0.2583231811423486},
-  "completed_experiments": {
-    "category_specialists": {
-      "decision": "keep",
-      "oof_macro_ap": 0.5476780661335778,
-      "delta_vs_audit_baseline": 0.016125295270161044,
-      "all_folds_improved": true
-    },
-    "direct_attribute_likelihood": {
-      "decision": "reject",
-      "oof_macro_ap": 0.523218903672764,
-      "delta_vs_audit_baseline": -0.008333867190652766,
-      "all_folds_regressed": true
-    },
-    "pretrained_biencoder": {
-      "decision": "insufficient_standalone",
-      "oof_macro_ap": 0.5318080650341337,
-      "delta_vs_audit_baseline": 0.0002552941707169021,
-      "raw_semantic_cosine_macro_ap": 0.31201359969464276
-    },
-    "weighted_category_specialists": {
-      "decision": "diagnostic_oof_input_only",
-      "oof_macro_ap": 0.5498696731704964,
-      "delta_vs_category_base": 0.0021916070369185636,
-      "fold_deltas": [0.0021354161959221685, 0.004859795667646272, -0.00031919882576014746, -0.0009191637590409973, 0.004585239432923327]
-    },
-    "weak_category_specialists": {
-      "decision": "keep",
-      "workflow_run_id": 31484641329,
-      "source_commit": "319993a469cfa37770d66cfaf1b2203515dc9841",
-      "oof_macro_ap": 0.5514237338676234,
-      "delta_vs_category_base": 0.00374566773404561,
-      "all_folds_improved": true,
-      "weak_input_rows": 11187780,
-      "weak_presample_rows": 250000,
-      "weak_final_rows_per_fold": 150000,
-      "held_items_forbidden": true,
-      "gold_items_forbidden": true
-    },
-    "cross_fitted_combo": {
+  "historical_hidden_production_anchor": {
+    "version": "v2",
+    "hidden_macro_ap": 0.2583231811423486,
+    "note": "historical platform evidence only; do not compare this old split numerically to v5 strict OOF"
+  },
+  "signal_ladder": {
+    "category_specialists": 0.5476780661335778,
+    "weak_category_specialists": 0.5514237338676234,
+    "sparse_category_specialists": 0.5651306838802859,
+    "explicit_attribute_specialists": 0.5683065131240066,
+    "supervised_contrastive": 0.5662217062664492,
+    "four_signal_equal_rank": 0.5870570848443828,
+    "five_signal_plus_teacher_equal_rank": 0.5952697490140912,
+    "six_signal_plus_typed_explicit_equal_rank": 0.5975445721449741
+  },
+  "meta_experiments": {
+    "global_simplex": {
       "decision": "keep_intermediate",
-      "workflow_run_id": 31485240666,
-      "source_commit": "7a1c1764a2bdda8f007b9bfea7d088911623e7f0",
-      "oof_macro_ap": 0.559512531439709,
-      "delta_vs_category_base": 0.011834465306131192,
-      "fold_macro_ap": [0.562580065789817, 0.5605549739646596, 0.5667063354890245, 0.5579194708823281, 0.5631351691480011],
-      "all_folds_improved": true
-    },
-    "sparse_category_specialists": {
-      "decision": "keep",
-      "workflow_run_id": 31485396599,
-      "source_commit": "634ee66890c39ad97c0fa725135b1b00e56ac126",
-      "oof_macro_ap": 0.5651306838802859,
-      "delta_vs_category_base": 0.017452617746708032,
-      "fold_macro_ap": [0.5638679943688357, 0.5644112795204157, 0.5729250493264109, 0.5646827428419179, 0.5676889194024459],
-      "all_folds_improved": true
-    },
-    "supervised_contrastive": {
-      "decision": "keep",
-      "workflow_run_id": 31483288887,
-      "source_commit": "b30821f613bf7051da51c42b64c7f79361d5619c",
-      "oof_macro_ap": 0.5662217062664492,
-      "delta_vs_category_base": 0.018543640132871353,
-      "raw_semantic_cosine_macro_ap": 0.40597111640267125,
-      "fold_macro_ap": [0.5692965046798911, 0.5683388560864314, 0.5694312406050667, 0.5632500994392833, 0.5684466083884651],
-      "all_folds_improved": true
-    },
-    "explicit_attribute_specialists": {
-      "decision": "current_development_best_keep",
-      "workflow_run_id": 31485990777,
-      "source_commit": "cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57",
-      "metrics_artifact_id": 9100228112,
-      "metrics_artifact_digest": "6417c94041c3443f03acf85227dceb94e65abea668d1b33bc6dc477f41f5a8fb",
-      "oof_macro_ap": 0.5683065131240066,
-      "delta_vs_category_base": 0.02062844699042876,
-      "delta_vs_audit_baseline": 0.036753742260589806,
-      "fold_macro_ap": [0.5706378464826163, 0.5682631251392076, 0.5754313094571646, 0.5633705139683869, 0.5731185912680369],
+      "fully_outer_cross_fitted": true,
+      "oof_macro_ap": 0.5992720660193247,
+      "delta_vs_six_signal": 0.0017274938743506076,
       "all_folds_improved": true,
-      "gold_metric_opened": false,
-      "gold_rows_scored": 0
+      "private_hf_prefix": "experiments/v5/meta-blend/b576270ddd70"
     },
-    "rubert_teacher_first_run": {
-      "decision": "integration_failure_before_metrics_not_model_reject",
-      "workflow_run_id": 31485127564,
-      "source_commit": "00cc48dca806752d92496fa79f703a9ce3bcce63",
-      "failure_summary": "build_reranker_examples called without required attribute_importance argument",
-      "comparable_oof_produced": false
+    "nested_category_logistic": {
+      "decision": "reject_standalone_but_keep_as_diverse_oof_source",
+      "fully_outer_cross_fitted": true,
+      "hyperparameter_selection_nested": true,
+      "oof_macro_ap": 0.5988060044248327,
+      "private_hf_prefix": "experiments/v5/category-logistic/ae52afcbcf24"
+    },
+    "global_meta_plus_category_logistic_equal_rank": {
+      "decision": "keep_intermediate",
+      "post_result_weight_tuning": false,
+      "oof_macro_ap": 0.5995921709945611,
+      "private_hf_prefix": "experiments/v5/meta-logistic-fusion/e967271a899a"
+    },
+    "fixed_category_shrunk_simplex": {
+      "decision": "keep",
+      "fully_outer_cross_fitted": true,
+      "prior_strength": 8000.0,
+      "prior_frozen_before_result": true,
+      "oof_macro_ap": 0.60095424180184,
+      "delta_vs_six_signal": 0.0034096696568659564,
+      "delta_vs_global_simplex": 0.001682175782515328,
+      "all_folds_improved_vs_six_signal": true,
+      "workflow_run_id": 31524781399,
+      "metrics_artifact_id": 9114649149,
+      "metrics_artifact_digest": "d2a6fcde8f9bae75d845e116b25ea23c7703ec7e2d2370f91d0dd5acfbe6ea34",
+      "private_hf_prefix": "experiments/v5/category-shrunk/efa629cc0435"
+    },
+    "fixed_hgb_meta_stack": {
+      "decision": "keep_as_complementary_source",
+      "fully_outer_cross_fitted": true,
+      "hyperparameter_search": false,
+      "oof_macro_ap": 0.6006290884983169,
+      "private_hf_prefix": "experiments/v5/hgb-meta-stack/84a934484619"
+    },
+    "category_shrunk_plus_hgb_equal_rank": {
+      "decision": "current_development_best_keep",
+      "fully_outer_cross_fitted_components": true,
+      "post_result_weight_tuning": false,
+      "fusion_formula": "0.5*percentile_rank(category_shrunk_oof)+0.5*percentile_rank(hgb_stack_oof)",
+      "oof_macro_ap": 0.6018115534135564,
+      "delta_vs_category_shrunk": 0.000857311611716427,
+      "delta_vs_six_signal": 0.004266981268582252,
+      "fold_macro_ap": [
+        0.600317954001536,
+        0.6073630562662657,
+        0.6122052716465903,
+        0.5973819202189384,
+        0.6105222735923926
+      ],
+      "all_folds_improved_vs_category_shrunk": true,
+      "workflow_run_id": 31525549063,
+      "metrics_artifact_id": 9114783508,
+      "metrics_artifact_digest": "cca521d4c402fbd9d1aa9bce17902a1499d97b8fac97d681190c5365098ef8e0",
+      "private_hf_prefix": "experiments/v5/category-hgb-fusion/79de99434912"
     }
   },
-  "active_experiments": {
-    "field_aware_weak_teacher": {
-      "workflow_run_id": 31486298300,
-      "source_commit": "411a5349fe731506757fdc1a3c8857a370225fb8",
-      "status": "in_progress"
+  "verified_submission_fallbacks": {
+    "six_signal_0_5975445721": {
+      "competition_zip": "ecup-v5-six-signal-0.5975445721-submission.zip",
+      "competition_zip_sha256": "ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e",
+      "actions_artifact_id": 9112337546,
+      "private_hf_prefix": "submissions/v5/0.5975445721",
+      "organizer_image_smoke_passed": true
+    },
+    "category_shrunk_0_6009542418": {
+      "competition_zip": "ecup-v5-category-shrunk-0.6009542418-submission.zip",
+      "competition_zip_sha256": "3a5341c42346727793ab8877ee6bc8f07e3ac4f18f97c32a9d39d76b5e0609c1",
+      "actions_artifact_id": 9114889240,
+      "private_hf_prefix": "submissions/v5/0.6009542418",
+      "organizer_image_smoke_passed": true,
+      "full_test_suite": "225 passed, 1 warning"
     }
   },
-  "current_development_best_oof_macro_ap": 0.5683065131240066,
+  "current_development_best": {
+    "name": "category_shrunk_plus_hgb_equal_rank",
+    "oof_macro_ap": 0.6018115534135564,
+    "target_0_60_reached": true
+  },
+  "current_verified_production_submission": {
+    "name": "category_shrunk_0_6009542418",
+    "strict_selection_oof_macro_ap": 0.60095424180184,
+    "private_hf_prefix": "submissions/v5/0.6009542418",
+    "note": "0.6018115534 category-HGB package is in final organizer-image verification workflow 31526323018 and must not replace this field until GREEN"
+  },
   "stretch_target_oof_macro_ap": 0.6,
-  "remaining_gap_to_target": 0.0316934868759934,
-  "v5_submission_retained": false,
-  "sealed_gold_evaluated": false
+  "remaining_gap_to_target": 0.0,
+  "target_exceeded_by": 0.0018115534135563916,
+  "v5_submission_retained": true,
+  "sealed_gold_evaluated": false,
+  "leaderboard_result_known": false
 }
