@@ -28,6 +28,7 @@ jobs:
         run: |
           python -m pytest \
             ecup_matching/tests/test_v7_neural_contract.py \
+            ecup_matching/tests/test_v7_neural_training.py \
             ecup_matching/tests/test_v5_item_text.py \
             ecup_matching/tests/test_v5_teacher2_objective.py \
             -q
