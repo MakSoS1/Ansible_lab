@@ -5,19 +5,10 @@
   "plan": "ecup_matching/experiments/v5/PLAN.md",
   "results": "ecup_matching/experiments/v5/RESULTS.md",
   "safe_metrics": "ecup_matching/experiments/v5/SAFE_METRICS.json",
-  "previous": "v4",
   "production_anchor": {
     "version": "v2",
-    "reason": "best observed hidden leaderboard Macro AP among submitted v1-v4 candidates",
     "hidden_macro_average_precision": 0.2583231811423486,
-    "artifact": "submissions/v2/ecup-v2-submission.zip"
-  },
-  "historical_hidden_scores": {
-    "v1": 0.23458522924335687,
-    "v2": 0.2583231811423486,
-    "v3_noncanonical": 0.2583231811423486,
-    "v3_canonical": 0.24810151893254498,
-    "v4_canonical": 0.2531285194869718
+    "reason": "best observed hidden leaderboard Macro AP among submitted v1-v4 candidates"
   },
   "validation_protocol": {
     "human_rows": 365654,
@@ -28,76 +19,91 @@
     "connected_components": 345654,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
     "gold_metric_opened": false,
-    "gold_rows_scored": 0,
-    "rule": "Do not inspect, score, tune, calibrate, encode or mine sealed-gold rows/items while developing. Freeze candidate/config/preprocessing hashes before the one-shot gold gate."
+    "gold_rows_scored": 0
   },
   "development_baseline_macro_average_precision": 0.5315527708634168,
   "development_best": {
-    "name": "v5-combo-category-weighted-pretrained",
-    "macro_average_precision": 0.559512531439709,
-    "delta_vs_development_baseline": 0.0279597605762922,
-    "delta_vs_category_specialists": 0.011834465306131192,
+    "name": "v5-supervised-contrastive-item-space-stack",
+    "macro_average_precision": 0.5662217062664492,
+    "delta_vs_development_baseline": 0.0346689354030324,
+    "delta_vs_category_specialists": 0.018543640132871353,
+    "semantic_cosine_macro_average_precision": 0.40597111640267125,
     "fold_macro_average_precision": [
-      0.562580065789817,
-      0.5605549739646596,
-      0.5667063354890245,
-      0.5579194708823281,
-      0.5631351691480011
+      0.5692965046798911,
+      0.5683388560864314,
+      0.5694312406050667,
+      0.5632500994392833,
+      0.5684466083884651
     ],
     "all_folds_improved_vs_category_base": true,
-    "workflow_run_id": 31485240666,
-    "source_commit": "7a1c1764a2bdda8f007b9bfea7d088911623e7f0",
-    "private_prefix": "experiments/v5/combo/7a1c1764a2bd",
+    "workflow_run_id": 31483288887,
+    "source_commit": "b30821f613bf7051da51c42b64c7f79361d5619c",
+    "private_prefix": "experiments/v5/contrastive-sprint/b30821f613bf/aggregate",
     "retained_for_development": true,
     "retained_as_submission": false
   },
   "retained_development_steps": {
     "category_specialists": {
       "macro_average_precision": 0.5476780661335778,
-      "delta_vs_baseline": 0.016125295270161044,
-      "all_folds_improved": true,
-      "private_prefix": "experiments/v5/category/e885961388d1"
+      "all_folds_improved": true
     },
     "weak_category_specialists": {
       "macro_average_precision": 0.5514237338676234,
       "delta_vs_category_base": 0.00374566773404561,
+      "all_folds_improved": true
+    },
+    "cross_fitted_combo": {
+      "macro_average_precision": 0.559512531439709,
+      "delta_vs_category_base": 0.011834465306131192,
+      "all_folds_improved": true
+    },
+    "sparse_category_specialists": {
+      "macro_average_precision": 0.5651306838802859,
+      "delta_vs_category_base": 0.017452617746708032,
       "all_folds_improved": true,
-      "workflow_run_id": 31484641329,
-      "source_commit": "319993a469cfa37770d66cfaf1b2203515dc9841",
-      "private_prefix": "experiments/v5/weak-specialists/319993a469cf/aggregate"
+      "workflow_run_id": 31485396599,
+      "source_commit": "634ee66890c39ad97c0fa725135b1b00e56ac126"
+    },
+    "supervised_contrastive": {
+      "macro_average_precision": 0.5662217062664492,
+      "delta_vs_category_base": 0.018543640132871353,
+      "all_folds_improved": true,
+      "workflow_run_id": 31483288887,
+      "source_commit": "b30821f613bf7051da51c42b64c7f79361d5619c"
     }
   },
-  "non_retained_or_diagnostic_steps": {
-    "weighted_category_specialists": {
-      "macro_average_precision": 0.5498696731704964,
-      "delta_vs_category_base": 0.0021916070369185636,
-      "reason": "folds 2 and 3 regressed; useful only as a cross-fitted input until stronger evidence exists"
+  "rejected_or_diagnostic_steps": {
+    "direct_attribute_likelihood": {
+      "macro_average_precision": 0.523218903672764,
+      "decision": "reject"
     },
     "pretrained_biencoder": {
       "macro_average_precision": 0.5318080650341337,
-      "delta_vs_baseline": 0.0002552941707169021,
-      "reason": "uniformly positive but too small to retain standalone"
+      "decision": "insufficient standalone"
     },
-    "direct_attribute_likelihood": {
-      "macro_average_precision": 0.523218903672764,
-      "delta_vs_baseline": -0.008333867190652766,
-      "reason": "regressed on every held fold; reject direct score addition"
+    "weighted_category_specialists": {
+      "macro_average_precision": 0.5498696731704964,
+      "decision": "diagnostic OOF input only; folds 2 and 3 regress"
+    },
+    "rubert_teacher_outer_cv": {
+      "workflow_run_id": 31485127564,
+      "source_commit": "00cc48dca806752d92496fa79f703a9ce3bcce63",
+      "decision": "integration failure before metrics, not model rejection",
+      "failure": "build_reranker_examples called without required attribute_importance argument"
     }
   },
   "active_experiments": {
-    "contrastive_outer_cv_run": 31483288887,
-    "contrastive_status": "in_progress",
-    "rubert_teacher_outer_cv_run": 31485127564,
-    "rubert_teacher_status": "in_progress",
-    "sparse_specialists_run": 31485396599,
-    "sparse_specialists_status": "in_progress",
-    "explicit_attribute_specialists_run": 31485990777,
-    "explicit_attribute_specialists_status": "in_progress",
-    "field_aware_weak_teacher_run": 31486298300,
-    "field_aware_weak_teacher_status": "queued"
+    "explicit_attribute_specialists": {
+      "workflow_run_id": 31485990777,
+      "status": "in_progress"
+    },
+    "field_aware_weak_teacher": {
+      "workflow_run_id": 31486298300,
+      "status": "in_progress"
+    }
   },
   "stretch_target_development_oof_macro_average_precision": 0.6,
   "v5_submission_retained": false,
   "sealed_gold_evaluated": false,
-  "next_action": "Continue methodologically distinct leakage-safe development on the immutable five-fold split. Do not open sealed gold until a frozen candidate reaches the agreed stable development gate. Keep v2 as the production/leaderboard fallback until v5 passes the one-shot gold and runtime/package gates."
+  "next_action": "Continue leakage-safe development on the immutable split. Do not open sealed gold. Preserve v2 as production fallback until a frozen v5 candidate passes one-shot gold plus runtime/package gates."
 }
