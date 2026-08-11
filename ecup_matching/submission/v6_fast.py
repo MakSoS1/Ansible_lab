@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Iterator
+
+import numpy as np
 
 
 GIB = 1024**3
@@ -58,6 +60,55 @@ def batch_index_ranges(row_count: int, batch_size: int) -> Iterator[tuple[int, i
         raise ValueError("batch_size must be a positive integer")
     for start in range(0, row_count, batch_size):
         yield start, min(start + batch_size, row_count)
+
+
+def collect_chunked_scores(
+    *,
+    row_count: int,
+    chunk_size: int,
+    signal_names: Sequence[str],
+    score_chunk: Callable[[int, int], Mapping[str, object] | object],
+) -> dict[str, np.ndarray]:
+    """Collect aligned score vectors while bounding temporary pair-level state.
+
+    ``score_chunk`` receives half-open global row positions and must return one
+    finite one-dimensional vector per requested signal, with exactly
+    ``end-start`` values. A raw vector is accepted only when one signal is
+    requested. The returned arrays preserve the original global row order.
+    """
+    names = tuple(str(name) for name in signal_names)
+    if not names or any(not name for name in names) or len(set(names)) != len(names):
+        raise ValueError("signal_names must contain unique non-empty names")
+    buffers = {
+        name: np.empty(row_count, dtype=np.float64)
+        for name in names
+    }
+    for start, end in batch_index_ranges(row_count, chunk_size):
+        payload = score_chunk(start, end)
+        if isinstance(payload, Mapping):
+            missing = [name for name in names if name not in payload]
+            if missing:
+                raise ValueError(f"missing score signals: {missing}")
+            unexpected = [name for name in payload if name not in buffers]
+            if unexpected:
+                raise ValueError(f"unexpected score signals: {unexpected}")
+            chunk_scores = payload
+        elif len(names) == 1:
+            chunk_scores = {names[0]: payload}
+        else:
+            raise ValueError("score_chunk must return a mapping for multiple signals")
+
+        expected = end - start
+        for name in names:
+            values = np.asarray(chunk_scores[name], dtype=np.float64)
+            if values.ndim != 1 or len(values) != expected:
+                raise ValueError(
+                    f"score signal {name!r} must contain exactly {expected} values"
+                )
+            if not np.isfinite(values).all():
+                raise ValueError(f"score signal {name!r} must be finite")
+            buffers[name][start:end] = values
+    return buffers
 
 
 def move_token_batch(tokens: Mapping[str, Any], config: RuntimeConfig) -> dict[str, Any]:
