@@ -1,0 +1,171 @@
+name: E-CUP v5 pretrained biencoder
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ecup-matching-2026
+    paths:
+      - ".github/workflows/ecup-v5-pretrained-biencoder.yml"
+      - "ecup_matching/ml/run_v5_pretrained_biencoder.py"
+      - "ecup_matching/ml/v5_semantic_stack.py"
+      - "ecup_matching/ml/v5_embeddings.py"
+      - "ecup_matching/ml/v5_item_text.py"
+      - "ecup_matching/tests/test_v5_pretrained_biencoder.py"
+      - "ecup_matching/tests/test_v5_semantic_stack.py"
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  MODEL_ID: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  MODEL_REVISION: e8f8c21
+
+jobs:
+  pretrained-biencoder:
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ML dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            'numpy<3' 'pandas<3' 'pyarrow<24' 'scikit-learn<2' \
+            'huggingface_hub>=1.0,<2' 'torch>=2.3' \
+            'transformers>=4.45,<6' 'sentence-transformers>=3,<6' 'pytest>=8,<10'
+
+      - name: Verify MPS and v5 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import torch
+          print('torch', torch.__version__)
+          print('mps_available', torch.backends.mps.is_available())
+          assert torch.backends.mps.is_available(), 'macos-15 runner has no usable MPS device'
+          PY
+          python -m pytest \
+            ecup_matching/tests/test_v5_pretrained_biencoder.py \
+            ecup_matching/tests/test_v5_semantic_stack.py \
+            ecup_matching/tests/test_v5_embeddings.py \
+            ecup_matching/tests/test_v5_item_text.py -q
+
+      - name: Download authoritative data and sealed validation artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/v5-data" "${RUNNER_TEMP}/v5-private" "${RUNNER_TEMP}/v5-model"
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/v5-data/matches.parquet" \
+            "https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/v5-data/items_human.parquet" \
+            "https://storage.yandexcloud.net/ozon-ecup-2026/Matching/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download, snapshot_download
+
+          token = os.environ['HF_TOKEN']
+          repo = os.environ['HF_REPO_ID']
+          prefix = os.environ['VALIDATION_PREFIX']
+          private_dir = os.path.join(os.environ['RUNNER_TEMP'], 'v5-private')
+          for name in ('split-manifest.json', 'development-oof.parquet'):
+              hf_hub_download(
+                  repo_id=repo,
+                  repo_type='dataset',
+                  filename=f'{prefix}/{name}',
+                  token=token,
+                  local_dir=private_dir,
+              )
+          snapshot_download(
+              repo_id=os.environ['MODEL_ID'],
+              revision=os.environ['MODEL_REVISION'],
+              local_dir=os.path.join(os.environ['RUNNER_TEMP'], 'v5-model'),
+              allow_patterns=['*.json', '*.safetensors', '*.model', '*.txt'],
+          )
+          PY
+
+      - name: Evaluate pretrained item space on sealed development folds
+        shell: bash
+        env:
+          PYTORCH_ENABLE_MPS_FALLBACK: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/v5-pretrained"
+          python -m ecup_matching.ml.run_v5_pretrained_biencoder \
+            --items "${RUNNER_TEMP}/v5-data/items_human.parquet" \
+            --matches "${RUNNER_TEMP}/v5-data/matches.parquet" \
+            --manifest "${RUNNER_TEMP}/v5-private/${VALIDATION_PREFIX}/split-manifest.json" \
+            --base-oof "${RUNNER_TEMP}/v5-private/${VALIDATION_PREFIX}/development-oof.parquet" \
+            --model-dir "${RUNNER_TEMP}/v5-model" \
+            --output-dir "${RUNNER_TEMP}/v5-pretrained" \
+            --device mps \
+            --batch-size 192 \
+            --chunk-items 20000 \
+            --max-seq-length 96 \
+            --expected-split-sha "${SPLIT_SHA}"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'v5-pretrained' / 'v5c-pretrained-metrics.json'
+          m = json.loads(p.read_text())
+          assert m['gold_metric_opened'] is False
+          assert m['gold_rows_encoded'] == 0
+          assert m['gold_items_encoded'] == 0
+          print('semantic_cosine_macro_ap', m['semantic_cosine_macro_ap'])
+          print('base_oof_macro_ap', m['base_oof_macro_ap'])
+          print('stack_oof_macro_ap', m['stack_oof_macro_ap'])
+          print('delta_vs_base', m['delta_vs_base'])
+          print('encoded_items', m['development_items_encoded'])
+          print('encode_seconds', m['encode_seconds'])
+          PY
+
+      - name: Upload public-safe aggregate metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v5-pretrained-biencoder-metrics
+          path: ${{ runner.temp }}/v5-pretrained/v5c-pretrained-metrics.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Persist private OOF semantic evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          source = Path(os.environ['RUNNER_TEMP']) / 'v5-pretrained'
+          prefix = f"experiments/v5/pretrained/{os.environ['GITHUB_SHA'][:12]}"
+          for name in ('v5c-pretrained-metrics.json', 'v5c-pretrained-oof.parquet'):
+              api.upload_file(
+                  path_or_fileobj=str(source / name),
+                  path_in_repo=f'{prefix}/{name}',
+                  repo_id=os.environ['HF_REPO_ID'],
+                  repo_type='dataset',
+                  commit_message=f"Store v5 pretrained biencoder {os.environ['GITHUB_SHA'][:12]}",
+              )
+          print('private_prefix', prefix)
+          PY
+
+      - name: Clean runner competition data
+        if: always()
+        run: |
+          rm -rf "${RUNNER_TEMP}/v5-data" "${RUNNER_TEMP}/v5-private" \
+                 "${RUNNER_TEMP}/v5-model" "${RUNNER_TEMP}/v5-pretrained"
