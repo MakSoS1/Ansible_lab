@@ -77,8 +77,9 @@ def benchmark_v7_cuda(
         num_labels=1,
         ignore_mismatched_sizes=True,
     ).to("cuda")
-    if hasattr(model, "gradient_checkpointing_enable"):
-        model.gradient_checkpointing_enable()
+    # RTX 2060 profiling showed large VRAM headroom at batch32. The benchmark
+    # intentionally leaves gradient checkpointing disabled to measure whether
+    # recomputation is wasting more wall time than the saved memory is worth.
     configure_trainable_layers(model, last_n_layers=8)
 
     warm = frame.iloc[: min(len(frame), warmup_rows)].reset_index(drop=True)
@@ -110,7 +111,7 @@ def benchmark_v7_cuda(
         frame=frame,
         texts=texts,
         device="cuda",
-        phase="v7-benchmark-train-check",
+        phase="v7-benchmark-train-check-no-gradient-checkpointing",
         epochs=0.03,
         physical_batch_size=physical_batch_size,
         effective_batch_size=32,
@@ -130,6 +131,7 @@ def benchmark_v7_cuda(
         "cuda_device": torch.cuda.get_device_name(0),
         "cuda_capability": list(torch.cuda.get_device_capability(0)),
         "torch_version": str(torch.__version__),
+        "gradient_checkpointing": False,
         "max_length": int(max_length),
         "max_chars": int(max_chars),
         "physical_batch_size": int(physical_batch_size),
