@@ -6,7 +6,6 @@ import numpy as np
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 from .v5_fixed_blend import percentile_rank
-from .v5_meta_blend import rank_matrix
 
 
 NON_TEACHER_SIGNAL_NAMES = (
@@ -55,12 +54,30 @@ def _category_names(categories: np.ndarray) -> tuple[str, ...]:
     return names
 
 
+def _rank_non_teacher_matrix(scores: Mapping[str, object]) -> np.ndarray:
+    ordered = _ordered_non_teacher_scores(scores)
+    ranked: list[np.ndarray] = []
+    expected_length: int | None = None
+    for name in NON_TEACHER_SIGNAL_NAMES:
+        values = np.asarray(ordered[name], dtype=np.float64)
+        if values.ndim != 1 or len(values) == 0:
+            raise ValueError(f"{name} must be a non-empty one-dimensional score vector")
+        if not np.isfinite(values).all():
+            raise ValueError(f"{name} contains non-finite values")
+        if expected_length is None:
+            expected_length = len(values)
+        elif len(values) != expected_length:
+            raise ValueError("non-teacher signal lengths do not match")
+        ranked.append(percentile_rank(values))
+    return np.column_stack(ranked)
+
+
 def _design_matrix(
     non_teacher_scores: Mapping[str, object],
     categories: np.ndarray,
     category_names: tuple[str, ...],
 ) -> np.ndarray:
-    ranks = rank_matrix(_ordered_non_teacher_scores(non_teacher_scores))
+    ranks = _rank_non_teacher_matrix(non_teacher_scores)
     cat = np.asarray(categories).astype(str)
     if len(cat) != len(ranks):
         raise ValueError("categories must align with scores")
