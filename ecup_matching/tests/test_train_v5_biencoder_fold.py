@@ -1,6 +1,7 @@
 import numpy as np
 
 from ecup_matching.ml.train_v5_biencoder_fold import (
+    accumulation_should_step,
     contrastive_loss_numpy,
     trainable_layer_indices,
 )
@@ -28,3 +29,18 @@ def test_trainable_layer_indices_select_only_tail_layers():
             pass
         else:
             raise AssertionError("invalid layer request must fail")
+
+
+def test_gradient_accumulation_steps_only_on_boundaries_and_final_microbatch():
+    assert [
+        accumulation_should_step(i, accumulation_steps=4, is_last_microbatch=False)
+        for i in range(1, 9)
+    ] == [False, False, False, True, False, False, False, True]
+    assert accumulation_should_step(3, accumulation_steps=4, is_last_microbatch=True)
+    for bad in (0, -1):
+        try:
+            accumulation_should_step(1, accumulation_steps=bad, is_last_microbatch=False)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("non-positive accumulation_steps must fail")
