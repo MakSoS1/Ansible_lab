@@ -124,6 +124,20 @@ This candidate is **not yet the final artifact**. The final ZIP must be rebuilt 
 - do not tune post-result fusion weights on the same held labels without another nested layer;
 - do not use sealed gold to recover runtime-induced quality loss.
 
+## Runtime engineering, 2026-08-12
+
+Prediction-preserving only; strict OOF is unchanged at `0.6006003614522999`.
+
+| Structured path | us/pair | Note |
+|---|---:|---|
+| as submitted | `2210.1` | single-threaded, duplicated work |
+| shared difflib between passes | `1770.5` | bitwise identical |
+| + fork worker pool | `487.0` | bitwise identical |
+
+Projected structured phase on the organizer host: public `~254s -> ~22s` of
+`360s`, private `~608s -> ~44s` of `780s`. `select_items_by_ids` measured
+`13.5x` faster on a 2,000,000-row item file. See `DECISIONS.md` D034-D037.
+
 ## Next gate
 
-Rebuild the exact gate95 archive from a GREEN repository, publish immutable SHA/provenance, benchmark those exact bytes on `ecup-rtx2060` inside the organizer image including a full reference `matches.parquet` run, and retain it only if runtime fits while strict OOF remains `>= 0.6000`.
+Rebuild the exact gate95 archive from a GREEN repository with the parallel structured runtime, publish immutable SHA/provenance, benchmark those exact bytes on `ecup-rtx2060` inside the organizer image including a full reference `matches.parquet` run, and retain it only if runtime fits while strict OOF remains `>= 0.6000`.

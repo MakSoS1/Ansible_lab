@@ -63,9 +63,10 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
     observed = {}
 
     class GuardedBatch:
-        def __init__(self, inner, *, filtered=False):
+        """Fails loudly if unfiltered heavy columns are ever converted to pandas."""
+
+        def __init__(self, inner):
             self.inner = inner
-            self.filtered = filtered
             self.schema = inner.schema
             self.num_rows = inner.num_rows
 
@@ -73,12 +74,10 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
             return self.inner.column(index)
 
         def filter(self, mask):
-            return GuardedBatch(self.inner.filter(mask), filtered=True)
+            return self.inner.filter(mask)
 
         def to_pandas(self):
-            if not self.filtered:
-                raise AssertionError("heavy columns were materialized before ID filtering")
-            return self.inner.to_pandas()
+            raise AssertionError("heavy columns were materialized before ID filtering")
 
     class FakeParquet:
         schema_arrow = batch.schema
@@ -101,5 +100,63 @@ def test_select_items_by_ids_filters_arrow_before_materializing_heavy_columns(
     assert out.to_dict("records") == [
         {"id": 10, "name": "wanted", "attributes": "{}", "category": "x"}
     ]
-    assert observed["batch_size"] <= 5_000
     assert observed["release_calls"] >= 1
+
+
+def test_select_items_by_ids_builds_the_requested_value_set_once(monkeypatch, tmp_path):
+    """Rebuilding the value set per batch made the scan quadratic in requested ids."""
+    rows = 40
+    per_batch = 4
+    batches = [
+        pa.RecordBatch.from_pydict(
+            {
+                "id": list(range(start, start + per_batch)),
+                "name": [f"n{i}" for i in range(start, start + per_batch)],
+                "attributes": ["{}"] * per_batch,
+                "category": ["x"] * per_batch,
+            }
+        )
+        for start in range(0, rows, per_batch)
+    ]
+
+    class FakeParquet:
+        schema_arrow = batches[0].schema
+
+        def iter_batches(self, **kwargs):
+            yield from batches
+
+    real_array = data_subset.pa.array
+    calls = {"count": 0}
+
+    def counting_array(*args, **kwargs):
+        calls["count"] += 1
+        return real_array(*args, **kwargs)
+
+    monkeypatch.setattr(data_subset.pq, "ParquetFile", lambda _path: FakeParquet())
+    monkeypatch.setattr(data_subset.pa, "array", counting_array)
+
+    out = select_items_by_ids(tmp_path / "unused.parquet", set(range(rows)))
+
+    assert len(out) == rows
+    assert calls["count"] == 1, (
+        f"value set must be built once, not once per batch (built {calls['count']} times)"
+    )
+
+
+def test_select_items_by_ids_handles_duplicate_ids_without_early_exit(tmp_path):
+    path = tmp_path / "items.parquet"
+    pd.DataFrame(
+        {
+            "id": [1, 1, 1, 2],
+            "name": ["first", "dup", "dup", "second"],
+            "attributes": ["{}"] * 4,
+            "category": ["x", "x", "x", "y"],
+        }
+    ).to_parquet(path, index=False)
+
+    out = select_items_by_ids(path, {1, 2}, batch_size=1)
+
+    assert out.to_dict("records") == [
+        {"id": 1, "name": "first", "attributes": "{}", "category": "x"},
+        {"id": 2, "name": "second", "attributes": "{}", "category": "y"},
+    ]

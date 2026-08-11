@@ -51,7 +51,13 @@
     "sdpa_when_supported": true,
     "mixed_precision": false,
     "rtx_2060_super_default_contrastive_batch": 256,
-    "rtx_2060_super_default_teacher_batch": 96
+    "rtx_2060_super_default_teacher_batch": 96,
+    "structured_chunk_size": 10000,
+    "structured_chunk_parallelism": "fork worker pool, unchanged chunk boundaries, serial fallback",
+    "shared_difflib_between_legacy_and_typed_passes": true,
+    "shared_item_norm_between_contrastive_and_teacher_text_caches": true,
+    "single_pass_item_parquet_selection": true,
+    "cuda_probe_deferred_until_after_fork": true
   },
   "latest_packaging_evidence": {
     "workflow_run_id": 31535674086,
@@ -79,5 +85,17 @@
   },
   "sealed_gold_evaluated": false,
   "leaderboard_result_known": false,
-  "next_action": "Make repository policy GREEN, rebuild and publish the exact gate95 ZIP, benchmark those exact bytes on ecup-rtx2060 in the organizer image including a full reference run, then retain the archive only if strict OOF remains >=0.6000 and measured runtime fits the execution budget. Keep sealed gold unopened."
+  "next_action": "Rebuild the v6 gate95 ZIP with the parallel structured runtime, confirm the exact organizer-image offline smoke, then benchmark those exact bytes on ecup-rtx2060 with a full reference matches.parquet run and capture per-phase timings. Predictions are unchanged by the runtime work, so strict OOF stays 0.6006003614522999; only measured wall time is new evidence. Keep sealed gold unopened.",
+  "measured_runtime_profile": {
+    "source": "local CPU profile of the real structured path on synthetic Ozon-shaped data",
+    "structured_us_per_pair_before": 2210.1,
+    "structured_us_per_pair_after": 487.0,
+    "speedup": 4.54,
+    "bitwise_identical_to_serial": true,
+    "projected_structured_seconds_private_before": 607.8,
+    "projected_structured_seconds_private_after": 44.3,
+    "private_time_budget_seconds": 780,
+    "public_time_budget_seconds": 360,
+    "gpu_full_run_verified": false
+  }
 }

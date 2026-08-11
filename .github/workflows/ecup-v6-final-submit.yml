@@ -3,13 +3,19 @@ name: E-CUP v6 fast gate95 final submit
 on:
   push:
     branches: [ecup-v6-fast]
+    # Must cover every module in the runtime import closure; see
+    # ecup_matching/ci/runtime_closure.py and test_v6_package_closure.py.
     paths:
       - .github/workflows/ecup-v6-final-submit.yml
+      - ecup_matching/ci/runtime_closure.py
+      - ecup_matching/ml/data_subset.py
       - ecup_matching/ml/run_v6_gate_production.py
       - ecup_matching/ml/v6_teacher_gate.py
+      - ecup_matching/submission/predict_v5.py
       - ecup_matching/submission/predict_v6.py
       - ecup_matching/submission/run_v6.py
       - ecup_matching/submission/v6_fast.py
+      - ecup_matching/submission/v6_parallel.py
   workflow_dispatch:
 
 permissions:
@@ -147,21 +153,18 @@ jobs:
           test -d "$RUNNER_TEMP/submission/model_v5_contrastive"
           test -d "$RUNNER_TEMP/submission/model_v5_teacher"
           mkdir -p "$RUNNER_TEMP/submission/ecup_matching/ml" "$RUNNER_TEMP/submission/ecup_matching/submission"
-          cp ecup_matching/ml/v5_fixed_blend.py "$RUNNER_TEMP/submission/ecup_matching/ml/v5_fixed_blend.py"
-          cp ecup_matching/ml/v5_meta_blend.py "$RUNNER_TEMP/submission/ecup_matching/ml/v5_meta_blend.py"
-          cp ecup_matching/ml/v5_production.py "$RUNNER_TEMP/submission/ecup_matching/ml/v5_production.py"
-          cp ecup_matching/ml/v6_teacher_gate.py "$RUNNER_TEMP/submission/ecup_matching/ml/v6_teacher_gate.py"
-          cp ecup_matching/submission/v6_fast.py "$RUNNER_TEMP/submission/ecup_matching/submission/v6_fast.py"
-          cp ecup_matching/submission/predict_v6.py "$RUNNER_TEMP/submission/ecup_matching/submission/predict_v6.py"
+          # Copy the entire first-party import closure of the v6 entrypoint rather
+          # than a hand-maintained list. A module that is imported but missing —
+          # or silently left at its stale v5-base version — only fails offline at
+          # inference time, which costs a full submission attempt.
+          python -m ecup_matching.ci.runtime_closure --copy-into "$RUNNER_TEMP/submission"
           cp ecup_matching/submission/run_v6.py "$RUNNER_TEMP/submission/run.py"
           cp "$RUNNER_TEMP/final/model_v6_category_shrunk.json" "$RUNNER_TEMP/submission/model_v6_category_shrunk.json"
           cp "$RUNNER_TEMP/final/model_v6_hgb_meta.joblib" "$RUNNER_TEMP/submission/model_v6_hgb_meta.joblib"
           cp "$RUNNER_TEMP/final/model_v6_gate_metadata.json" "$RUNNER_TEMP/submission/model_v6_gate_metadata.json"
-          python -m py_compile \
-            "$RUNNER_TEMP/submission/run.py" \
-            "$RUNNER_TEMP/submission/ecup_matching/ml/v6_teacher_gate.py" \
-            "$RUNNER_TEMP/submission/ecup_matching/submission/v6_fast.py" \
-            "$RUNNER_TEMP/submission/ecup_matching/submission/predict_v6.py"
+          python -m ecup_matching.ci.runtime_closure --verify "$RUNNER_TEMP/submission"
+          python -m compileall -q "$RUNNER_TEMP/submission/run.py" \
+            "$RUNNER_TEMP/submission/ecup_matching"
           cd "$RUNNER_TEMP/submission"
           zip -qr "$RUNNER_TEMP/final/$FINAL_NAME" .
           cd - >/dev/null

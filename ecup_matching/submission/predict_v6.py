@@ -29,6 +29,11 @@ from ecup_matching.submission.v6_fast import (
     collect_chunked_scores,
     select_runtime_config,
 )
+from ecup_matching.submission.v6_parallel import (
+    parallel_supported,
+    resolve_worker_count,
+    run_structured_chunks,
+)
 
 
 STRUCTURED_CHUNK_SIZE = 10_000
@@ -146,8 +151,13 @@ def _structured_scores_streaming(
     legacy_features_v2,
     legacy_sparse,
     chunk_size: int = STRUCTURED_CHUNK_SIZE,
+    workers: int | None = None,
 ) -> dict[str, np.ndarray]:
-    """Score structured models with pair/item state bounded to one chunk."""
+    """Score structured models with pair/item state bounded to one chunk.
+
+    Chunk boundaries are unchanged from the serial implementation, so running
+    the chunks across worker processes cannot alter any pair's features.
+    """
     item_index = items.set_index("id", drop=False)
     total_rows = len(pairs)
 
@@ -209,10 +219,6 @@ def _structured_scores_streaming(
         del typed_cache, typed_leaf_cache, typed_base, chunk_items, chunk
         gc.collect()
 
-        print(
-            f"[v6] structured rows {end:,}/{total_rows:,} chunk={end-start:,}",
-            flush=True,
-        )
         return {
             "weak": weak,
             "sparse": sparse,
@@ -220,11 +226,16 @@ def _structured_scores_streaming(
             "typed_explicit": typed_explicit,
         }
 
-    result = collect_chunked_scores(
+    def report(done: int, total: int) -> None:
+        print(f"[v6] structured rows {done:,}/{total:,}", flush=True)
+
+    result = run_structured_chunks(
         row_count=total_rows,
         chunk_size=int(chunk_size),
         signal_names=STRUCTURED_SIGNAL_NAMES,
         score_chunk=score_chunk,
+        workers=workers,
+        progress=report,
     )
     del item_index
     gc.collect()
@@ -237,6 +248,7 @@ def _contrastive_scores_fast(
     model_dir: Path,
     legacy_textnorm,
     legacy_item_text,
+    norm_cache: dict[object, object] | None = None,
 ) -> np.ndarray:
     import torch
     from transformers import AutoModel, AutoTokenizer
@@ -244,7 +256,9 @@ def _contrastive_scores_fast(
     config = _runtime_config()
     device = config.device
     active_batch = int(config.contrastive_batch)
-    texts = _legacy_text_cache(items, legacy_textnorm, legacy_item_text, teacher=False)
+    texts = _legacy_text_cache(
+        items, legacy_textnorm, legacy_item_text, teacher=False, norm_cache=norm_cache
+    )
     unique_ids = pd.unique(pd.concat([pairs["id1"], pairs["id2"]], ignore_index=True)).tolist()
     ordered_ids = sorted(unique_ids, key=lambda item_id: (len(texts[item_id]), str(item_id)))
     tokenizer = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True)
@@ -306,6 +320,7 @@ def _teacher_selected_scores_fast(
     model_dir: Path,
     legacy_textnorm,
     legacy_item_text,
+    norm_cache: dict[object, object] | None = None,
 ) -> np.ndarray:
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -319,7 +334,9 @@ def _teacher_selected_scores_fast(
     config = _runtime_config()
     device = config.device
     active_batch = int(config.teacher_batch)
-    texts = _legacy_text_cache(items, legacy_textnorm, legacy_item_text, teacher=True)
+    texts = _legacy_text_cache(
+        items, legacy_textnorm, legacy_item_text, teacher=True, norm_cache=norm_cache
+    )
     left_all = pairs["id1"].to_numpy()
     right_all = pairs["id2"].to_numpy()
     selected_left = left_all[selected_indices]
@@ -410,11 +427,14 @@ def predict_to_csv_v6(
     legacy_features, legacy_features_v2, legacy_textnorm, legacy_item_text, legacy_sparse = (
         _load_legacy_modules(runtime_root)
     )
-    config = _runtime_config()
+    # The CUDA probe is deliberately deferred until after the structured phase.
+    # Initializing a CUDA context before forking the structured worker pool
+    # leaves each child holding an inherited context it must never touch.
+    structured_workers = resolve_worker_count()
     print(
         f"[v6] pairs={len(pairs):,} items={len(items):,} coverage={coverage:.2f} "
-        f"device={config.device} contrastive_batch={config.contrastive_batch} "
-        f"teacher_batch={config.teacher_batch} structured_chunk={STRUCTURED_CHUNK_SIZE}",
+        f"structured_chunk={STRUCTURED_CHUNK_SIZE} structured_workers={structured_workers} "
+        f"structured_parallel={parallel_supported()}",
         flush=True,
     )
     previous = _phase("load", started, previous)
@@ -427,6 +447,7 @@ def predict_to_csv_v6(
         legacy_features_v2=legacy_features_v2,
         legacy_sparse=legacy_sparse,
         chunk_size=STRUCTURED_CHUNK_SIZE,
+        workers=structured_workers,
     )
     weak = structured_scores["weak"]
     sparse = structured_scores["sparse"]
@@ -436,8 +457,21 @@ def predict_to_csv_v6(
     gc.collect()
     previous = _phase("structured", started, previous)
 
+    config = _runtime_config()
+    print(
+        f"[v6] device={config.device} contrastive_batch={config.contrastive_batch} "
+        f"teacher_batch={config.teacher_batch}",
+        flush=True,
+    )
+
+    item_norm_cache: dict[object, object] = {}
     contrastive = _contrastive_scores_fast(
-        items, pairs, contrastive_model_dir, legacy_textnorm, legacy_item_text
+        items,
+        pairs,
+        contrastive_model_dir,
+        legacy_textnorm,
+        legacy_item_text,
+        norm_cache=item_norm_cache,
     )
     previous = _phase("contrastive", started, previous)
 
@@ -465,7 +499,10 @@ def predict_to_csv_v6(
         teacher_model_dir,
         legacy_textnorm,
         legacy_item_text,
+        norm_cache=item_norm_cache,
     )
+    del item_norm_cache
+    gc.collect()
     teacher_signal, verified_mask = assemble_partial_teacher_signal(
         non_teacher,
         categories,

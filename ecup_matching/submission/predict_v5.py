@@ -60,13 +60,31 @@ def _mean_pool(last_hidden_state, attention_mask):
     return torch.nn.functional.normalize(summed / denom, p=2, dim=1)
 
 
-def _legacy_text_cache(items: pd.DataFrame, legacy_textnorm, legacy_item_text, *, teacher: bool) -> dict[object, str]:
+def _legacy_text_cache(
+    items: pd.DataFrame,
+    legacy_textnorm,
+    legacy_item_text,
+    *,
+    teacher: bool,
+    norm_cache: dict[object, object] | None = None,
+) -> dict[object, str]:
+    """Serialize items for one neural model.
+
+    The contrastive and teacher caches differ only in ``max_chars`` and the
+    category prefix; ``normalize_item`` returns the same ``ItemNorm`` for both.
+    Passing a shared ``norm_cache`` across the two calls avoids normalizing
+    every item a second time, which is pure Python and scales with item count.
+    """
     result: dict[object, str] = {}
     max_chars = 850 if teacher else 700
     for item_id, name, attributes, category in items[
         ["id", "name", "attributes", "category"]
     ].itertuples(index=False, name=None):
-        norm = legacy_textnorm.normalize_item(item_id, name, attributes, category)
+        norm = None if norm_cache is None else norm_cache.get(item_id)
+        if norm is None:
+            norm = legacy_textnorm.normalize_item(item_id, name, attributes, category)
+            if norm_cache is not None:
+                norm_cache[item_id] = norm
         body = legacy_item_text.serialize_item_v5(norm, max_chars=max_chars)
         result[item_id] = f"[CAT] {norm.category}\n{body}" if teacher else body
     return result

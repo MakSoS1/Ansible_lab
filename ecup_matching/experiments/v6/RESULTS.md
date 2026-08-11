@@ -107,7 +107,10 @@ Implemented changes:
 - CUDA OOM fallback halves batches safely;
 - non-blocking CUDA transfers;
 - PyTorch SDPA is requested where supported, with eager fallback;
-- structured feature chunk size is `50,000`;
+- structured feature chunk size is `10,000` (pinned by test; see chunk-size note below);
+- structured chunks are scored across worker processes inherited by `fork`;
+- `difflib` ratios are shared between the legacy and typed structured passes;
+- the contrastive and teacher text caches share one `ItemNorm` pass;
 - phase-level runtime telemetry is emitted for load, structured, contrastive, gate, teacher, meta and write stages;
 - no network is required at inference.
 
@@ -173,3 +176,89 @@ Public leaderboard AP: unknown.
 Private leaderboard AP: unknown.
 
 Local OOF must remain separate from leaderboard evidence.
+
+## Measured runtime root cause (2026-08-12)
+
+The platform rejected submissions with a timeout. Until now the only runtime
+evidence was a 64-row CPU smoke, whose 24.14s is almost entirely fixed
+overhead and therefore says nothing about per-pair cost. Profiling the real
+structured path at scale identified the cause.
+
+Host: 10-core Apple Silicon, synthetic Ozon-shaped items (mean name length
+61 chars, 10 attribute keys), real feature builders and real fitted
+estimators, 90,000 pairs / 125,999 items, production `chunk_size=10_000`.
+
+| Structured path | Total | Per pair |
+|---|---:|---:|
+| as submitted (serial, no shared fuzzy cache) | `198.91s` | `2210.1us` |
+| + shared fuzzy cache | `159.34s` | `1770.5us` |
+| + 9 worker processes | `43.83s` | `487.0us` |
+
+All three produce **bitwise identical** score vectors for all four structured
+signals.
+
+Projected onto the organizer host (20 cores, 19 workers, 80% efficiency,
+`10_000`-pair chunks):
+
+| Test set | Pairs | Budget | Structured before | Structured after |
+|---|---:|---:|---:|---:|
+| public | `115,000` | `360s` | `~254s` | `~22s` |
+| private | `275,000` | `780s` | `~608s` | `~44s` |
+
+The structured phase alone consumed roughly `71%` of the public budget and
+`78%` of the private budget, single-threaded, before load, neural inference,
+meta and write. That is the timeout. Nothing about the model was at fault:
+the pipeline used one of twenty available CPU cores and recomputed the same
+values several times.
+
+### Prediction-preserving changes
+
+1. **Shared `difflib` results across the legacy and typed passes.**
+   `features.py` and `features_v2.py` are byte-identical between legacy pin
+   `cb350b4e7ba6` and HEAD, and `textnorm` differs only in
+   `extract_model_codes` and `extract_quantities`. Neither touches
+   `ItemNorm.name` or `ItemNorm.name_tokens`, so both passes called
+   `_ratio`/`_partial_ratio` with the same strings and recomputed all eight
+   SequenceMatcher results per pair. The memo keys on the argument strings and
+   on an implementation fingerprint, so a future legacy pin that changes
+   `_ratio` stops sharing instead of returning the wrong value.
+2. **Parallel structured chunks.** Chunk boundaries are unchanged; each chunk
+   was already a pure function of its own pairs and `collect_chunked_scores`
+   already reassembled by global offset. Workers inherit the loaded models
+   through `fork`, so nothing large is pickled. Falls back to the serial path
+   when fork is unavailable or the container refuses extra processes.
+3. **Single-pass item selection.** `select_items_by_ids` rebuilt the requested
+   Arrow value set on every record batch, making the scan quadratic in the
+   number of requested ids. Measured `13.5x` faster on a 2,000,000-row item
+   file selecting 200,000 ids.
+4. **Shared `ItemNorm` between the contrastive and teacher text caches.** The
+   two caches differ only in `max_chars` and the category prefix, but each
+   normalized every item from scratch.
+
+### Chunk size is not a free parameter
+
+`predict_proba` runs float32 GEMM whose accumulation order depends on the row
+count of the call, so changing `STRUCTURED_CHUNK_SIZE` shifts scores by a few
+ULPs (observed `~3e-8`). Harmless for ranking, but it breaks byte-reproducible
+packaging, so `10_000` is pinned by test and parallelism was implemented at
+unchanged boundaries rather than by re-chunking.
+
+### Batch dependence of the rank fusion
+
+The final score is `0.5*percentile_rank(category_shrunk) + 0.5*percentile_rank(hgb)`
+with ranks over the whole scored batch. Validation ranks over all `285,210`
+development rows at once; the platform ranks over `~115,000` public rows and
+`~275,000` private rows in separate runs, so the same pair can be ordered
+differently. Simulated over 8 seeds with 20 categories of varying prevalence
+and separability, holding rows, labels and raw signals fixed and changing only
+what the rank transform saw:
+
+| Fusion | Worst \|delta macro AP\| |
+|---|---:|
+| global percentile rank (current) | `0.000257` |
+| per-category percentile rank | `0.002812` |
+
+Per-category ranking is **worse**, because small per-category batches quantize
+the rank transform. Do not "fix" the global rank fusion. Treat `~+/-0.0003` as
+an irreducible local-to-leaderboard wobble, which matters because the retained
+margin over `0.6000` is `0.0006`.

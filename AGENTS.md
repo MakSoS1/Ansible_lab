@@ -19,6 +19,7 @@ Solve ODS E-CUP 2026 product matching with honest unseen-product validation. Off
 - v6 hard rule: first require strict OOF `>= 0.6000`, then minimize measured end-to-end inference runtime.
 - Current v6 candidate: target-free 95% pair-teacher disagreement gate + category-shrunk/HGB meta.
 - Current v6 strict OOF: `0.6006003614522999`.
+- Platform submissions were rejected on the time limit, never scored. Root cause found and fixed: the structured phase ran on one of twenty CPU cores and alone projected to `~608s` of the `780s` private budget. Now `~44s`, with bitwise identical predictions.
 - Actual development teacher fraction: `0.9500262964131693`.
 - Lower-cost candidates tested so far did not clear `0.6000`; do not silently replace gate95 with them.
 - Exact organizer-image 64-row offline/read-only smoke for the current runtime path has passed.
@@ -66,6 +67,11 @@ Target-free percentile-rank disagreement among these signals selects the highest
 
 Current FP32 implementation uses semantic-preserving speedups first:
 
+- score structured chunks across a `fork` worker pool at unchanged chunk boundaries;
+- share `difflib` ratio results between the legacy and typed structured passes;
+- share one `ItemNorm` pass between the contrastive and teacher text caches;
+- single-pass `select_items_by_ids`;
+- probe CUDA only after the structured pool has finished;
 - length-bucket contrastive item texts;
 - length-bucket selected teacher pairs;
 - VRAM-aware CUDA batches; 8 GiB default `256` contrastive / `96` teacher;
@@ -76,6 +82,14 @@ Current FP32 implementation uses semantic-preserving speedups first:
 - phase telemetry for load, structured, contrastive, gate, teacher, meta and write.
 
 Do not enable mixed precision, quantization, shorter max lengths or a materially different model merely because it is faster unless its resulting predictions are separately validated against the strict `>=0.6000` gate.
+
+Runtime work that does not change predictions must prove it: assert bitwise equality against the previous path on the real `_structured_scores_streaming`, not on a stand-in.
+
+`STRUCTURED_CHUNK_SIZE` is pinned at `10_000`. Float32 GEMM batching in `predict_proba` makes chunk size perturb scores, so parallelism distributes existing chunks and never re-chunks.
+
+A fixed-overhead smoke is not runtime evidence. The 64-row CPU smoke reported `24.14s` of almost pure model loading and could not have revealed a per-pair cost problem. Any runtime claim needs a run within an order of magnitude of the private pair count.
+
+The submission file list is derived from the import graph by `ecup_matching/ci/runtime_closure.py`. Never hand-maintain it: a module the base archive ships and this iteration changed will otherwise be packaged stale and silently produce unvalidated predictions.
 
 ## Retained / rejected runtime evidence
 

@@ -1,6 +1,6 @@
 # E-CUP Matching — Canonical Project State
 
-Updated: 2026-08-11
+Updated: 2026-08-12
 Current iteration: **v6**
 
 ## Objective
@@ -26,7 +26,8 @@ The v6 decision rule is Pareto-ordered:
 - The candidate ZIP from that pre-policy run was `1,143,630,143` bytes with SHA-256 `20c5f128e43c5303893301f012726381df06a4e20d027ea054acf36e0f6aae40`, but it is **not retained as final** because the full repository gate was not GREEN.
 - Exact rebuilt v6 ZIP + RTX 2060 full-run benchmark: **pending**.
 - Sealed gold: **unopened**, `0` rows scored.
-- Public/private leaderboard score: **unknown**.
+- Public/private leaderboard score: **unknown**. Submission attempts so far were rejected on the platform time limit, not scored.
+- Root cause of those timeouts is identified and fixed: the structured phase ran single-threaded and projected to `~254s` of the `360s` public budget and `~608s` of the `780s` private budget on its own. It is now `~22s` and `~44s`, with bitwise identical predictions.
 
 Do not report the v5 or v6 local OOF number as a Public/Private leaderboard result.
 
@@ -107,7 +108,11 @@ The quality margin above `0.6000` is small, so current production inference deli
 - CUDA OOM batch-halving fallback;
 - non-blocking CUDA transfers;
 - SDPA requested where supported, eager fallback otherwise;
-- structured feature chunking at `50,000`;
+- structured feature chunking pinned at `10,000`, scored across `fork` worker processes at unchanged chunk boundaries;
+- `difflib` ratios shared between the legacy and typed structured passes;
+- one shared `ItemNorm` pass behind the contrastive and teacher text caches;
+- single-pass `select_items_by_ids`;
+- CUDA probed only after the structured pool is done, so no worker inherits a CUDA context;
 - offline/local-files-only inference;
 - phase telemetry for load, structured, contrastive, gate, teacher, meta and write.
 
@@ -138,6 +143,9 @@ Because the repository gate was not GREEN, that archive was not uploaded as fina
 - Direct attribute score shifts failed while explicit per-key estimator features were useful; do not conflate them.
 - Pretrained-only embeddings were weak; supervised contrastive was the useful neural signal.
 - Any mixed-precision/quantized path that can alter ordering requires its own honest quality verification before replacing the FP32 candidate.
+- A fixed-overhead smoke is not runtime evidence. The 64-row CPU smoke could not reveal a per-pair cost problem; only a run within an order of magnitude of the private pair count can.
+- The submission file list must be derived from the import graph, never hand-maintained: a stale module copied from the base archive changes predictions silently.
+- Structured chunk size is not a free parameter; float32 GEMM batching makes it perturb scores.
 
 ## Current files to read
 

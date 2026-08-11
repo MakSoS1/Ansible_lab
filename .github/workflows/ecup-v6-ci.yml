@@ -5,12 +5,21 @@ on:
     branches: [ecup-v6-fast]
     paths:
       - .github/workflows/ecup-v6-ci.yml
-      - ecup_matching/submission/v6_fast.py
-      - ecup_matching/submission/predict_v5.py
+      - ecup_matching/ci/runtime_closure.py
+      - ecup_matching/ml/data_subset.py
       - ecup_matching/ml/v6_fast_ablation.py
-      - ecup_matching/tests/test_v6_fast_inference.py
-      - ecup_matching/tests/test_v6_fast_ablation.py
+      - ecup_matching/submission/predict_v5.py
+      - ecup_matching/submission/predict_v6.py
+      - ecup_matching/submission/v6_fast.py
+      - ecup_matching/submission/v6_parallel.py
+      - ecup_matching/tests/test_data_subset.py
       - ecup_matching/tests/test_v5_production.py
+      - ecup_matching/tests/test_v6_fast_ablation.py
+      - ecup_matching/tests/test_v6_fast_inference.py
+      - ecup_matching/tests/test_v6_package_closure.py
+      - ecup_matching/tests/test_v6_parallel_structured.py
+      - ecup_matching/tests/test_v6_shared_norm_cache.py
+      - ecup_matching/tests/test_v6_structured_parallel_identity.py
   workflow_dispatch:
 
 permissions:
@@ -30,4 +39,25 @@ jobs:
       - name: Install CI dependencies
         run: python -m pip install -r ecup_matching/requirements-ci.txt
       - name: Run v6 fast tests
-        run: python -m pytest ecup_matching/tests/test_v6_fast_inference.py ecup_matching/tests/test_v6_fast_ablation.py ecup_matching/tests/test_v5_production.py -q
+        run: |
+          python -m pytest -q \
+            ecup_matching/tests/test_v6_fast_inference.py \
+            ecup_matching/tests/test_v6_fast_ablation.py \
+            ecup_matching/tests/test_v5_production.py
+      - name: Run v6 runtime identity and packaging tests
+        # Linux is where the structured pool actually forks in production, so the
+        # bitwise-identity assertions must run here and not only on a dev machine.
+        run: |
+          python -m pytest -q \
+            ecup_matching/tests/test_data_subset.py \
+            ecup_matching/tests/test_v6_parallel_structured.py \
+            ecup_matching/tests/test_v6_structured_parallel_identity.py \
+            ecup_matching/tests/test_v6_shared_norm_cache.py \
+            ecup_matching/tests/test_v6_package_closure.py
+      - name: Report the structured worker count this runner would use
+        run: |
+          python - <<'PY'
+          import os
+          from ecup_matching.submission.v6_parallel import parallel_supported, resolve_worker_count
+          print(f"cpu_count={os.cpu_count()} parallel={parallel_supported()} workers={resolve_worker_count()}")
+          PY

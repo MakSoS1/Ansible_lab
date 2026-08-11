@@ -19,5 +19,27 @@
   "private_evidence_prefix": "experiments/v6/teacher-gate/95/fb15ec43a90c",
   "leaderboard_public_macro_ap": null,
   "leaderboard_private_macro_ap": null,
-  "runtime_verification": null
+  "runtime_verification": {
+    "status": "cpu_profiled_not_yet_gpu_verified",
+    "root_cause": "single-threaded pure-Python structured phase consumed ~71% of the public and ~78% of the private time budget before load, neural, meta and write",
+    "profile_host": "10-core Apple Silicon, synthetic Ozon-shaped items, real feature builders and fitted estimators",
+    "profile_pairs": 90000,
+    "profile_items": 125999,
+    "structured_chunk_size": 10000,
+    "structured_us_per_pair_before": 2210.1,
+    "structured_us_per_pair_shared_fuzzy_only": 1770.5,
+    "structured_us_per_pair_nine_workers": 487.0,
+    "bitwise_identical_to_serial": true,
+    "projected_structured_seconds_public_before": 254.2,
+    "projected_structured_seconds_public_after": 22.1,
+    "projected_structured_seconds_private_before": 607.8,
+    "projected_structured_seconds_private_after": 44.3,
+    "item_selection_speedup_on_2m_row_items_file": 13.5,
+    "chunk_size_is_pinned": true,
+    "chunk_size_perturbation_if_changed": 3e-08,
+    "rank_fusion_batch_dependence_worst_macro_ap_global": 0.000257,
+    "rank_fusion_batch_dependence_worst_macro_ap_per_category": 0.002812,
+    "predictions_changed": false,
+    "gpu_full_run_verified": false
+  }
 }

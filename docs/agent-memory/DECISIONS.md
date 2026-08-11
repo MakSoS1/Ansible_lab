@@ -173,3 +173,35 @@
 **Runtime evidence:** exact organizer image `odsai/ecup26-matching-baseline:1.0`; CI and organizer sklearn both `1.9.0`; HGB joblib loaded inside organizer image; full offline `run.py` smoke with `--network none` and read-only filesystem passed; output schema/row count/finite nonconstant predictions passed; full repository suite after smoke `230 passed, 1 warning`.
 
 **Consequence:** v2 is only historical hidden evidence, not current production best. The retained v5 fallbacks are category-shrunk `0.6009542418` and six-signal `0.5975445721`. Public/private leaderboard AP remains unknown until platform submission and must be stored separately from strict local OOF.
+
+## D034 — The submission timeout was a CPU-utilization bug, not a model problem
+
+**Decision:** Treat the platform timeouts as an inference-engineering defect and fix them with prediction-preserving changes. Do not trade quality for speed until measured runtime says it is necessary.
+
+**Evidence:** profiling the real structured path on 90,000 synthetic Ozon-shaped pairs showed `2210.1us` per pair, single-threaded. Projected onto the organizer host that is `~254s` of the `360s` public budget and `~608s` of the `780s` private budget, for the structured phase alone, before load, neural inference, meta and write. The solution used one of twenty available CPU cores.
+
+**What changed:** shared `difflib` results between the legacy and typed passes; structured chunks scored in a `fork` worker pool at unchanged chunk boundaries; single-pass `select_items_by_ids`; one shared `ItemNorm` pass behind the contrastive and teacher text caches. Result `487.0us` per pair, `4.54x` on a 10-core host, projected `~22s` public and `~44s` private.
+
+**Safety:** all three paths produce bitwise identical score vectors for all four structured signals, asserted by tests that drive the real `_structured_scores_streaming`. Strict OOF therefore remains `0.6006003614522999` by construction, not by re-measurement.
+
+**Binding lesson:** a fixed-overhead smoke is not runtime evidence. The 64-row CPU smoke reported `24.14s`, of which almost everything was model loading; it could not have revealed a per-pair cost problem. Any future runtime claim must come from a run whose pair count is within an order of magnitude of the private test set.
+
+## D035 — Structured chunk size is pinned, and parallelism must not change it
+
+**Decision:** `STRUCTURED_CHUNK_SIZE` stays at `10_000`. Parallelism is implemented by distributing the existing chunks, never by re-chunking.
+
+**Evidence:** `predict_proba` runs float32 GEMM whose accumulation order depends on the row count of the call. Rescoring the same pairs with a different chunk size moved scores by `~3e-8`. Irrelevant to ranking, but it breaks byte-reproducible packaging and would silently invalidate a hash-verified archive. A test pins the constant and a second test asserts the perturbation stays within float32 noise.
+
+## D036 — Do not replace the global percentile-rank fusion with per-category ranking
+
+**Decision:** Keep `0.5*percentile_rank(category_shrunk) + 0.5*percentile_rank(hgb)` with ranks over the entire scored batch.
+
+**Evidence:** the fusion is batch-dependent, because validation ranks over all `285,210` development rows at once while the platform ranks `~115,000` public and `~275,000` private rows in separate runs. Simulating that over 8 seeds with 20 categories of varying prevalence and separability, holding rows, labels and raw signals fixed: worst `|delta macro AP|` is `0.000257` for global ranking and `0.002812` for per-category ranking. Per-category ranking is worse because small per-category batches quantize the transform.
+
+**Consequence:** roughly `+/-0.0003` of local-to-leaderboard wobble is irreducible under this architecture. The retained v6 margin over `0.6000` is `0.0006`, so a public score slightly below `0.6000` is consistent with an honest local `0.6006` and is not by itself evidence of a broken pipeline.
+
+## D037 — The submission archive file list is derived from the import graph
+
+**Decision:** `ecup_matching/ci/runtime_closure.py` computes the first-party import closure of the v6 entrypoint; the final-submit workflow copies and then verifies that closure instead of a hand-maintained `cp` list.
+
+**Evidence:** the manual list in `ecup-v6-final-submit.yml` did not include the new `v6_parallel.py`, and also did not overwrite `data_subset.py` or `predict_v5.py`, both of which the v5 base archive ships and both of which this iteration changed. The first failure mode is a `ModuleNotFoundError` on the platform; the second is worse, because the archive would silently run stale v5 code and produce different predictions than the ones validated. Tests assert the closure is complete, that the workflow uses the derived list, and that no training-only module is reachable from the runtime entrypoint.
