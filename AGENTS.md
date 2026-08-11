@@ -11,18 +11,19 @@ We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product
 - Branch: `ecup-matching-2026`; **do not modify or merge `main`** unless the user explicitly asks.
 - Private data/artifact repo: `Maksim123321/e-cup-2026-matching-private`.
 - Dataset mirrored: `matches.parquet`, `matches_llm.parquet`, `items.parquet`, `items_human.parquet` plus official baseline ZIPs.
-- Current completed experiment and best offline model: **v2 / `v2b-weak-curriculum`**.
 - Human pairs: 365,654.
 - Leakage-resistant split: 292,523 train / 73,131 validation / **0 overlapping item IDs**.
 - v1 validation Macro AP: `0.4961654895`.
-- v2a human + 2024-inspired product-aware features: `0.5006971263`.
-- **v2b selected Macro AP: `0.5010008995`** using 300k confidence-filtered LLM weak labels.
-- v2c naive static hard-negative reweighting: `0.4957263069` — rejected.
-- v2 submit: private HF `submissions/v2/ecup-v2-submission.zip`.
-- Verified v2 organizer-image benchmark: 275,000 pairs / 537,300 items / **334 s** with network disabled against a 780 s private limit; output schema/order/range checks passed.
+- v2b structured weak-curriculum Macro AP: `0.5010008995`.
+- **Current completed experiment and best offline model: v3**, a v2b structured anchor + `cointegrated/rubert-tiny2` stage-1 global blend.
+- **Retained v3 Macro AP: `0.5254642645846543`** on the unchanged item-disjoint validation.
+- v3 neural blend: structured `0.55`, neural `0.45`.
+- v3 hard-negative stage-2 was genuinely trained/evaluated and rejected because stage 1 was stronger.
+- Canonical v3 ZIP is immutable at `submissions/v3/canonical/b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660/ecup-v3-submission.zip`, SHA-256 `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`.
+- Canonical v3 exact-image offline smoke ran 10,000/10,000 pairs through the real neural path with network disabled and passed output checks.
+- Home RTX 2060 SUPER is connected only through private `MakSoS1/gpu-dispatch`; public source executes in a network-disabled/read-only isolated Docker profile.
+- **Current experiment: v4 / in progress.** Design: `ai-forever/ruBert-base` stronger cross-encoder → v4a full human → v4b high-confidence LLM weak continuation → v4c model-mined hard negatives with 50% ordinary replay. Retain only if fixed Macro AP strictly beats v3.
 - Hardened Memora memory is operational and CI-verified: pinned upstream commit `bc64ff745a9b2c0e6245e0137654f041fba0c155`, MCP `1.29.0`, TF-IDF/local SQLite only, Graph/LLM/auto-capture disabled, private checkpoint under `agent-memory/latest/` in HF.
-- Lightning neural code exists, but GPU training did not start: authentication/Teamspace discovery worked, no reusable Studio was exposed, and Studio creation returned HTTP 403.
-- **Next experiment: v3 — model-mined hard negatives + compact reranker when a GPU Studio is accessible**, retaining v2b as the fast structured anchor. Prioritize Electronics, Apparel, Footwear, Jewelry, Accessories and Furniture.
 
 ## Mandatory reading order
 
@@ -33,6 +34,7 @@ We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product
 5. `docs/agent-memory/ITERATION_PROTOCOL.md`
 6. `ecup_matching/SOLUTION_RESEARCH.md`
 7. Current experiment's `PLAN.md` / `RESULTS.md` when present.
+8. `docs/superpowers/specs/2026-08-11-ecup-v4-strong-reranker-design.md` and `docs/superpowers/plans/2026-08-11-ecup-v4-strong-reranker.md` while v4 is active.
 
 ## Persistent memory startup
 
@@ -96,6 +98,7 @@ A completed iteration is **not complete** if documentation policy or the private
 - Local memory directory must be mode `0700`; DB must be `0600`.
 - Memory checkpoint scans for secrets and fails closed.
 - Contest rules prohibit copying other participants' solutions and create publication risk. Research analogous public methods, not private/current participant code.
+- The public repository must never be attached directly to the home self-hosted runner. GPU execution goes only through the private dispatcher and exact allowed branch SHA.
 
 ## Where things live
 
@@ -110,4 +113,4 @@ A completed iteration is **not complete** if documentation policy or the private
 - Memory lifecycle scripts: `scripts/memory_*.py`
 - Durable private memory: HF `agent-memory/latest/` and immutable `agent-memory/checkpoints/`.
 
-When uncertain, preserve reproducibility, leakage resistance, private artifacts, and this memory protocol.
+When uncertain, preserve reproducibility, leakage resistance, private artifacts, immutable retained runs and this memory protocol.
