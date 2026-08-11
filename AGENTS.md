@@ -1,115 +1,181 @@
 # AGENTS.md — READ THIS FIRST
 
-This file is the mandatory entry point for **any agent** working on branch `ecup-matching-2026`. Do not start coding or training until you have read the files listed below.
+Mandatory entry point for **any agent** working on branch `ecup-matching-2026`. Do not code, train, tune or open validation labels until the required state files below are read.
 
 ## Project in one paragraph
 
-We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product IDs; products have `name`, flattened JSON `attributes`, and one of 20 categories. Official metric is unweighted Macro Average Precision over categories. Hidden test contains new/unseen products, so validation must avoid item leakage. Competition data and submission/model artifacts are private; public Git contains only reproducible code/docs.
+We are solving ODS E-CUP 2026 Ozon product matching. Official metric is unweighted Macro Average Precision over 20 categories. Hidden evaluation contains new/unseen products, so item leakage and repeated holdout tuning are unacceptable. Competition data/models/submission artifacts are private; public Git contains reproducible code and source-backed handoff documentation only.
 
 ## Current verified state
 
-- Branch: `ecup-matching-2026`; **do not modify or merge `main`** unless the user explicitly asks.
+- Branch: `ecup-matching-2026`; **do not modify/merge `main`** unless explicitly requested.
 - Private data/artifact repo: `Maksim123321/e-cup-2026-matching-private`.
-- Human pairs: 365,654.
-- Leakage-resistant split: 292,523 train / 73,131 validation / **0 overlapping item IDs**.
-- v1 Macro AP: `0.4961654895`.
-- v2b structured weak-curriculum Macro AP: `0.5010008995`.
-- v3 immutable fallback Macro AP: `0.5254642645846543`, v2b structured weight 0.55 + `cointegrated/rubert-tiny2` neural weight 0.45.
-- **Current completed experiment and best retained candidate: v4.** It preserves the v3 learned models and uses 5-fold component-cross-fitted, shrinkage-regularized per-category neural blend alphas.
-- **v4 honest cross-fitted Macro AP: `0.5276431099433088`**, absolute delta vs v3 `+0.0021788453586544243`.
-- v4 deployable full-data coefficient fit: `0.5284493942551521`; do **not** present this larger value as the unbiased headline.
-- v4 routing selection groups all validation candidate edges into 53,131 item-components and selected shrinkage prior `4000`.
-- Canonical v4 ZIP: `submissions/v4/canonical/b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849/ecup-v4-submission.zip`, SHA-256 `b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849`, 109,185,879 bytes.
-- Exact organizer-image offline v4 smoke: 1,000/1,000 real neural pairs, network disabled, valid ordered finite output, 1,000 unique scores, private canonical freeze verified.
-- Canonical v3 fallback remains immutable at SHA-256 `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`.
-- Home RTX 2060 SUPER is connected only through private `MakSoS1/gpu-dispatch`; public source never owns a self-hosted runner.
-- A stronger pinned `ai-forever/ruBert-base` v4a/v4b/v4c ladder is implemented but **not retained and not the source of the v4 score**. Treat it only as a future v4.1/v5 ablation.
-- Hardened Memora memory is operational and CI-verified: pinned upstream `bc64ff745a9b2c0e6245e0137654f041fba0c155`, MCP `1.29.0`, TF-IDF/local SQLite only, Graph/LLM/auto-capture disabled.
+- Human pairs: `365,654`; LLM weak pairs: `>11M`.
+- **Production/hidden fallback is v2**, hidden Macro AP `0.2583231811423486`.
+- **v5 is the current development iteration; no v5 submission is retained yet.**
+- v5 immutable validation: `285,210` development rows + `80,444` sealed-gold rows, five component-disjoint development folds, cross-split item overlap `0`.
+- v5 split SHA-256: **`aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`**.
+- Sealed gold is **unopened**: `gold_metric_opened=false`, `gold_rows_scored=0`.
+- v5 audit baseline OOF: `0.5315527708634168`.
+- Retained category-specialist base: `0.5476780661335778`.
+- Leakage-safe weak specialists: `0.5514237338676234`.
+- Strict meta-OOF combo: `0.559512531439709`.
+- Strict train-only sparse TF-IDF specialists: `0.5651306838802859`.
+- Supervised contrastive item-space stack: `0.5662217062664492`.
+- **Current honest development best: explicit per-key attribute specialists `0.5683065131240066`**, run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`; every held fold improved.
+- Stretch target `0.60`; current remaining gap `0.0316934868759934`.
+- Field-aware weak ranking teacher run `31486298300` is still in progress at this snapshot; **do not invent a metric**.
+- First ruBERT pair-teacher run `31485127564` is **not a model rejection**: it failed before predictions because the runner called `build_reranker_examples` without required `attribute_importance`.
+- Home RTX 2060 SUPER is reachable only through private `MakSoS1/gpu-dispatch`; public source never owns the self-hosted runner.
+- Hardened Memora pin: `bc64ff745a9b2c0e6245e0137654f041fba0c155`; local SQLite + TF-IDF only; graph/LLM/external embeddings/auto-capture disabled.
+
+## Two meanings of best — never conflate them
+
+1. **Production/leaderboard best:** v2, based on observed hidden score.
+2. **Development best:** current v5 honest OOF on the immutable sealed protocol.
+
+Old v3/v4 local improvements are real historical offline measurements but hidden results proved that the old holdout did not transfer monotonically. Never switch production fallback merely because a v5 dev score is larger numerically.
 
 ## Mandatory reading order
 
-1. `docs/agent-memory/PROJECT_STATE.md`
-2. `docs/agent-memory/EXPERIMENT_INDEX.md`
-3. `docs/agent-memory/DECISIONS.md`
-4. `docs/agent-memory/SECURITY.md`
-5. `docs/agent-memory/ITERATION_PROTOCOL.md`
-6. `ecup_matching/SOLUTION_RESEARCH.md`
-7. `ecup_matching/experiments/v4/PLAN.md`
-8. `ecup_matching/experiments/v4/RESULTS.md`
+1. `ecup_matching/experiments/CURRENT.json`
+2. `docs/agent-memory/PROJECT_STATE.md`
+3. `docs/agent-memory/EXPERIMENT_INDEX.md`
+4. `docs/agent-memory/DECISIONS.md`
+5. `ecup_matching/experiments/v5/PLAN.md`
+6. `ecup_matching/experiments/v5/RESULTS.md`
+7. `ecup_matching/experiments/v5/SAFE_METRICS.json`
+8. `docs/agent-memory/SECURITY.md`
+9. `docs/agent-memory/ITERATION_PROTOCOL.md`
+10. `ecup_matching/SOLUTION_RESEARCH.md`
+11. `ecup_matching/BASELINE_CONTRACT.md`
 
-The original strong-reranker design/implementation documents remain useful historical context but do not redefine the retained v4 artifact:
+Historical v3/v4 PLAN/RESULTS and design docs remain useful for lessons, but they do not redefine v5 selection or the production anchor.
 
-- `docs/superpowers/specs/2026-08-11-ecup-v4-strong-reranker-design.md`
-- `docs/superpowers/plans/2026-08-11-ecup-v4-strong-reranker.md`
+## v5 validation invariants
+
+- Never alter split SHA `aae58f...eb55b` to improve a metric.
+- Never inspect/use sealed-gold labels during development.
+- Do not encode/mine sealed-gold items as adaptation/hard-negative/weak-label data while developing.
+- Every new signal must be evaluated on held components/items, not random pair leakage.
+- Every stacking layer must remain genuinely OOF; a row cannot train a second-level model using its own target plus an in-sample base prediction.
+- Freeze candidate, preprocessing, config and relevant artifact hashes **before** the one-shot sealed-gold evaluation.
+- `0.60` means honest development OOF, not a repeatedly tuned holdout score.
+
+## Retained / rejected v5 lessons
+
+### KEEP
+
+- category specialists `0.5476780661`;
+- leakage-safe weak specialists `0.5514237339`;
+- cross-fitted combo `0.5595125314`;
+- strict train-only sparse TF-IDF `0.5651306839`;
+- supervised contrastive item-space `0.5662217063`;
+- explicit per-key attribute specialists **`0.5683065131`** current dev best.
+
+### DO NOT REPEAT BLINDLY
+
+- direct attribute log-likelihood score shift: `0.5232189037`, all folds regress — REJECT;
+- fold-weighted specialists: small mean gain but folds 2/3 regress — diagnostic OOF input only;
+- pretrained multilingual embeddings: only `+0.000255` vs audit — insufficient standalone;
+- first ruBERT teacher: integration failure before metrics, not model REJECT.
+
+Important distinction: **direct attribute likelihood shift failed, while explicit per-key attribute estimator features succeeded.** Do not conflate these two approaches.
+
+## Debugging lessons that must survive handoff
+
+- For >11M weak rows, use deterministic PyArrow streaming/bounded sampling; do not materialize the entire weak table in pandas before Transformer load.
+- Perform CPU-heavy preparation before loading a large Transformer to avoid host-memory spikes.
+- MPS physical batch 96 OOM is an infrastructure event; the successful contrastive run preserves effective batch 96 through microbatch 24 × gradient accumulation 4.
+- TF-IDF tests validate unseen `transform`, symmetry, finite/bounded values; do not force a desired OOV ranking in unit tests.
+- Read the exact failing test/stack before blaming the latest implementation; overlapping RED TDD cycles previously made a serializer commit look broken when the next deliberately missing module was the real failure.
+- Heavy workflows need integration tests for composed helper calls; isolated helper tests did not catch the first ruBERT teacher's stale `build_reranker_examples` signature.
+- Infrastructure/integration failures are not model scores.
 
 ## Persistent memory startup
 
-Markdown above is canonical and must always be enough to recover the project. Memora adds semantic retrieval/history.
+Public source-backed files are canonical; Memora provides semantic retrieval/history.
 
-If shell access and `HF_TOKEN` are available, restore the latest verified SQLite checkpoint first:
+If shell access and `HF_TOKEN` are available, restore latest verified SQLite checkpoint first:
 
 ```bash
 python scripts/memory_bootstrap.py
 ```
 
-To install/rebuild the exact hardened Memora runtime:
+Install/rebuild exact hardened runtime only through:
 
 ```bash
 python tools/memora_hardened/install.py --prefix .agent-memory/runtime
 ```
 
-MCP clients must start Memora only through:
+MCP clients start Memora only through:
 
 ```bash
 bash scripts/memora_mcp.sh
 ```
 
-Never run an arbitrary/unpinned Memora installation. Never enable Cloud Graph, Cloudflare Pages/Worker, S3/R2/D1 Memora storage, OpenAI/OpenRouter embeddings/chat, or auto-capture for this project.
+Never run arbitrary/unpinned Memora, Cloud Graph, cloud storage backends, OpenAI/OpenRouter embeddings/chat, or auto-capture for this project.
 
-## Mandatory iteration protocol
+## Memora source contract
 
-Before a new vN implementation:
+`memory_ingest.py` must ingest not only durable Markdown/PLAN/RESULTS but also:
 
-1. Update `ecup_matching/experiments/CURRENT.json` to the new version with `status: "in_progress"`.
-2. Create `ecup_matching/experiments/vN/PLAN.md` with hypothesis, exact data, split, features/model, runtime budget, expected metric movement and abort criteria.
-3. Use item-disjoint validation unless a documented experiment explicitly studies a different split.
-4. Keep all raw data/models/submission ZIPs private; Git gets code and source-backed docs only.
+- `ecup_matching/experiments/CURRENT.json`;
+- `ecup_matching/experiments/v*/SAFE_METRICS.json`.
 
-After every training/run result that is retained:
+A regression test `ecup_matching/tests/test_memory_ingest_sources.py` enforces these machine-readable sources. They were missing before the 2026-08-11 memory audit.
 
-1. Update `ecup_matching/experiments/vN/RESULTS.md` with exact run/commit/data/metrics/artifact/failure evidence.
-2. Update `docs/agent-memory/EXPERIMENT_INDEX.md`.
-3. Update `docs/agent-memory/PROJECT_STATE.md` when best model/current stage/next action changes.
-4. Record durable architectural changes in `docs/agent-memory/DECISIONS.md`.
-5. Set `CURRENT.json` status appropriately.
-6. Run:
+## Mandatory iteration / handoff protocol
+
+Before a new implementation:
+
+1. Read all mandatory state sources above.
+2. Preserve immutable split/gold rules.
+3. Create/update PLAN with hypothesis, data, exact split, expected gain, runtime and abort criteria.
+4. Use TDD/systematic debugging; distinguish RED-by-design from real regressions.
+
+After every meaningful KEEP/REJECT/FAIL result:
+
+1. Update `ecup_matching/experiments/v5/RESULTS.md` with exact run/source/metric/failure evidence.
+2. Update `ecup_matching/experiments/v5/SAFE_METRICS.json`.
+3. Update `ecup_matching/experiments/CURRENT.json` when current-best/status changes.
+4. Update `docs/agent-memory/EXPERIMENT_INDEX.md`.
+5. Update `docs/agent-memory/PROJECT_STATE.md` when current stage/next action changes.
+6. Record durable rules/lessons in `docs/agent-memory/DECISIONS.md`.
+7. **Only after the repository is GREEN**, run/verify:
 
 ```bash
+python -m pytest ecup_matching/tests -q
 python scripts/memory_policy.py
 python scripts/memory_ingest.py
-python scripts/memory_checkpoint.py --iteration vN
+python scripts/memory_checkpoint.py --iteration v5
 ```
 
-A completed iteration is **not complete** if documentation policy or the private memory checkpoint fails.
+A handoff is not complete until full tests and memory policy pass, Memora ingest succeeds, SQLite integrity/secret checks pass, private HF checkpoint upload succeeds and remote verification succeeds.
+
+### Prior checkpoint incident
+
+Memora runs `31481012401` and `31482891498` failed **before ingest** because memory-triggering commits landed while the repository was intentionally RED during TDD. In `31482891498`, collection failed on missing `v5_weighted_specialists`; later GREEN code did not retroactively create the checkpoint.
+
+**Never weaken the test gate.** If a memory update lands during RED TDD, force a new memory-triggering commit or manual dispatch after GREEN.
 
 ## Security invariants
 
-- Never print/paste/store `HF_TOKEN`, GitHub tokens, API keys, passwords, private keys or credentials in Git, experiment docs, Memora, artifacts or logs.
-- `.agent-memory/`, `*.db`, models, submission ZIPs and competition parquet are not public artifacts.
-- Hardened Memora stays pinned/local-only with TF-IDF, LLM off, graph off and auto-capture off.
-- Contest rules prohibit copying other participants' solutions; research analogous public methods, not private/current participant code.
-- The public repository must never be attached directly to the home self-hosted runner. GPU execution goes only through the private dispatcher and exact allowed branch SHA.
-- Canonical v3/v4 packages are immutable. A changed alpha/model/package requires a new immutable artifact and new experiment evidence.
+- Never print/paste/store HF/GitHub/API tokens, passwords, private keys or credentials in Git, docs, Memora, artifacts or logs.
+- `.agent-memory/`, `*.db`, raw competition parquet, models, OOF predictions and submission ZIPs are private.
+- Public repository must never be attached directly to the home self-hosted runner; GPU execution goes only through private dispatcher and exact allowed source SHA.
+- Historical canonical v3/v4 artifacts are immutable.
+- Contest rules prohibit copying private/current participant solutions; research analogous public methods only.
 
 ## Where things live
 
-- Competition design/research: `ecup_matching/SOLUTION_RESEARCH.md`
-- Organizer runtime contract: `ecup_matching/BASELINE_CONTRACT.md`
+- current machine-readable state: `ecup_matching/experiments/CURRENT.json`
+- v5 plan/results/safe metrics: `ecup_matching/experiments/v5/`
+- durable project memory: `docs/agent-memory/`
 - ML implementation: `ecup_matching/ml/`
-- Submission runtime: `ecup_matching/submission/`
-- Experiments: `ecup_matching/experiments/`
-- Agent memory/state: `docs/agent-memory/`
-- Hardened Memora tooling: `tools/memora_hardened/`
-- Durable private memory: HF `agent-memory/latest/` and `agent-memory/checkpoints/`.
+- submission runtime: `ecup_matching/submission/`
+- organizer contract: `ecup_matching/BASELINE_CONTRACT.md`
+- hardened Memora: `tools/memora_hardened/`
+- private memory: HF `agent-memory/latest/` and `agent-memory/checkpoints/`.
 
-When uncertain, preserve reproducibility, leakage resistance, immutable retained artifacts and this memory protocol.
+When uncertain, preserve leakage resistance, reproducibility, immutable evidence, production-vs-development separation and this GREEN-only memory protocol.
