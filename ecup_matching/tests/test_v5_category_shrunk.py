@@ -1,6 +1,9 @@
 import numpy as np
 
-from ecup_matching.ml.v5_category_shrunk import crossfit_category_shrunk_simplex
+from ecup_matching.ml.v5_category_shrunk import (
+    crossfit_category_shrunk_simplex,
+    fit_category_shrunk_full,
+)
 
 
 def _toy_scores(n: int) -> dict[str, np.ndarray]:
@@ -79,3 +82,55 @@ def test_category_shrunk_scores_every_row_and_keeps_simplex_weights():
         for category_weights in result["category_weights"][fold].values():
             assert np.all(category_weights >= 0.0)
             assert np.isclose(category_weights.sum(), 1.0)
+
+
+def test_full_fit_returns_one_global_and_one_shrunk_simplex_per_category():
+    n = 120
+    scores = _toy_scores(n)
+    categories = np.asarray(["a", "b", "c"] * (n // 3))
+    target = ((np.arange(n) // 4) % 2).astype(np.int8)
+
+    result = fit_category_shrunk_full(
+        scores,
+        target,
+        categories,
+        prior_strength=20.0,
+        step_schedule=(0.2, 0.1),
+        max_passes=2,
+    )
+
+    assert result["signal_names"] == (
+        "weak",
+        "sparse",
+        "explicit",
+        "contrastive",
+        "teacher",
+        "typed_explicit",
+    )
+    assert result["prior_strength"] == 20.0
+    assert set(result["category_weights"]) == {"a", "b", "c"}
+    assert result["category_support"] == {"a": 40, "b": 40, "c": 40}
+    assert np.isclose(result["global_weights"].sum(), 1.0)
+    assert np.all(result["global_weights"] >= 0.0)
+    for weights in result["category_weights"].values():
+        assert np.isclose(weights.sum(), 1.0)
+        assert np.all(weights >= 0.0)
+
+
+def test_full_fit_is_deterministic():
+    n = 120
+    scores = _toy_scores(n)
+    categories = np.asarray(["a", "b", "c"] * (n // 3))
+    target = ((np.arange(n) // 4) % 2).astype(np.int8)
+    kwargs = dict(
+        prior_strength=20.0,
+        step_schedule=(0.2, 0.1),
+        max_passes=2,
+    )
+
+    first = fit_category_shrunk_full(scores, target, categories, **kwargs)
+    second = fit_category_shrunk_full(scores, target, categories, **kwargs)
+
+    assert np.allclose(first["global_weights"], second["global_weights"])
+    for category in ("a", "b", "c"):
+        assert np.allclose(first["category_weights"][category], second["category_weights"][category])
