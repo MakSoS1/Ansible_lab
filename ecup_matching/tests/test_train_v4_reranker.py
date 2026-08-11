@@ -7,6 +7,7 @@ import pytest
 from ecup_matching.ml.train_v4_reranker import (
     V3_MACRO_AP,
     build_v4_metrics_payload,
+    select_manifest_alphas,
     select_v4_candidate,
     shrink_category_alphas,
 )
@@ -54,6 +55,30 @@ def test_shrink_category_alphas_stays_between_global_and_raw_optimum() -> None:
     assert 0.10 < shrunk["small"] < 0.45
     assert shrunk["equal"] == pytest.approx(0.45)
     assert abs(shrunk["large"] - 0.90) < abs(shrunk["small"] - 0.10)
+
+
+def test_select_manifest_alphas_uses_only_global_alpha_for_global_winner() -> None:
+    stage = {
+        "selected_blend": "global",
+        "global_alpha_neural": 0.55,
+        "shrunk_category_alphas": {"Электроника": 0.80, "Одежда": 0.20},
+    }
+
+    assert select_manifest_alphas(stage) == {"__global__": pytest.approx(0.55)}
+
+
+def test_select_manifest_alphas_preserves_shrunk_categories_with_global_fallback() -> None:
+    stage = {
+        "selected_blend": "shrunk-category",
+        "global_alpha_neural": 0.45,
+        "shrunk_category_alphas": {"Электроника": 0.70, "Одежда": 0.30},
+    }
+
+    assert select_manifest_alphas(stage) == {
+        "__global__": pytest.approx(0.45),
+        "Электроника": pytest.approx(0.70),
+        "Одежда": pytest.approx(0.30),
+    }
 
 
 def test_build_v4_metrics_payload_records_complete_comparable_evidence() -> None:
