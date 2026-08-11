@@ -1,7 +1,13 @@
+import pickle
+
 import numpy as np
 import pandas as pd
 
-from ecup_matching.ml.v5_category_specialists import fit_predict_category_specialists
+from ecup_matching.ml.v5_category_specialists import (
+    fit_category_specialists,
+    fit_predict_category_specialists,
+    predict_category_specialists,
+)
 
 
 def test_category_specialists_predict_every_validation_row_in_original_order():
@@ -85,3 +91,43 @@ def test_category_specialists_accept_source_weights_and_validate_length():
         assert "sample_weight" in str(exc)
     else:
         raise AssertionError("wrong sample_weight length must fail")
+
+
+def test_category_specialist_bundle_is_serializable_and_reproduces_wrapper_predictions():
+    train_x = pd.DataFrame(
+        {
+            "category": ["a"] * 8 + ["b"] * 8,
+            "signal": [0, 1] * 8,
+            "noise": np.linspace(0, 1, 16),
+        }
+    )
+    train_y = np.array([0, 1] * 8, dtype=int)
+    valid_x = pd.DataFrame(
+        {
+            "category": ["b", "a", "b", "a"],
+            "signal": [1, 0, 0, 1],
+            "noise": [0.2, 0.3, 0.4, 0.5],
+        }
+    )
+
+    bundle = fit_category_specialists(
+        train_x,
+        train_y,
+        seed=2026,
+        max_iter=60,
+        min_samples_leaf=2,
+    )
+    restored = pickle.loads(pickle.dumps(bundle))
+    separate = predict_category_specialists(restored, valid_x)
+    wrapped = fit_predict_category_specialists(
+        train_x,
+        train_y,
+        valid_x,
+        seed=2026,
+        max_iter=60,
+        min_samples_leaf=2,
+    )
+
+    assert set(restored) == {"feature_columns", "models"}
+    assert list(restored["models"]) == ["a", "b"]
+    np.testing.assert_allclose(separate, wrapped, rtol=0, atol=0)
