@@ -75,3 +75,30 @@ def test_explicit_feature_schema_is_fixed_by_train_spec_not_held_values():
         spec,
     )
     assert a.columns.tolist() == b.columns.tolist()
+
+
+def test_explicit_attributes_treat_equivalent_storage_units_as_equal():
+    items = pd.DataFrame(
+        {
+            "id": [1, 2, 3],
+            "name": ["ssd"] * 3,
+            "category": ["electronics"] * 3,
+            "attributes": [
+                '{"storage":"128 GB"}',
+                '{"storage":"0.128 TB"}',
+                '{"storage":"256GB"}',
+            ],
+        }
+    )
+    pairs = pd.DataFrame(
+        {
+            "id1": [1, 1],
+            "id2": [2, 3],
+            "category": ["electronics", "electronics"],
+        }
+    )
+    features = build_explicit_attribute_features(items, pairs, {"electronics": ["storage"]})
+    assert features.loc[0, "attr_eq::storage"] == 1.0
+    assert features.loc[0, "attr_conflict::storage"] == 0.0
+    assert features.loc[1, "attr_eq::storage"] == 0.0
+    assert features.loc[1, "attr_conflict::storage"] == 1.0
