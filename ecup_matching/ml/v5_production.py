@@ -118,22 +118,11 @@ def _validated_simplex_weights(values, *, category: str) -> np.ndarray:
     return weights / total
 
 
-def category_shrunk_six_rank_fusion(
-    signals: Mapping[str, object],
-    categories,
+def _category_score_from_rank_matrix(
+    rank_values: np.ndarray,
+    categories: np.ndarray,
     model: Mapping[str, object],
 ) -> np.ndarray:
-    """Apply the selected fixed category-shrunk simplex to target-free test ranks.
-
-    The model is expected to be the deterministic full-development refit of the
-    strict OOF-selected prior=8000 architecture. Unknown categories fail closed
-    rather than silently falling back to a different scoring rule.
-    """
-    ranked, row_count = _ranked_final_signals(signals)
-    category_array = np.asarray(categories).astype(str)
-    if category_array.ndim != 1 or len(category_array) != row_count:
-        raise ValueError("categories must be one-dimensional and aligned with signals")
-
     signal_names = tuple(str(value) for value in model.get("signal_names", ()))
     if signal_names != FINAL_SIGNAL_NAMES:
         raise ValueError(
@@ -142,17 +131,87 @@ def category_shrunk_six_rank_fusion(
     raw_category_weights = model.get("category_weights")
     if not isinstance(raw_category_weights, Mapping) or not raw_category_weights:
         raise ValueError("production category_weights must be a non-empty mapping")
-
-    rank_matrix = np.column_stack([ranked[name] for name in FINAL_SIGNAL_NAMES])
-    score = np.full(row_count, np.nan, dtype=np.float64)
-    for category in sorted(np.unique(category_array).tolist()):
+    score = np.full(len(categories), np.nan, dtype=np.float64)
+    for category in sorted(np.unique(categories).tolist()):
         if category not in raw_category_weights:
             raise ValueError(f"production model missing category {category!r}")
-        weights = _validated_simplex_weights(
-            raw_category_weights[category], category=category
-        )
-        mask = category_array == category
-        score[mask] = rank_matrix[mask] @ weights
+        weights = _validated_simplex_weights(raw_category_weights[category], category=category)
+        mask = categories == category
+        score[mask] = rank_values[mask] @ weights
     if not np.isfinite(score).all():
         raise RuntimeError("category-shrunk production fusion failed to score every row")
     return np.clip(score, 0.0, 1.0)
+
+
+def category_shrunk_six_rank_fusion(
+    signals: Mapping[str, object],
+    categories,
+    model: Mapping[str, object],
+) -> np.ndarray:
+    """Apply the selected fixed category-shrunk simplex to target-free test ranks."""
+    ranked, row_count = _ranked_final_signals(signals)
+    category_array = np.asarray(categories).astype(str)
+    if category_array.ndim != 1 or len(category_array) != row_count:
+        raise ValueError("categories must be one-dimensional and aligned with signals")
+    rank_values = np.column_stack([ranked[name] for name in FINAL_SIGNAL_NAMES])
+    return _category_score_from_rank_matrix(rank_values, category_array, model)
+
+
+def category_shrunk_hgb_equal_rank_fusion(
+    signals: Mapping[str, object],
+    categories,
+    category_model: Mapping[str, object],
+    hgb_bundle: Mapping[str, object],
+) -> np.ndarray:
+    """Production counterpart of the retained 0.6018115534 outer-OOF fusion.
+
+    Both component scores are produced from exactly the same six target-free
+    percentile-rank signals. The final formula is frozen to a 50/50 percentile-
+    rank fusion; no target-dependent calibration is performed at inference.
+    """
+    ranked, row_count = _ranked_final_signals(signals)
+    category_array = np.asarray(categories).astype(str)
+    if category_array.ndim != 1 or len(category_array) != row_count:
+        raise ValueError("categories must be one-dimensional and aligned with signals")
+    rank_values = np.column_stack([ranked[name] for name in FINAL_SIGNAL_NAMES])
+
+    category_score = _category_score_from_rank_matrix(
+        rank_values,
+        category_array,
+        category_model,
+    )
+
+    hgb_signal_names = tuple(str(value) for value in hgb_bundle.get("signal_names", ()))
+    if hgb_signal_names != FINAL_SIGNAL_NAMES:
+        raise ValueError(
+            f"HGB production signal order mismatch: {hgb_signal_names!r} != {FINAL_SIGNAL_NAMES!r}"
+        )
+    category_names = tuple(str(value) for value in hgb_bundle.get("category_names", ()))
+    if not category_names or len(set(category_names)) != len(category_names):
+        raise ValueError("HGB category_names must be a non-empty unique sequence")
+    code_by_name = {name: idx for idx, name in enumerate(category_names)}
+    unknown = sorted(set(category_array.tolist()) - set(code_by_name))
+    if unknown:
+        raise ValueError(f"HGB production model missing category values: {unknown}")
+    category_codes = np.asarray(
+        [float(code_by_name[value]) for value in category_array],
+        dtype=np.float64,
+    )
+    design = np.column_stack([rank_values, category_codes])
+
+    hgb_model = hgb_bundle.get("model")
+    if hgb_model is None or not hasattr(hgb_model, "predict_proba"):
+        raise ValueError("HGB production bundle must contain a predict_proba model")
+    probabilities = np.asarray(hgb_model.predict_proba(design), dtype=np.float64)
+    if probabilities.shape != (row_count, 2):
+        raise ValueError(
+            f"HGB predict_proba must return shape ({row_count}, 2); observed={probabilities.shape}"
+        )
+    hgb_score = probabilities[:, 1]
+    if not np.isfinite(hgb_score).all():
+        raise RuntimeError("HGB production model produced non-finite scores")
+
+    final = 0.5 * percentile_rank(category_score) + 0.5 * percentile_rank(hgb_score)
+    if not np.isfinite(final).all():
+        raise RuntimeError("category-HGB equal-rank fusion produced non-finite scores")
+    return np.clip(final, 0.0, 1.0)
