@@ -1,6 +1,7 @@
 import numpy as np
+import pytest
 
-from ecup_matching.ml.metrics import macro_average_precision
+from ecup_matching.ml.metrics import OFFICIAL_CATEGORIES, macro_average_precision
 
 
 def test_macro_average_precision_is_unweighted_mean_of_categories():
@@ -24,3 +25,35 @@ def test_macro_average_precision_keeps_continuous_ranking():
     good_score, _ = macro_average_precision(y_true, good, categories)
     bad_score, _ = macro_average_precision(y_true, bad, categories)
     assert good_score > bad_score
+
+
+def test_strict_metric_rejects_missing_official_category():
+    present = OFFICIAL_CATEGORIES[:-1]
+    categories = np.repeat(np.asarray(present, dtype=object), 2)
+    y_true = np.tile(np.array([0, 1], dtype=np.int8), len(present))
+    y_score = np.tile(np.array([0.1, 0.9], dtype=float), len(present))
+
+    with pytest.raises(ValueError, match="category set"):
+        macro_average_precision(
+            y_true,
+            y_score,
+            categories,
+            expected_categories=OFFICIAL_CATEGORIES,
+            require_both_classes=True,
+        )
+
+
+def test_strict_metric_rejects_single_class_category():
+    categories = np.repeat(np.asarray(OFFICIAL_CATEGORIES, dtype=object), 2)
+    y_true = np.tile(np.array([0, 1], dtype=np.int8), len(OFFICIAL_CATEGORIES))
+    y_true[:2] = 1
+    y_score = np.linspace(0.01, 0.99, len(categories))
+
+    with pytest.raises(ValueError, match="both target classes"):
+        macro_average_precision(
+            y_true,
+            y_score,
+            categories,
+            expected_categories=OFFICIAL_CATEGORIES,
+            require_both_classes=True,
+        )
