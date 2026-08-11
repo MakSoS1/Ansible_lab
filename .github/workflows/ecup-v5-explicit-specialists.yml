@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ecup-matching-2026]
-    paths: [.github/workflows/ecup-v5-explicit-specialists.yml, ecup_matching/ml/v5_explicit_attributes.py, ecup_matching/ml/run_v5_explicit_specialist_fold.py, ecup_matching/ml/run_v5_explicit_specialist_aggregate.py]
+    paths: [.github/workflows/ecup-v5-explicit-specialists.yml, ecup_matching/ml/v5_explicit_attributes.py, ecup_matching/ml/run_v5_explicit_specialist_fold.py, ecup_matching/ml/run_v5_explicit_specialist_aggregate.py, ecup_matching/ml/textnorm.py, ecup_matching/ml/features.py, ecup_matching/ml/features_v2.py]
 permissions: {contents: read}
 env:
   HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
