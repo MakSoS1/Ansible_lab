@@ -11,6 +11,9 @@ from .features import normalize_items
 from .textnorm import ItemNorm, canonical_attribute_value
 
 
+LeafValueCache = dict[object, dict[str, frozenset[str]]]
+
+
 def _leaf_values(item: ItemNorm) -> dict[str, frozenset[str]]:
     values: dict[str, set[str]] = defaultdict(set)
     for key, value in item.attrs.items():
@@ -20,6 +23,11 @@ def _leaf_values(item: ItemNorm) -> dict[str, frozenset[str]]:
     return {key: frozenset(v) for key, v in values.items()}
 
 
+def build_explicit_leaf_cache(item_cache: Mapping[object, ItemNorm]) -> LeafValueCache:
+    """Build canonical leaf values once so all categories can reuse them."""
+    return {item_id: _leaf_values(item) for item_id, item in item_cache.items()}
+
+
 def learn_explicit_attribute_keys(
     items: pd.DataFrame,
     train_pairs: pd.DataFrame,
@@ -27,6 +35,7 @@ def learn_explicit_attribute_keys(
     max_keys_per_category: int = 40,
     min_support: int = 30,
     item_cache: Mapping[object, ItemNorm] | None = None,
+    leaf_cache: Mapping[object, Mapping[str, frozenset[str]]] | None = None,
 ) -> dict[str, list[str]]:
     if max_keys_per_category <= 0 or min_support <= 0:
         raise ValueError("key limits must be positive")
@@ -35,12 +44,12 @@ def learn_explicit_attribute_keys(
     if missing:
         raise ValueError(f"train_pairs missing columns: {sorted(missing)}")
     cache = dict(item_cache) if item_cache is not None else normalize_items(items)
-    leaf_cache = {item_id: _leaf_values(item) for item_id, item in cache.items()}
+    leaves = dict(leaf_cache) if leaf_cache is not None else build_explicit_leaf_cache(cache)
     stats = defaultdict(lambda: defaultdict(lambda: {"support":0,"pos_eq":0,"pos_n":0,"neg_eq":0,"neg_n":0}))
     for id1,id2,target,category in train_pairs[["id1","id2","target","category"]].itertuples(index=False,name=None):
-        if id1 not in leaf_cache or id2 not in leaf_cache:
+        if id1 not in leaves or id2 not in leaves:
             continue
-        a,b=leaf_cache[id1],leaf_cache[id2]
+        a,b=leaves[id1],leaves[id2]
         for key in set(a)&set(b):
             eq=bool(a[key]&b[key])
             entry=stats[str(category)][key];entry["support"]+=1
@@ -70,11 +79,12 @@ def build_explicit_attribute_features(
     *,
     item_cache: Mapping[object, ItemNorm] | None = None,
     category: str | None = None,
+    leaf_cache: Mapping[object, Mapping[str, frozenset[str]]] | None = None,
 ) -> pd.DataFrame:
     if not {"id1","id2","category"}.issubset(pairs.columns):
         raise ValueError("pairs must contain id1,id2,category")
     cache=dict(item_cache) if item_cache is not None else normalize_items(items)
-    leaf_cache={item_id:_leaf_values(item) for item_id,item in cache.items()}
+    leaves=dict(leaf_cache) if leaf_cache is not None else build_explicit_leaf_cache(cache)
     if category is None:
         categories=sorted(set(pairs["category"].astype(str).tolist()))
         keys=sorted({key for cat in categories for key in key_spec.get(cat,[])})
@@ -85,9 +95,9 @@ def build_explicit_attribute_features(
         columns.extend([f"attr_eq::{key}",f"attr_conflict::{key}",f"attr_missing::{key}"])
     rows=[]
     for id1,id2,cat in pairs[["id1","id2","category"]].itertuples(index=False,name=None):
-        if id1 not in leaf_cache or id2 not in leaf_cache:
+        if id1 not in leaves or id2 not in leaves:
             raise KeyError("pair references missing item")
-        a,b=leaf_cache[id1],leaf_cache[id2];row={}
+        a,b=leaves[id1],leaves[id2];row={}
         active=set(key_spec.get(str(cat),[]))
         for key in keys:
             va,vb=a.get(key),b.get(key)
