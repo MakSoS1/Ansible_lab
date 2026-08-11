@@ -1,0 +1,98 @@
+name: E-CUP v5 category specialists OOF
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v5-category-oof.yml
+      - ecup_matching/ml/run_v5_category_oof.py
+      - ecup_matching/ml/v5_category_specialists.py
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+
+jobs:
+  category-oof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Verify focused contracts
+        run: |
+          python -m pytest \
+            ecup_matching/tests/test_v5_category_specialists.py \
+            ecup_matching/tests/test_v5_pretrained_biencoder.py -q
+      - name: Download data and sealed artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/data" "${RUNNER_TEMP}/private"
+          curl -fL --retry 5 --retry-all-errors -o "${RUNNER_TEMP}/data/matches.parquet" "$BASE_URL/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors -o "${RUNNER_TEMP}/data/items_human.parquet" "$BASE_URL/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          for name in ('split-manifest.json','development-oof.parquet'):
+              hf_hub_download(
+                  repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+                  filename=f"{os.environ['VALIDATION_PREFIX']}/{name}",
+                  token=os.environ['HF_TOKEN'], local_dir=os.path.join(os.environ['RUNNER_TEMP'],'private'))
+          PY
+      - name: Evaluate category specialists
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/out"
+          python -m ecup_matching.ml.run_v5_category_oof \
+            --items "${RUNNER_TEMP}/data/items_human.parquet" \
+            --matches "${RUNNER_TEMP}/data/matches.parquet" \
+            --manifest "${RUNNER_TEMP}/private/${VALIDATION_PREFIX}/split-manifest.json" \
+            --base-oof "${RUNNER_TEMP}/private/${VALIDATION_PREFIX}/development-oof.parquet" \
+            --output-dir "${RUNNER_TEMP}/out" \
+            --expected-split-sha "$SPLIT_SHA" \
+            --max-iter 300
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          m=json.loads((Path(os.environ['RUNNER_TEMP'])/'out'/'v5b-category-metrics.json').read_text())
+          assert m['gold_metric_opened'] is False and m['gold_rows_scored']==0
+          print('base_oof_macro_ap',m['base_oof_macro_ap'])
+          print('category_specialist_oof_macro_ap',m['category_specialist_oof_macro_ap'])
+          print('delta_vs_base',m['delta_vs_base'])
+          print('folds',[(x['fold'],x['macro_average_precision']) for x in m['fold_reports']])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v5-category-oof-metrics
+          path: ${{ runner.temp }}/out/v5b-category-metrics.json
+          retention-days: 14
+      - name: Persist private OOF
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          api=HfApi(token=os.environ['HF_TOKEN']); out=Path(os.environ['RUNNER_TEMP'])/'out'
+          prefix=f"experiments/v5/category/{os.environ['GITHUB_SHA'][:12]}"
+          for name in ('v5b-category-metrics.json','v5b-category-oof.parquet'):
+              api.upload_file(path_or_fileobj=str(out/name),path_in_repo=f'{prefix}/{name}',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message=f'Store v5 category OOF {name}')
+          print('private_prefix',prefix)
+          PY
+      - if: always()
+        run: rm -rf "${RUNNER_TEMP}/data" "${RUNNER_TEMP}/private" "${RUNNER_TEMP}/out"
