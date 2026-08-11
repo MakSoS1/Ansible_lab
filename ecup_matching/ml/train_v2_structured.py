@@ -8,6 +8,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.pipeline import Pipeline
@@ -107,6 +110,110 @@ def prefilter_weak_candidates(
         out = out.sample(n=max_presample_rows, random_state=seed).reset_index(drop=True)
     out["hard_target"] = (out["target"].astype(float) >= 0.5).astype(np.int8)
     return out
+
+
+def _weak_prefilter_mask_arrow(
+    batch: pa.RecordBatch,
+    validation_item_ids: set[object],
+) -> pa.BooleanArray:
+    target_index = batch.schema.get_field_index("target")
+    target = pc.cast(batch.column(target_index), pa.float64())
+    out_of_range = pc.or_(pc.less(target, 0.0), pc.greater(target, 1.0))
+    if int(pc.sum(pc.cast(pc.fill_null(out_of_range, False), pa.int64())).as_py() or 0):
+        raise ValueError("weak target must be in [0,1]")
+    keep = pc.or_(pc.less_equal(target, 0.30), pc.greater_equal(target, 0.70))
+    if validation_item_ids:
+        for name in ("id1", "id2"):
+            ids = batch.column(batch.schema.get_field_index(name))
+            values = pa.array(list(validation_item_ids), type=ids.type)
+            keep = pc.and_(keep, pc.invert(pc.is_in(ids, value_set=values)))
+    return pc.fill_null(keep, False)
+
+
+def prefilter_weak_candidates_parquet(
+    path: Path,
+    validation_item_ids: set[object],
+    max_presample_rows: int,
+    seed: int = SEED,
+    *,
+    batch_size: int = 250_000,
+) -> tuple[pd.DataFrame, int]:
+    """Reproduce ``prefilter_weak_candidates`` without loading the full parquet.
+
+    Sampling is performed over the ordinal positions of eligible rows using the
+    same ``RandomState.choice`` operation that backs pandas ``DataFrame.sample``.
+    A second streaming pass materializes only the selected rows and then restores
+    the original random-choice order, making this path deterministic and
+    equivalent to the retained in-memory recipe while bounding peak RAM.
+    """
+    if max_presample_rows <= 0:
+        raise ValueError("max_presample_rows must be positive")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+    columns = ["id1", "id2", "target"]
+    parquet = pq.ParquetFile(str(path))
+    missing = set(columns) - set(parquet.schema_arrow.names)
+    if missing:
+        raise ValueError(f"weak pairs missing columns: {sorted(missing)}")
+    input_rows = int(parquet.metadata.num_rows)
+
+    eligible_count = 0
+    for batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
+        keep = _weak_prefilter_mask_arrow(batch, validation_item_ids)
+        eligible_count += int(pc.sum(pc.cast(keep, pa.int64())).as_py() or 0)
+
+    if eligible_count > max_presample_rows:
+        selected_ordinals = np.random.RandomState(seed).choice(
+            eligible_count,
+            size=max_presample_rows,
+            replace=False,
+        )
+    else:
+        selected_ordinals = np.arange(eligible_count, dtype=np.int64)
+
+    if len(selected_ordinals) == 0:
+        empty = pd.DataFrame(columns=columns)
+        empty["weak_weight"] = pd.Series(dtype=np.float32)
+        empty["hard_target"] = pd.Series(dtype=np.int8)
+        return empty, input_rows
+
+    selected_ordinals = np.asarray(selected_ordinals, dtype=np.int64)
+    sorted_order = np.argsort(selected_ordinals, kind="stable")
+    selected_sorted = selected_ordinals[sorted_order]
+    pieces: list[pd.DataFrame] = []
+    eligible_cursor = 0
+    selected_cursor = 0
+
+    for batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
+        keep = _weak_prefilter_mask_arrow(batch, validation_item_ids)
+        eligible_positions = np.flatnonzero(keep.to_numpy(zero_copy_only=False))
+        next_eligible_cursor = eligible_cursor + len(eligible_positions)
+        selected_end = int(
+            np.searchsorted(selected_sorted, next_eligible_cursor, side="left")
+        )
+        if selected_end > selected_cursor:
+            ordinals = selected_sorted[selected_cursor:selected_end]
+            local_offsets = ordinals - eligible_cursor
+            raw_positions = eligible_positions[local_offsets]
+            piece = batch.take(pa.array(raw_positions, type=pa.int64())).to_pandas()
+            piece["_sample_order"] = sorted_order[selected_cursor:selected_end]
+            pieces.append(piece)
+        selected_cursor = selected_end
+        eligible_cursor = next_eligible_cursor
+
+    if eligible_cursor != eligible_count or selected_cursor != len(selected_ordinals):
+        raise RuntimeError("weak parquet changed during deterministic sampling")
+
+    out = pd.concat(pieces, ignore_index=True)
+    out = (
+        out.sort_values("_sample_order", kind="stable")
+        .drop(columns="_sample_order")
+        .reset_index(drop=True)
+    )
+    out["weak_weight"] = _weak_weight_vector(out["target"])
+    out["hard_target"] = (out["target"].astype(float) >= 0.5).astype(np.int8)
+    return out, input_rows
 
 
 def candidate_sample_weights(
@@ -265,15 +372,12 @@ def train_structured_ablation(
 
     if llm_matches_path is not None and full_items_path is not None:
         weak_started = time.perf_counter()
-        weak_raw = pd.read_parquet(llm_matches_path, columns=["id1", "id2", "target"])
-        input_weak_rows = int(len(weak_raw))
-        weak = prefilter_weak_candidates(
-            weak_raw,
+        weak, input_weak_rows = prefilter_weak_candidates_parquet(
+            llm_matches_path,
             validation_item_ids=valid_items,
             max_presample_rows=weak_presample_rows,
             seed=SEED,
         )
-        del weak_raw
         weak, prep_report = prepare_weak_pairs(weak[["id1", "id2", "target"]])
         weak, conflict_report = remove_human_conflicts(
             weak,
