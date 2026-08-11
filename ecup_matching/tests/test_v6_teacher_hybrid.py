@@ -21,7 +21,7 @@ def test_hybrid_coverages_are_frozen_before_evaluation():
     assert HYBRID_COVERAGES == (0.25, 0.40, 0.55, 0.70, 0.85)
 
 
-def test_unselected_held_teacher_values_do_not_affect_hybrid_score():
+def test_unselected_teacher_values_in_same_held_fold_do_not_affect_held_score():
     n = 100
     folds = np.repeat(np.arange(5), n // 5)
     categories = np.array([f"C{i % 4}" for i in range(n)], dtype=object)
@@ -29,15 +29,16 @@ def test_unselected_held_teacher_values_do_not_affect_hybrid_score():
     first = build_crossfit_hybrid_teacher(
         _signals(n), teacher, categories, folds, coverage=0.40
     )
+    held = folds == 2
     changed = teacher.copy()
-    changed[~first["teacher_selected"]] += 10000.0
+    changed[held & ~first["teacher_selected"]] += 10000.0
     second = build_crossfit_hybrid_teacher(
         _signals(n), changed, categories, folds, coverage=0.40
     )
     np.testing.assert_array_equal(first["teacher_selected"], second["teacher_selected"])
     np.testing.assert_allclose(
-        first["hybrid_teacher_score"],
-        second["hybrid_teacher_score"],
+        first["hybrid_teacher_score"][held],
+        second["hybrid_teacher_score"][held],
         atol=0.0,
         rtol=0.0,
     )
