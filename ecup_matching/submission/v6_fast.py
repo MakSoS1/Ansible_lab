@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Any, Iterator
 
 
 GIB = 1024**3
@@ -56,3 +58,31 @@ def batch_index_ranges(row_count: int, batch_size: int) -> Iterator[tuple[int, i
         raise ValueError("batch_size must be a positive integer")
     for start in range(0, row_count, batch_size):
         yield start, min(start + batch_size, row_count)
+
+
+def move_token_batch(tokens: Mapping[str, Any], config: RuntimeConfig) -> dict[str, Any]:
+    return {
+        name: value.to(config.device, non_blocking=config.non_blocking)
+        for name, value in tokens.items()
+    }
+
+
+def torch_autocast(torch_module: Any, config: RuntimeConfig):
+    if config.autocast_dtype is None:
+        return contextlib.nullcontext()
+    if config.autocast_dtype != "float16":
+        raise ValueError(f"unsupported autocast dtype: {config.autocast_dtype}")
+    return torch_module.autocast(device_type=config.device, dtype=torch_module.float16)
+
+
+def aligned_pair_texts(
+    left_ids: Sequence[Any],
+    right_ids: Sequence[Any],
+    text_by_id: Mapping[Any, str],
+) -> tuple[list[str], list[str]]:
+    if len(left_ids) != len(right_ids):
+        raise ValueError("left_ids and right_ids must have equal length")
+    return (
+        [text_by_id[item_id] for item_id in left_ids],
+        [text_by_id[item_id] for item_id in right_ids],
+    )
