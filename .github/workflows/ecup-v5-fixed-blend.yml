@@ -81,10 +81,13 @@ jobs:
           assert m['gold_metric_opened'] is False and m['gold_rows_scored']==0
           assert m['target_fitted_blender'] is False
           print('sources',m['source_metrics'])
+          print('previous_best',m['previous_best_name'],m['previous_best_macro_average_precision'])
           for name, report in m['candidates'].items():
-              print('candidate',name,report['macro_average_precision'],'delta',report['delta_vs_explicit'],'min_fold_delta',report['min_fold_delta_vs_explicit'],'eligible',report['keep_eligible'])
-          print('best',m['best_observed_name'],m['best_observed_macro_average_precision'],m['best_observed_delta_vs_explicit'])
-          print('eligible',m['keep_eligible_candidates'])
+              print('initial',name,report['macro_average_precision'],'delta_explicit',report['delta_vs_explicit'],'eligible',report['keep_eligible'])
+          for name, report in m['rank_ablation_candidates'].items():
+              print('ablation',name,report['macro_average_precision'],'delta_previous',report['delta_vs_previous_best'],'min_fold_delta',report['min_fold_delta_vs_previous_best'],'eligible',report['keep_eligible'])
+          print('best',m['best_observed_name'],m['best_observed_macro_average_precision'],'delta_previous',m['best_observed_delta_vs_previous_best'])
+          print('ablation_eligible',m['rank_ablation_keep_eligible_candidates'])
           PY
       - uses: actions/upload-artifact@v4
         with:
