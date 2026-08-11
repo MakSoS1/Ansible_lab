@@ -18,8 +18,9 @@ from .run_v5_pretrained_biencoder import development_rows_and_folds
 from .run_v5_typed_explicit_fusion import CURRENT5_COLUMNS
 from .v5_category_shrunk import fit_category_shrunk_full
 from .v5_evaluation import OFFICIAL_CATEGORIES
+from .v5_fixed_blend import percentile_rank
 from .v5_hgb_stack import DEFAULT_HGB_PARAMS, fit_fixed_hgb_full
-from .v5_meta_blend import SIX_SIGNAL_NAMES, _rank_signals
+from .v5_meta_blend import SIX_SIGNAL_NAMES
 from .v5_validation import manifest_sha256
 from .v6_teacher_gate import GATE_COVERAGES, build_teacher_gated_scores
 
@@ -96,7 +97,10 @@ def fit_v6_gate_production(
     gated, teacher_mask = build_teacher_gated_scores(six, categories, coverage=coverage)
     actual_fraction = float(np.mean(teacher_mask))
 
-    ranked = _rank_signals(gated, SIX_SIGNAL_NAMES)
+    ranked = {
+        name: percentile_rank(np.asarray(gated[name], dtype=np.float64))
+        for name in SIX_SIGNAL_NAMES
+    }
     category_fit = fit_category_shrunk_full(
         ranked,
         target,
