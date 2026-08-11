@@ -19,19 +19,17 @@ def main() -> int:
     args = parser.parse_args()
 
     root = submission_root(Path(__file__))
-    metadata_path = root / "model_v6_fast_metadata.json"
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    candidate = str(metadata["candidate"])
-
-    contrastive = root / "model_v5_contrastive"
-    teacher = root / "model_v5_teacher"
+    metadata = json.loads(
+        (root / "model_v6_gate_metadata.json").read_text(encoding="utf-8")
+    )
+    coverage = float(metadata["coverage"])
     predict_to_csv_v6(
-        candidate=candidate,
+        coverage=coverage,
         items_path=args.items_path,
         matches_path=args.matches_path,
         structured_model_path=root / "model_v5_structured.joblib",
-        contrastive_model_dir=contrastive if contrastive.is_dir() else None,
-        teacher_model_dir=teacher if teacher.is_dir() else None,
+        contrastive_model_dir=root / "model_v5_contrastive",
+        teacher_model_dir=root / "model_v5_teacher",
         category_model_path=root / "model_v6_category_shrunk.json",
         hgb_model_path=root / "model_v6_hgb_meta.joblib",
         runtime_root=root,
