@@ -76,13 +76,12 @@ def select_full_contrastive_pairs(
     return selected.drop(columns=["_order", "_base_oof", "_source_row"]).reset_index(drop=True)
 
 
-def final_six_rank_fusion(signals: Mapping[str, object]) -> np.ndarray:
-    """Exact target-free equal-rank fusion retained at strict OOF 0.5975445721."""
+def _ranked_final_signals(signals: Mapping[str, object]) -> tuple[dict[str, np.ndarray], int]:
     if set(signals) != set(FINAL_SIGNAL_NAMES):
         missing = sorted(set(FINAL_SIGNAL_NAMES) - set(signals))
         extra = sorted(set(signals) - set(FINAL_SIGNAL_NAMES))
         raise ValueError(f"signal set mismatch; missing={missing}, extra={extra}")
-    ranked: list[np.ndarray] = []
+    ranked: dict[str, np.ndarray] = {}
     row_count: int | None = None
     for name in FINAL_SIGNAL_NAMES:
         values = np.asarray(signals[name], dtype=np.float64)
@@ -92,7 +91,68 @@ def final_six_rank_fusion(signals: Mapping[str, object]) -> np.ndarray:
             row_count = len(values)
         elif len(values) != row_count:
             raise ValueError("all signals must have equal length")
-        ranked.append(percentile_rank(values))
-    if row_count == 0:
+        ranked[name] = percentile_rank(values)
+    if row_count is None or row_count == 0:
         raise ValueError("signals must not be empty")
-    return np.mean(np.vstack(ranked), axis=0)
+    return ranked, row_count
+
+
+def final_six_rank_fusion(signals: Mapping[str, object]) -> np.ndarray:
+    """Exact target-free equal-rank fusion retained at strict OOF 0.5975445721."""
+    ranked, _ = _ranked_final_signals(signals)
+    return np.mean(np.vstack([ranked[name] for name in FINAL_SIGNAL_NAMES]), axis=0)
+
+
+def _validated_simplex_weights(values, *, category: str) -> np.ndarray:
+    weights = np.asarray(values, dtype=np.float64)
+    if weights.shape != (len(FINAL_SIGNAL_NAMES),):
+        raise ValueError(
+            f"category {category!r} weights must have length {len(FINAL_SIGNAL_NAMES)}"
+        )
+    if not np.isfinite(weights).all() or np.any(weights < -1e-12):
+        raise ValueError(f"category {category!r} weights must be finite and nonnegative")
+    weights = np.maximum(weights, 0.0)
+    total = float(weights.sum())
+    if not np.isclose(total, 1.0, rtol=0.0, atol=1e-8):
+        raise ValueError(f"category {category!r} weights must sum to 1; observed={total}")
+    return weights / total
+
+
+def category_shrunk_six_rank_fusion(
+    signals: Mapping[str, object],
+    categories,
+    model: Mapping[str, object],
+) -> np.ndarray:
+    """Apply the selected fixed category-shrunk simplex to target-free test ranks.
+
+    The model is expected to be the deterministic full-development refit of the
+    strict OOF-selected prior=8000 architecture. Unknown categories fail closed
+    rather than silently falling back to a different scoring rule.
+    """
+    ranked, row_count = _ranked_final_signals(signals)
+    category_array = np.asarray(categories).astype(str)
+    if category_array.ndim != 1 or len(category_array) != row_count:
+        raise ValueError("categories must be one-dimensional and aligned with signals")
+
+    signal_names = tuple(str(value) for value in model.get("signal_names", ()))
+    if signal_names != FINAL_SIGNAL_NAMES:
+        raise ValueError(
+            f"production signal order mismatch: {signal_names!r} != {FINAL_SIGNAL_NAMES!r}"
+        )
+    raw_category_weights = model.get("category_weights")
+    if not isinstance(raw_category_weights, Mapping) or not raw_category_weights:
+        raise ValueError("production category_weights must be a non-empty mapping")
+
+    rank_matrix = np.column_stack([ranked[name] for name in FINAL_SIGNAL_NAMES])
+    score = np.full(row_count, np.nan, dtype=np.float64)
+    for category in sorted(np.unique(category_array).tolist()):
+        if category not in raw_category_weights:
+            raise ValueError(f"production model missing category {category!r}")
+        weights = _validated_simplex_weights(
+            raw_category_weights[category], category=category
+        )
+        mask = category_array == category
+        score[mask] = rank_matrix[mask] @ weights
+    if not np.isfinite(score).all():
+        raise RuntimeError("category-shrunk production fusion failed to score every row")
+    return np.clip(score, 0.0, 1.0)
