@@ -26,6 +26,12 @@ def test_macro_ap_report_returns_per_category_and_unweighted_macro():
     assert report["macro_average_precision"] == pytest.approx(1.0)
 
 
+def test_macro_ap_report_strict_official_rejects_toy_category_set():
+    frame = pd.DataFrame({"target": [0, 1], "category": ["a", "a"]})
+    with pytest.raises(ValueError, match="category set"):
+        macro_ap_report(frame, np.array([0.1, 0.9]), strict_official=True)
+
+
 def test_gold_evaluator_requires_frozen_matching_hashes():
     freeze = {
         "frozen": True,
