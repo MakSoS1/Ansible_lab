@@ -9,6 +9,7 @@ import pandas as pd
 _REQUIRED_SOURCES: tuple[str, ...] = ("category", "weak", "sparse", "explicit")
 _ORTHOGONAL_BASE: tuple[str, ...] = ("weak", "sparse", "explicit", "contrastive")
 _ORTHOGONAL_EXTRAS: tuple[str, ...] = ("teacher2_raw", "weighted", "pretrained_raw")
+_FIVE_SIGNAL_NAMES: tuple[str, ...] = ("weak", "sparse", "explicit", "contrastive", "teacher")
 
 
 def _finite_1d(values, *, name: str) -> np.ndarray:
@@ -191,4 +192,22 @@ def orthogonal_rank_candidates(
             _ORTHOGONAL_BASE + ("teacher2_raw", "weighted")
         ),
         "current4_plus_all_three": mean_rank(_ORTHOGONAL_BASE + _ORTHOGONAL_EXTRAS),
+    }
+
+
+def leave_one_out_rank_candidates(five_signal_scores: Mapping[str, object]) -> dict[str, np.ndarray]:
+    """Build exactly the five leave-one-signal-out equal-rank robustness candidates."""
+    arrays, _ = _validated_named_sources(five_signal_scores, _FIVE_SIGNAL_NAMES)
+    ranked = {name: percentile_rank(values) for name, values in arrays.items()}
+
+    def mean_without(drop: str) -> np.ndarray:
+        names = [name for name in _FIVE_SIGNAL_NAMES if name != drop]
+        return np.mean(np.vstack([ranked[name] for name in names]), axis=0)
+
+    return {
+        "loo_drop_weak": mean_without("weak"),
+        "loo_drop_sparse": mean_without("sparse"),
+        "loo_drop_explicit": mean_without("explicit"),
+        "loo_drop_contrastive": mean_without("contrastive"),
+        "loo_drop_teacher": mean_without("teacher"),
     }
