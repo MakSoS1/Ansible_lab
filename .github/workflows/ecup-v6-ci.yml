@@ -7,7 +7,9 @@ on:
       - .github/workflows/ecup-v6-ci.yml
       - ecup_matching/submission/v6_fast.py
       - ecup_matching/submission/predict_v5.py
+      - ecup_matching/ml/v6_fast_ablation.py
       - ecup_matching/tests/test_v6_fast_inference.py
+      - ecup_matching/tests/test_v6_fast_ablation.py
       - ecup_matching/tests/test_v5_production.py
   workflow_dispatch:
 
@@ -28,4 +30,4 @@ jobs:
       - name: Install CI dependencies
         run: python -m pip install -r ecup_matching/requirements-ci.txt
       - name: Run v6 fast tests
-        run: python -m pytest ecup_matching/tests/test_v6_fast_inference.py ecup_matching/tests/test_v5_production.py -q
+        run: python -m pytest ecup_matching/tests/test_v6_fast_inference.py ecup_matching/tests/test_v6_fast_ablation.py ecup_matching/tests/test_v5_production.py -q
