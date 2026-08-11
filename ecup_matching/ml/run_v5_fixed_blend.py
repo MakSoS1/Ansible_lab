@@ -11,7 +11,7 @@ import pandas as pd
 from .data_subset import select_items_by_ids
 from .run_v5_pretrained_biencoder import development_rows_and_folds
 from .v5_evaluation import macro_ap_report
-from .v5_fixed_blend import fixed_blend_candidates
+from .v5_fixed_blend import fixed_blend_candidates, rank_ablation_candidates
 from .v5_validation import manifest_sha256
 
 
@@ -60,22 +60,24 @@ def align_oof_frame(
 def _fold_reports(
     frame: pd.DataFrame,
     folds: np.ndarray,
-    explicit_scores: np.ndarray,
+    anchor_scores: np.ndarray,
     candidate_scores: np.ndarray,
+    *,
+    anchor_name: str,
 ) -> list[dict]:
     reports: list[dict] = []
     for fold in sorted(np.unique(folds).tolist()):
         mask = folds == fold
         fold_frame = frame.loc[mask].reset_index(drop=True)
-        explicit = macro_ap_report(fold_frame, explicit_scores[mask])["macro_average_precision"]
+        anchor = macro_ap_report(fold_frame, anchor_scores[mask])["macro_average_precision"]
         candidate = macro_ap_report(fold_frame, candidate_scores[mask])["macro_average_precision"]
         reports.append(
             {
                 "fold": int(fold),
                 "rows": int(mask.sum()),
-                "explicit_macro_average_precision": float(explicit),
+                f"{anchor_name}_macro_average_precision": float(anchor),
                 "macro_average_precision": float(candidate),
-                "delta_vs_explicit": float(candidate - explicit),
+                f"delta_vs_{anchor_name}": float(candidate - anchor),
             }
         )
     return reports
@@ -105,38 +107,23 @@ def run_fixed_blend(
     folds = np.asarray(folds, dtype=np.int16)
 
     category = align_oof_frame(
-        [category_oof_path],
-        expected_rows=dev_rows,
-        required_columns=("score",),
-        source_name="category",
+        [category_oof_path], expected_rows=dev_rows, required_columns=("score",), source_name="category"
     )
     weak = align_oof_frame(
-        [weak_oof_path],
-        expected_rows=dev_rows,
-        expected_folds=folds,
-        required_columns=("score",),
-        source_name="weak",
+        [weak_oof_path], expected_rows=dev_rows, expected_folds=folds,
+        required_columns=("score",), source_name="weak"
     )
     sparse = align_oof_frame(
         sorted(Path(sparse_fold_dir).rglob("v5-sparse-fold-*-oof.parquet")),
-        expected_rows=dev_rows,
-        expected_folds=folds,
-        required_columns=("score",),
-        source_name="sparse",
+        expected_rows=dev_rows, expected_folds=folds, required_columns=("score",), source_name="sparse"
     )
     explicit = align_oof_frame(
         sorted(Path(explicit_fold_dir).rglob("v5-explicit-fold-*-oof.parquet")),
-        expected_rows=dev_rows,
-        expected_folds=folds,
-        required_columns=("score",),
-        source_name="explicit",
+        expected_rows=dev_rows, expected_folds=folds, required_columns=("score",), source_name="explicit"
     )
     contrastive = align_oof_frame(
-        [contrastive_oof_path],
-        expected_rows=dev_rows,
-        expected_folds=folds,
-        required_columns=("embedding_cosine",),
-        source_name="contrastive",
+        [contrastive_oof_path], expected_rows=dev_rows, expected_folds=folds,
+        required_columns=("embedding_cosine",), source_name="contrastive"
     )
 
     dev = matches.iloc[dev_rows].reset_index(drop=True)
@@ -154,7 +141,12 @@ def run_fixed_blend(
         "explicit": explicit["score"].to_numpy(dtype=np.float64),
     }
     cosine = contrastive["embedding_cosine"].to_numpy(dtype=np.float64)
-    candidates = fixed_blend_candidates(source_scores, contrastive_cosine=cosine)
+    first_candidates = fixed_blend_candidates(source_scores, contrastive_cosine=cosine)
+    ablation_candidates = rank_ablation_candidates(
+        source_scores,
+        groups=dev["category"].astype(str).to_numpy(),
+        contrastive_cosine=cosine,
+    )
 
     source_metrics = {
         name: float(macro_ap_report(dev, score, strict_official=True)["macro_average_precision"])
@@ -167,9 +159,11 @@ def run_fixed_blend(
 
     candidate_reports: dict[str, dict] = {}
     eligible: list[str] = []
-    for name, score in candidates.items():
+    for name, score in first_candidates.items():
         report = macro_ap_report(dev, score, strict_official=True)
-        folds_report = _fold_reports(dev, folds, source_scores["explicit"], score)
+        folds_report = _fold_reports(
+            dev, folds, source_scores["explicit"], score, anchor_name="explicit"
+        )
         min_fold_delta = min(row["delta_vs_explicit"] for row in folds_report)
         candidate_ap = float(report["macro_average_precision"])
         keep_eligible = bool(candidate_ap > explicit_ap and min_fold_delta >= -0.001)
@@ -184,23 +178,54 @@ def run_fixed_blend(
             "per_category_ap": report["per_category_ap"],
         }
 
-    best_name = max(candidate_reports, key=lambda name: candidate_reports[name]["macro_average_precision"])
-    best_report = candidate_reports[best_name]
+    previous_best_name = "rank_mean_5"
+    previous_best_scores = first_candidates[previous_best_name]
+    previous_best_ap = candidate_reports[previous_best_name]["macro_average_precision"]
+    ablation_reports: dict[str, dict] = {}
+    ablation_eligible: list[str] = []
+    for name, score in ablation_candidates.items():
+        report = macro_ap_report(dev, score, strict_official=True)
+        folds_report = _fold_reports(
+            dev, folds, previous_best_scores, score, anchor_name="previous_best"
+        )
+        min_fold_delta = min(row["delta_vs_previous_best"] for row in folds_report)
+        candidate_ap = float(report["macro_average_precision"])
+        keep_eligible = bool(candidate_ap > previous_best_ap and min_fold_delta >= -0.001)
+        if keep_eligible:
+            ablation_eligible.append(name)
+        ablation_reports[name] = {
+            "macro_average_precision": candidate_ap,
+            "delta_vs_previous_best": float(candidate_ap - previous_best_ap),
+            "min_fold_delta_vs_previous_best": float(min_fold_delta),
+            "keep_eligible": keep_eligible,
+            "fold_reports": folds_report,
+            "per_category_ap": report["per_category_ap"],
+        }
+
+    combined_scores = {**first_candidates, **ablation_candidates}
+    combined_reports = {**candidate_reports, **ablation_reports}
+    best_name = max(combined_reports, key=lambda name: combined_reports[name]["macro_average_precision"])
+    best_ap = float(combined_reports[best_name]["macro_average_precision"])
     payload = {
-        "version": "v5-fixed-label-free-blend",
+        "version": "v5-fixed-label-free-blend-v2",
         "split_sha256": expected_split_sha,
         "development_rows": int(len(dev)),
         "gold_metric_opened": False,
         "gold_rows_scored": 0,
         "target_fitted_blender": False,
-        "predeclared_candidate_count": int(len(candidate_reports)),
+        "initial_predeclared_candidate_count": int(len(candidate_reports)),
+        "ablation_predeclared_candidate_count": int(len(ablation_reports)),
         "explicit_anchor_macro_average_precision": float(explicit_ap),
+        "previous_best_name": previous_best_name,
+        "previous_best_macro_average_precision": float(previous_best_ap),
         "source_metrics": source_metrics,
         "candidates": candidate_reports,
+        "rank_ablation_candidates": ablation_reports,
         "best_observed_name": best_name,
-        "best_observed_macro_average_precision": float(best_report["macro_average_precision"]),
-        "best_observed_delta_vs_explicit": float(best_report["delta_vs_explicit"]),
+        "best_observed_macro_average_precision": best_ap,
+        "best_observed_delta_vs_previous_best": float(best_ap - previous_best_ap),
         "keep_eligible_candidates": eligible,
+        "rank_ablation_keep_eligible_candidates": ablation_eligible,
     }
     (output_dir / "v5-fixed-blend-metrics.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
@@ -212,7 +237,7 @@ def run_fixed_blend(
             "fold": folds,
             **{f"source_{name}": values for name, values in source_scores.items()},
             "source_contrastive_cosine": cosine,
-            **{f"candidate_{name}": values for name, values in candidates.items()},
+            **{f"candidate_{name}": values for name, values in combined_scores.items()},
         }
     )
     output.to_parquet(output_dir / "v5-fixed-blend-oof.parquet", index=False)
