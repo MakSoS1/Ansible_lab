@@ -5,6 +5,7 @@ from ecup_matching.ml.train_v2_structured import (
     candidate_sample_weights,
     fit_estimator,
     prefilter_weak_candidates,
+    prefilter_weak_candidates_parquet,
 )
 
 
@@ -19,6 +20,48 @@ def test_prefilter_weak_candidates_excludes_validation_items_and_mid_confidence(
     out = prefilter_weak_candidates(weak, validation_item_ids={2}, max_presample_rows=10, seed=2026)
     assert set(out[["id1", "id2"]].itertuples(index=False, name=None)) == {(5, 6), (7, 8)}
     assert np.allclose(out["weak_weight"].to_numpy(float), [0.6, 0.3])
+
+
+def test_streaming_prefilter_matches_in_memory_sampling_exactly(tmp_path):
+    weak = pd.DataFrame(
+        {
+            "id1": np.arange(100, 132, dtype=np.int64),
+            "id2": np.arange(200, 232, dtype=np.int64),
+            "target": [
+                0.99,
+                0.01,
+                0.90,
+                0.10,
+                0.75,
+                0.25,
+                0.50,
+                0.80,
+            ]
+            * 4,
+        }
+    )
+    # Exclude two otherwise eligible rows through validation item IDs so the
+    # streaming path must reproduce both filtering and sample ordinals.
+    validation_ids = {101, 204}
+    expected = prefilter_weak_candidates(
+        weak,
+        validation_item_ids=validation_ids,
+        max_presample_rows=11,
+        seed=2026,
+    )
+    path = tmp_path / "weak.parquet"
+    weak.to_parquet(path, index=False, row_group_size=5)
+
+    actual, input_rows = prefilter_weak_candidates_parquet(
+        path,
+        validation_item_ids=validation_ids,
+        max_presample_rows=11,
+        seed=2026,
+        batch_size=4,
+    )
+
+    assert input_rows == len(weak)
+    pd.testing.assert_frame_equal(actual.reset_index(drop=True), expected.reset_index(drop=True))
 
 
 def test_candidate_sample_weights_human_dominates_weak_and_hard_negatives_get_more_weight():
