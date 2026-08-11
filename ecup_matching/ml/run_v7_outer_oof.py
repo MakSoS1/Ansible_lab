@@ -21,7 +21,12 @@ from .train_v4_reranker import DEFAULT_MODEL_REVISION, _verify_model_revision
 from .v5_evaluation import macro_ap_report
 from .v5_validation import build_v5_split_manifest, manifest_sha256, validate_manifest_no_overlap
 from .v7_item_text import serialize_item_v7
-from .v7_neural import build_v7_text_cache, configure_trainable_layers, predict_pairs, train_pair_phase
+from .v7_neural import (
+    build_v7_text_cache_from_parquet,
+    configure_trainable_layers,
+    predict_pairs,
+    train_pair_phase,
+)
 from .v7_teacher_contract import V7TeacherConfig, validate_v7_teacher_config
 from .weak_labels import prepare_weak_pairs, sample_weak_training
 from .textnorm import normalize_item
@@ -114,8 +119,9 @@ def _prepare_common_weak(
     forbidden_human_item_ids: set[object],
     weak_presample_rows: int,
     weak_final_rows: int,
+    max_chars: int,
     seed: int,
-) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object]]:
+) -> tuple[pd.DataFrame, dict[object, str], dict[str, object]]:
     _phase(
         "weak-prefilter",
         forbidden_human_items=len(forbidden_human_item_ids),
@@ -134,23 +140,49 @@ def _prepare_common_weak(
 
     intermediate_cap = min(len(weak), max(weak_final_rows, int(round(weak_final_rows * 1.5))))
     weak = sample_weak_training(weak, max_rows=intermediate_cap, seed=seed)
+
+    # First pass is intentionally category-only: it is needed before the final
+    # category-balanced weak sampling and avoids materializing huge attribute blobs.
     weak_ids = set(weak["id1"].tolist()) | set(weak["id2"].tolist())
-    weak_items = select_items_by_ids(full_items_path, weak_ids, include_attributes=False)
-    weak = attach_pair_category(weak, weak_items)
+    category_items = select_items_by_ids(full_items_path, weak_ids, include_attributes=False)
+    weak = attach_pair_category(weak, category_items)
     weak = sample_weak_training(weak, max_rows=weak_final_rows, seed=seed + 17)
+
     final_ids = set(weak["id1"].tolist()) | set(weak["id2"].tolist())
     if final_ids & forbidden_human_item_ids:
         raise RuntimeError("forbidden human item survived common weak selection")
-    weak_items = weak_items[weak_items["id"].isin(final_ids)].reset_index(drop=True)
+
+    # Second pass is the quality-critical one: stream real attributes only for the
+    # final selected IDs and immediately serialize them, rather than substituting {}.
+    weak_texts, category_by_id = build_v7_text_cache_from_parquet(
+        full_items_path,
+        final_ids,
+        max_chars=max_chars,
+    )
+    left_category = weak["id1"].map(category_by_id)
+    right_category = weak["id2"].map(category_by_id)
+    if left_category.isna().any() or right_category.isna().any():
+        raise RuntimeError("full-attribute weak scan missed selected item IDs")
+    if (left_category.astype(str) != right_category.astype(str)).any():
+        raise RuntimeError("full-attribute weak scan found cross-category pair")
+    if (weak["category"].astype(str) != left_category.astype(str)).any():
+        raise RuntimeError("weak category changed between category-only and full-attribute scans")
+
     report: dict[str, object] = {
         "input_rows": int(weak_input_rows),
         "prepared": prep,
         "selected_rows": int(len(weak)),
-        "selected_items": int(len(weak_items)),
+        "selected_items": int(len(weak_texts)),
+        "selected_items_with_real_attributes": int(len(weak_texts)),
         "forbidden_human_items": int(len(forbidden_human_item_ids)),
         "human_item_overlap": 0,
     }
-    return weak[["id1", "id2", "target", "category", "weak_weight"]].reset_index(drop=True), weak_items, report
+    del category_items, category_by_id
+    return (
+        weak[["id1", "id2", "target", "category", "weak_weight"]].reset_index(drop=True),
+        weak_texts,
+        report,
+    )
 
 
 def run_v7_outer_oof(
@@ -219,15 +251,15 @@ def run_v7_outer_oof(
         raise RuntimeError("expected exactly five outer folds")
 
     human_item_universe = set(matches["id1"].tolist()) | set(matches["id2"].tolist())
-    weak, weak_items, weak_report = _prepare_common_weak(
+    weak, weak_texts, weak_report = _prepare_common_weak(
         weak_matches_path=weak_matches_path,
         full_items_path=full_items_path,
         forbidden_human_item_ids=human_item_universe,
         weak_presample_rows=weak_presample_rows,
         weak_final_rows=weak_final_rows,
+        max_chars=max_chars,
         seed=seed,
     )
-    weak_texts = _stream_text_cache(weak_items, max_chars=max_chars)
     weak_needed = set(weak["id1"].tolist()) | set(weak["id2"].tolist())
     if not weak_needed <= set(weak_texts):
         raise RuntimeError("common weak text cache is incomplete")
@@ -256,7 +288,7 @@ def run_v7_outer_oof(
     os.close(checkpoint_fd)
     checkpoint_path = Path(checkpoint_name)
     torch.save(common_model.state_dict(), checkpoint_path)
-    del common_model, weak_texts, weak_items, weak
+    del common_model, weak_texts, weak
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -377,7 +409,7 @@ def run_v7_outer_oof(
     elapsed_seconds = time.perf_counter() - started
     payload: dict[str, object] = {
         "version": "v7-outer-oof",
-        "candidate": "identity-first-256-macro-balanced-shared-weak-rubert-base",
+        "candidate": "identity-first-256-macro-balanced-shared-weak-rubert-base-full-attrs",
         "base_model": "ai-forever/ruBert-base",
         "base_model_revision": base_model_revision.lower(),
         "cuda_device": cuda_device,
