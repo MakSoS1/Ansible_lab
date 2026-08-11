@@ -14,18 +14,25 @@ from .textnorm import ItemNorm, canonical_attribute_value
 LeafValueCache = dict[object, dict[str, frozenset[str]]]
 
 
-def _leaf_values(item: ItemNorm) -> dict[str, frozenset[str]]:
+def _leaf_values(item: ItemNorm, *, canonical_values: bool = True) -> dict[str, frozenset[str]]:
     values: dict[str, set[str]] = defaultdict(set)
     for key, value in item.attrs.items():
-        canonical = canonical_attribute_value(value)
-        if canonical:
-            values[_leaf_key(key)].add(canonical)
+        rendered = canonical_attribute_value(value) if canonical_values else str(value)
+        if rendered:
+            values[_leaf_key(key)].add(rendered)
     return {key: frozenset(v) for key, v in values.items()}
 
 
-def build_explicit_leaf_cache(item_cache: Mapping[object, ItemNorm]) -> LeafValueCache:
-    """Build canonical leaf values once so all categories can reuse them."""
-    return {item_id: _leaf_values(item) for item_id, item in item_cache.items()}
+def build_explicit_leaf_cache(
+    item_cache: Mapping[object, ItemNorm],
+    *,
+    canonical_values: bool = True,
+) -> LeafValueCache:
+    """Build leaf evidence once; legacy mode reproduces the original raw-value specialist."""
+    return {
+        item_id: _leaf_values(item, canonical_values=canonical_values)
+        for item_id, item in item_cache.items()
+    }
 
 
 def learn_explicit_attribute_keys(
