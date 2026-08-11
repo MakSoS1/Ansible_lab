@@ -3,6 +3,7 @@ import pytest
 
 from ecup_matching.ml.v6_teacher_gate import (
     GATE_COVERAGES,
+    assemble_partial_teacher_signal,
     build_teacher_gated_scores,
     disagreement_gate_mask,
 )
@@ -63,6 +64,33 @@ def test_selected_teacher_values_can_change_selected_teacher_signal():
     changed["teacher"] = changed_teacher
     second, _ = build_teacher_gated_scores(changed, categories, coverage=0.40)
     assert not np.allclose(first["teacher"][mask], second["teacher"][mask])
+
+
+def test_partial_teacher_assembly_matches_full_gated_formula_exactly():
+    signals = _signals()
+    categories = _categories()
+    full, mask = build_teacher_gated_scores(signals, categories, coverage=0.40)
+    retained = {k: v for k, v in signals.items() if k != "teacher"}
+    selected = np.flatnonzero(mask)
+    partial_teacher, partial_mask = assemble_partial_teacher_signal(
+        retained,
+        categories,
+        coverage=0.40,
+        selected_teacher_scores=np.asarray(signals["teacher"])[selected],
+    )
+    np.testing.assert_array_equal(partial_mask, mask)
+    np.testing.assert_allclose(partial_teacher, full["teacher"], atol=0.0, rtol=0.0)
+
+
+def test_partial_teacher_assembly_rejects_wrong_selected_count():
+    retained = {k: v for k, v in _signals().items() if k != "teacher"}
+    with pytest.raises(ValueError, match="selected_teacher_scores"):
+        assemble_partial_teacher_signal(
+            retained,
+            _categories(),
+            coverage=0.40,
+            selected_teacher_scores=np.array([0.1, 0.2]),
+        )
 
 
 def test_invalid_coverage_is_rejected():
