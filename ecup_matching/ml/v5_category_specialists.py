@@ -10,6 +10,7 @@ def fit_predict_category_specialists(
     train_target,
     valid_features: pd.DataFrame,
     *,
+    sample_weight=None,
     seed: int = 2026,
     max_iter: int = 300,
     min_samples_leaf: int = 15,
@@ -21,6 +22,14 @@ def fit_predict_category_specialists(
     y = np.asarray(train_target, dtype=np.int8)
     if len(y) != len(train_features):
         raise ValueError("train_target must match train_features")
+    if sample_weight is None:
+        weights = None
+    else:
+        weights = np.asarray(sample_weight, dtype=np.float64)
+        if len(weights) != len(train_features):
+            raise ValueError("sample_weight must match train_features")
+        if not np.isfinite(weights).all() or (weights < 0).any():
+            raise ValueError("sample_weight must be finite and non-negative")
     if max_iter <= 0 or min_samples_leaf <= 0 or l2_regularization <= 0:
         raise ValueError("model hyperparameters must be positive")
     numeric = [c for c in train_features.columns if c != "category"]
@@ -50,9 +59,13 @@ def fit_predict_category_specialists(
             early_stopping=False,
             random_state=int(seed),
         )
+        fit_kwargs = {}
+        if weights is not None:
+            fit_kwargs["sample_weight"] = weights[train_mask]
         model.fit(
             train_features.loc[train_mask, numeric].to_numpy(dtype=np.float32),
             category_y,
+            **fit_kwargs,
         )
         scores[valid_mask] = model.predict_proba(
             valid_features.loc[valid_mask, numeric].to_numpy(dtype=np.float32)
