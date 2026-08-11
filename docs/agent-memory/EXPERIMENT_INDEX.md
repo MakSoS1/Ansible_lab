@@ -6,7 +6,8 @@ This file is the short registry. Detailed metrics live in each experiment's `RES
 |---|---|---|---|---:|---|---|---|
 | v1 | completed | structured/lexical HGB | item-disjoint connected-component split, 73,131 pairs | 0.4961654895 | 308.57 s train/eval; 1.78 s / 1k-pair organizer smoke | `submissions/v1/ecup-v1-submission.zip` | superseded by v2b |
 | v2 | completed | 2024-inspired product features + confidence-filtered LLM weak labels (`v2b-weak-curriculum`) | exact same item-disjoint validation, 73,131 pairs, 0 shared items | **0.5010008995** | 334 s / 275k-pair offline organizer benchmark; 446 s headroom to 780 s private limit | `submissions/v2/ecup-v2-submission.zip` | superseded by retained v3; remains fast anchor/fallback |
-| v3 | **completed / retained** | v2b structured anchor + `rubert-tiny2` stage-1 global reranker blend, neural alpha 0.45; real model-mined hard-negative stage-2 ablation | exact same item-disjoint validation, 73,131 pairs, 0 shared items | **0.5254642646** | GitHub M1 MPS training; exact organizer-image `--network none` canonical smoke: 10k/10k neural pairs, 103 s CPU wall; 1k independent neural smoke also green | `submissions/v3/ecup-v3-submission.zip` | current best; start v4 only for a demonstrably better item-disjoint ablation |
+| v3 | **completed / retained** | v2b structured anchor + `rubert-tiny2` stage-1 global reranker blend, neural alpha 0.45; real model-mined hard-negative stage-2 ablation | exact same item-disjoint validation, 73,131 pairs, 0 shared items | **0.5254642646** | GitHub M1 MPS training; exact organizer-image `--network none` canonical smoke: 10k/10k neural pairs, 103 s CPU wall; 1k independent neural smoke also green | `submissions/v3/ecup-v3-submission.zip` | current best and immutable fallback while v4 is measured |
+| v4 | **in progress** | `ai-forever/ruBert-base`: v4a full-human → v4b confidence-filtered weak continuation → v4c hard-negative 25/25/50 replay, blended with v2b | exact same item-disjoint validation, 73,131 pairs, 0 shared items | — | RTX 2060 SUPER CUDA through private isolated dispatcher; no retained v4 runtime/metric yet | per-run private paths under `experiments/v4/runs/`; no canonical v4 artifact yet | retain only if Macro AP strictly exceeds v3 and organizer gates pass |
 
 ## v2 ablation headline
 
@@ -28,9 +29,17 @@ This file is the short registry. Detailed metrics live in each experiment's `RES
 - Canonical exact-image offline smoke: 10,000 pairs, **10,000 neural pairs**, output verified, network disabled, private HF upload verified.
 - A category-routing normalization defect was discovered by a rejected sprint package (`neural_pairs=0`) and fixed RED/GREEN before the canonical v3 ZIP was published.
 
+## v4 headline (in progress)
+
+- Baseline is retained v3 Macro AP `0.5254642645846543` on the same fixed validation.
+- v4a must train the stronger encoder on the complete leakage-safe human curriculum rather than the v3 180k compact subset.
+- v4b adds up to 600k deterministic high-confidence LLM-labelled rows while human supervision remains dominant.
+- v4c adds model-mined hard negatives but forces 50% ordinary replay to avoid the narrow stage-2 regression observed in v3.
+- Intermediate artifacts are immutable per run; only a fully verified winner is promoted to a canonical SHA-256 path.
+
 ## Required interpretation
 
 - Headline scores are comparable because retained iterations use the identical leakage-resistant human validation split.
 - The competition metric is ranking Average Precision by category; threshold accuracy is not the retention criterion.
-- The 10k v3 CPU timing is a correctness/stress measurement only because the GitHub Ubuntu runner does not expose NVIDIA CUDA; the organizer image is CUDA-capable and the target evaluation GPU is H100.
+- Local CPU/M1 timing is not an H100 throughput estimate. v4 runtime is a hard gate after a quality winner exists.
 - Private artifacts, raw data and learned weights never belong in this public Git repository.
