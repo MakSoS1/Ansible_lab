@@ -5,6 +5,11 @@ on:
     branches: [ecup-v6-fast]
     paths:
       - .github/workflows/ecup-v6-final-submit.yml
+      - ecup_matching/ml/run_v6_gate_production.py
+      - ecup_matching/ml/v6_teacher_gate.py
+      - ecup_matching/submission/predict_v6.py
+      - ecup_matching/submission/run_v6.py
+      - ecup_matching/submission/v6_fast.py
   workflow_dispatch:
 
 permissions:
