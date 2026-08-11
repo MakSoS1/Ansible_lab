@@ -83,6 +83,8 @@ def learn_attribute_importance(
     items: pd.DataFrame,
     train_pairs: pd.DataFrame,
     min_support: int = 20,
+    *,
+    item_cache: Mapping[object, ItemNorm] | None = None,
 ) -> dict[str, dict[str, float]]:
     """Learn simple label-consistency importance from training pairs only.
 
@@ -90,6 +92,9 @@ def learn_attribute_importance(
     negatives tend to disagree. The returned score is bounded away from zero
     and normalized to mean ~1 within each category, making it suitable for
     deterministic pair features and serialization in a model manifest.
+
+    ``item_cache`` is an optional performance-only input. It contains no labels,
+    so reusing it across outer folds does not change fold isolation.
     """
     if min_support <= 0:
         raise ValueError("min_support must be positive")
@@ -101,9 +106,12 @@ def learn_attribute_importance(
     if missing_pairs:
         raise ValueError(f"train_pairs missing required columns: {sorted(missing_pairs)}")
 
-    item_index: dict[object, ItemNorm] = {}
-    for row in items[["id", "name", "attributes", "category"]].itertuples(index=False, name=None):
-        item_index[row[0]] = normalize_item(*row)
+    if item_cache is None:
+        item_index: dict[object, ItemNorm] = {}
+        for row in items[["id", "name", "attributes", "category"]].itertuples(index=False, name=None):
+            item_index[row[0]] = normalize_item(*row)
+    else:
+        item_index = dict(item_cache)
 
     stats: dict[str, dict[str, dict[str, float]]] = defaultdict(
         lambda: defaultdict(lambda: {"pos_equal": 0.0, "pos_total": 0.0, "neg_diff": 0.0, "neg_total": 0.0, "support": 0.0})
