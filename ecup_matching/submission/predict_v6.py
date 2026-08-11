@@ -13,18 +13,27 @@ from ecup_matching.ml.data_subset import select_items_by_ids
 from ecup_matching.ml.features import normalize_items
 from ecup_matching.ml.features_v2 import build_pair_features_v2
 from ecup_matching.ml.v5_category_specialists import predict_category_specialists
+from ecup_matching.ml.v5_explicit_attributes import build_explicit_leaf_cache
 from ecup_matching.ml.v5_production import category_shrunk_hgb_equal_rank_fusion
 from ecup_matching.ml.v6_teacher_gate import (
     assemble_partial_teacher_signal,
     disagreement_gate_mask,
 )
 from ecup_matching.submission.predict_v5 import (
-    _explicit_scores,
     _legacy_text_cache,
     _load_legacy_modules,
     _mean_pool,
 )
-from ecup_matching.submission.v6_fast import select_runtime_config
+from ecup_matching.submission.v6_fast import (
+    batch_index_ranges,
+    collect_chunked_scores,
+    select_runtime_config,
+)
+
+
+STRUCTURED_CHUNK_SIZE = 10_000
+PAIR_SCORE_CHUNK_SIZE = 50_000
+STRUCTURED_SIGNAL_NAMES = ("weak", "sparse", "explicit", "typed_explicit")
 
 
 def _phase(label: str, started: float, previous: float) -> float:
@@ -60,6 +69,166 @@ def _load_auto_model(model_class, model_dir: Path, *, device: str):
         except (TypeError, ValueError, NotImplementedError):
             pass
     return model_class.from_pretrained(str(model_dir), **kwargs).to(device)
+
+
+def _explicit_scores_from_leaf_cache(
+    *,
+    pairs: pd.DataFrame,
+    base_features: pd.DataFrame,
+    leaf_cache,
+    bundle: dict,
+) -> np.ndarray:
+    """Reproduce the v5 explicit specialist without rebuilding item caches.
+
+    The original helper materializes leaf/item mappings internally. For v6
+    streaming those mappings are already bounded to the current pair chunk, so
+    constructing the small attribute matrix directly avoids redundant mapping
+    copies while preserving the trained feature order exactly.
+    """
+    raw_categories = pairs["category"].astype(str).to_numpy()
+    left_ids = pairs["id1"].to_numpy()
+    right_ids = pairs["id2"].to_numpy()
+    score = np.full(len(pairs), np.nan, dtype=np.float64)
+
+    for category in sorted(np.unique(raw_categories).tolist()):
+        positions = np.flatnonzero(raw_categories == category)
+        if category not in bundle["models"]:
+            raise ValueError(f"explicit production model missing category {category!r}")
+        keys = list(bundle["key_spec"].get(str(category), []))
+        attr = np.empty((len(positions), 3 * len(keys)), dtype=np.float32)
+        for local_row, position in enumerate(positions):
+            id1 = left_ids[position]
+            id2 = right_ids[position]
+            if id1 not in leaf_cache or id2 not in leaf_cache:
+                raise KeyError("pair references missing item")
+            left = leaf_cache[id1]
+            right = leaf_cache[id2]
+            column = 0
+            for key in keys:
+                left_value = left.get(key)
+                right_value = right.get(key)
+                if left_value is None or right_value is None:
+                    eq = 0.0
+                    conflict = 0.0
+                    missing = 1.0
+                else:
+                    overlap = bool(left_value & right_value)
+                    eq = float(overlap)
+                    conflict = float(not overlap)
+                    missing = 0.0
+                attr[local_row, column] = eq
+                attr[local_row, column + 1] = conflict
+                attr[local_row, column + 2] = missing
+                column += 3
+
+        base = (
+            base_features.iloc[positions]
+            .drop(columns=["category"])
+            .to_numpy(dtype=np.float32)
+        )
+        if attr.shape[1]:
+            features = np.concatenate([base, attr], axis=1)
+        else:
+            features = base
+        score[positions] = bundle["models"][category].predict_proba(features)[:, 1]
+
+    if not np.isfinite(score).all():
+        raise RuntimeError("explicit model failed to score every pair")
+    return score
+
+
+def _structured_scores_streaming(
+    *,
+    items: pd.DataFrame,
+    pairs: pd.DataFrame,
+    structured: dict,
+    legacy_features,
+    legacy_features_v2,
+    legacy_sparse,
+    chunk_size: int = STRUCTURED_CHUNK_SIZE,
+) -> dict[str, np.ndarray]:
+    """Score structured models with pair/item state bounded to one chunk."""
+    item_index = items.set_index("id", drop=False)
+    total_rows = len(pairs)
+
+    def score_chunk(start: int, end: int):
+        chunk = pairs.iloc[start:end].reset_index(drop=True)
+        ids = pd.unique(pd.concat([chunk["id1"], chunk["id2"]], ignore_index=True))
+        missing = [item_id for item_id in ids if item_id not in item_index.index]
+        if missing:
+            raise KeyError(
+                f"structured chunk references {len(missing)} missing items; first={missing[0]!r}"
+            )
+        chunk_items = item_index.loc[ids].reset_index(drop=True)
+
+        legacy_base = legacy_features_v2.build_features_v2_chunked(
+            chunk_items,
+            chunk,
+            attribute_importance=None,
+            chunk_size=max(1, len(chunk)),
+        )
+        weak = predict_category_specialists(structured["weak"], legacy_base)
+
+        sparse_extra = legacy_sparse.transform_sparse_pairs(
+            structured["sparse"]["encoder"], chunk_items, chunk
+        )
+        sparse_features = pd.concat(
+            [legacy_base.reset_index(drop=True), sparse_extra.reset_index(drop=True)],
+            axis=1,
+        )
+        sparse = predict_category_specialists(
+            structured["sparse"]["specialists"], sparse_features
+        )
+        del sparse_extra, sparse_features
+
+        legacy_cache = legacy_features.normalize_items(chunk_items)
+        legacy_leaf_cache = build_explicit_leaf_cache(
+            legacy_cache, canonical_values=False
+        )
+        explicit = _explicit_scores_from_leaf_cache(
+            pairs=chunk,
+            base_features=legacy_base,
+            leaf_cache=legacy_leaf_cache,
+            bundle=structured["explicit"],
+        )
+        del legacy_cache, legacy_leaf_cache, legacy_base
+
+        typed_cache = normalize_items(chunk_items)
+        typed_base = build_pair_features_v2(
+            chunk_items, chunk, item_cache=typed_cache
+        )
+        typed_leaf_cache = build_explicit_leaf_cache(
+            typed_cache, canonical_values=True
+        )
+        typed_explicit = _explicit_scores_from_leaf_cache(
+            pairs=chunk,
+            base_features=typed_base,
+            leaf_cache=typed_leaf_cache,
+            bundle=structured["typed_explicit"],
+        )
+        del typed_cache, typed_leaf_cache, typed_base, chunk_items, chunk
+        gc.collect()
+
+        print(
+            f"[v6] structured rows {end:,}/{total_rows:,} chunk={end-start:,}",
+            flush=True,
+        )
+        return {
+            "weak": weak,
+            "sparse": sparse,
+            "explicit": explicit,
+            "typed_explicit": typed_explicit,
+        }
+
+    result = collect_chunked_scores(
+        row_count=total_rows,
+        chunk_size=int(chunk_size),
+        signal_names=STRUCTURED_SIGNAL_NAMES,
+        score_chunk=score_chunk,
+    )
+    del item_index
+    gc.collect()
+    return result
 
 
 def _contrastive_scores_fast(
@@ -123,7 +292,7 @@ def _contrastive_scores_fast(
     left = np.stack([embedding_by_id[item_id] for item_id in left_ids])
     right = np.stack([embedding_by_id[item_id] for item_id in right_ids])
     score = np.einsum("ij,ij->i", left, right, optimize=True).astype(np.float64)
-    del model, tokenizer, embedding_by_id, left, right
+    del model, tokenizer, texts, embedding_by_id, left, right
     gc.collect()
     if device == "cuda":
         torch.cuda.empty_cache()
@@ -204,7 +373,7 @@ def _teacher_selected_scores_fast(
                     f"[v6] teacher selected {position:,}/{len(order):,} batch={active_batch}",
                     flush=True,
                 )
-    del model, tokenizer
+    del model, tokenizer, texts
     gc.collect()
     if device == "cuda":
         torch.cuda.empty_cache()
@@ -245,49 +414,25 @@ def predict_to_csv_v6(
     print(
         f"[v6] pairs={len(pairs):,} items={len(items):,} coverage={coverage:.2f} "
         f"device={config.device} contrastive_batch={config.contrastive_batch} "
-        f"teacher_batch={config.teacher_batch}",
+        f"teacher_batch={config.teacher_batch} structured_chunk={STRUCTURED_CHUNK_SIZE}",
         flush=True,
     )
     previous = _phase("load", started, previous)
 
-    legacy_base = legacy_features_v2.build_features_v2_chunked(
-        items, pairs, attribute_importance=None, chunk_size=50_000
-    )
-    weak = predict_category_specialists(structured["weak"], legacy_base)
-    sparse_extra = legacy_sparse.transform_sparse_pairs(
-        structured["sparse"]["encoder"], items, pairs
-    )
-    sparse_features = pd.concat(
-        [legacy_base.reset_index(drop=True), sparse_extra.reset_index(drop=True)], axis=1
-    )
-    sparse = predict_category_specialists(
-        structured["sparse"]["specialists"], sparse_features
-    )
-    del sparse_extra, sparse_features
-    gc.collect()
-
-    legacy_cache = legacy_features.normalize_items(items)
-    explicit = _explicit_scores(
+    structured_scores = _structured_scores_streaming(
         items=items,
         pairs=pairs,
-        base_features=legacy_base,
-        item_cache=legacy_cache,
-        bundle=structured["explicit"],
-        canonical_values=False,
+        structured=structured,
+        legacy_features=legacy_features,
+        legacy_features_v2=legacy_features_v2,
+        legacy_sparse=legacy_sparse,
+        chunk_size=STRUCTURED_CHUNK_SIZE,
     )
-    del legacy_cache
-
-    typed_cache = normalize_items(items)
-    typed_base = build_pair_features_v2(items, pairs, item_cache=typed_cache)
-    typed_explicit = _explicit_scores(
-        items=items,
-        pairs=pairs,
-        base_features=typed_base,
-        item_cache=typed_cache,
-        bundle=structured["typed_explicit"],
-        canonical_values=True,
-    )
-    del typed_cache, typed_base, legacy_base
+    weak = structured_scores["weak"]
+    sparse = structured_scores["sparse"]
+    explicit = structured_scores["explicit"]
+    typed_explicit = structured_scores["typed_explicit"]
+    del structured_scores, structured
     gc.collect()
     previous = _phase("structured", started, previous)
 
