@@ -21,6 +21,7 @@ _BASE_FILES = [
     "docs/agent-memory/ITERATION_PROTOCOL.md",
     "ecup_matching/SOLUTION_RESEARCH.md",
     "ecup_matching/BASELINE_CONTRACT.md",
+    "ecup_matching/experiments/CURRENT.json",
 ]
 
 
@@ -50,6 +51,7 @@ def canonical_sources(root: Path) -> list[Path]:
         "docs/superpowers/plans/*.md",
         "ecup_matching/experiments/v*/PLAN.md",
         "ecup_matching/experiments/v*/RESULTS.md",
+        "ecup_matching/experiments/v*/SAFE_METRICS.json",
     ):
         for path in root.glob(pattern):
             if path.is_file():
@@ -67,6 +69,10 @@ def _tags_for(rel: str) -> list[str]:
             tags.append(f"ecup-matching/experiment/{version}")
         except (ValueError, IndexError):
             pass
+    if rel.endswith("experiments/CURRENT.json"):
+        tags.append("ecup-matching/current-state")
+    if rel.endswith("SAFE_METRICS.json"):
+        tags.append("ecup-matching/safe-metrics")
     if rel.endswith("PROJECT_STATE.md"):
         tags.append("ecup-matching/project-state")
     if rel.endswith("DECISIONS.md"):
