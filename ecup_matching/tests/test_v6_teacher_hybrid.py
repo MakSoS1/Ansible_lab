@@ -69,13 +69,15 @@ def test_held_selected_teacher_uses_outer_train_calibration_only():
     first = build_crossfit_hybrid_teacher(
         _signals(n), teacher, categories, folds, coverage=0.70
     )
-    held = folds == 2
-    selected_held = held & first["teacher_selected"]
-    assert selected_held.any()
+    selected = first["teacher_selected"]
+    selected_folds = [int(fold) for fold in np.unique(folds) if np.any((folds == fold) & selected)]
+    assert selected_folds
+    held = folds == selected_folds[0]
+    selected_held = held & selected
     changed = teacher.copy()
     # Changing unselected values inside the same held fold must not change
     # calibration of selected held rows, because calibration comes from outer train.
-    changed[held & ~first["teacher_selected"]] -= 5000.0
+    changed[held & ~selected] -= 5000.0
     second = build_crossfit_hybrid_teacher(
         _signals(n), changed, categories, folds, coverage=0.70
     )
