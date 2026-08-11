@@ -23,86 +23,51 @@
   },
   "development_baseline_macro_average_precision": 0.5315527708634168,
   "development_best": {
-    "name": "v5-supervised-contrastive-item-space-stack",
-    "macro_average_precision": 0.5662217062664492,
-    "delta_vs_development_baseline": 0.0346689354030324,
-    "delta_vs_category_specialists": 0.018543640132871353,
-    "semantic_cosine_macro_average_precision": 0.40597111640267125,
+    "name": "v5-explicit-attribute-category-specialists",
+    "macro_average_precision": 0.5683065131240066,
+    "delta_vs_development_baseline": 0.036753742260589806,
+    "delta_vs_category_specialists": 0.02062844699042876,
     "fold_macro_average_precision": [
-      0.5692965046798911,
-      0.5683388560864314,
-      0.5694312406050667,
-      0.5632500994392833,
-      0.5684466083884651
+      0.5706378464826163,
+      0.5682631251392076,
+      0.5754313094571646,
+      0.5633705139683869,
+      0.5731185912680369
     ],
     "all_folds_improved_vs_category_base": true,
-    "workflow_run_id": 31483288887,
-    "source_commit": "b30821f613bf7051da51c42b64c7f79361d5619c",
-    "private_prefix": "experiments/v5/contrastive-sprint/b30821f613bf/aggregate",
+    "workflow_run_id": 31485990777,
+    "source_commit": "cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57",
+    "metrics_artifact_id": 9100228112,
     "retained_for_development": true,
     "retained_as_submission": false
   },
   "retained_development_steps": {
-    "category_specialists": {
-      "macro_average_precision": 0.5476780661335778,
-      "all_folds_improved": true
-    },
-    "weak_category_specialists": {
-      "macro_average_precision": 0.5514237338676234,
-      "delta_vs_category_base": 0.00374566773404561,
-      "all_folds_improved": true
-    },
-    "cross_fitted_combo": {
-      "macro_average_precision": 0.559512531439709,
-      "delta_vs_category_base": 0.011834465306131192,
-      "all_folds_improved": true
-    },
-    "sparse_category_specialists": {
-      "macro_average_precision": 0.5651306838802859,
-      "delta_vs_category_base": 0.017452617746708032,
-      "all_folds_improved": true,
-      "workflow_run_id": 31485396599,
-      "source_commit": "634ee66890c39ad97c0fa725135b1b00e56ac126"
-    },
-    "supervised_contrastive": {
-      "macro_average_precision": 0.5662217062664492,
-      "delta_vs_category_base": 0.018543640132871353,
-      "all_folds_improved": true,
-      "workflow_run_id": 31483288887,
-      "source_commit": "b30821f613bf7051da51c42b64c7f79361d5619c"
-    }
+    "category_specialists": {"macro_average_precision": 0.5476780661335778, "all_folds_improved": true},
+    "weak_category_specialists": {"macro_average_precision": 0.5514237338676234, "all_folds_improved": true},
+    "cross_fitted_combo": {"macro_average_precision": 0.559512531439709, "all_folds_improved": true},
+    "sparse_category_specialists": {"macro_average_precision": 0.5651306838802859, "all_folds_improved": true},
+    "supervised_contrastive": {"macro_average_precision": 0.5662217062664492, "all_folds_improved": true},
+    "explicit_attribute_specialists": {"macro_average_precision": 0.5683065131240066, "all_folds_improved": true}
   },
   "rejected_or_diagnostic_steps": {
-    "direct_attribute_likelihood": {
-      "macro_average_precision": 0.523218903672764,
-      "decision": "reject"
-    },
-    "pretrained_biencoder": {
-      "macro_average_precision": 0.5318080650341337,
-      "decision": "insufficient standalone"
-    },
-    "weighted_category_specialists": {
-      "macro_average_precision": 0.5498696731704964,
-      "decision": "diagnostic OOF input only; folds 2 and 3 regress"
-    },
+    "direct_attribute_likelihood": {"macro_average_precision": 0.523218903672764, "decision": "reject"},
+    "pretrained_biencoder": {"macro_average_precision": 0.5318080650341337, "decision": "insufficient standalone"},
+    "weighted_category_specialists": {"macro_average_precision": 0.5498696731704964, "decision": "diagnostic OOF input only"},
     "rubert_teacher_outer_cv": {
       "workflow_run_id": 31485127564,
-      "source_commit": "00cc48dca806752d92496fa79f703a9ce3bcce63",
       "decision": "integration failure before metrics, not model rejection",
       "failure": "build_reranker_examples called without required attribute_importance argument"
     }
   },
   "active_experiments": {
-    "explicit_attribute_specialists": {
-      "workflow_run_id": 31485990777,
-      "status": "in_progress"
-    },
     "field_aware_weak_teacher": {
       "workflow_run_id": 31486298300,
+      "source_commit": "411a5349fe731506757fdc1a3c8857a370225fb8",
       "status": "in_progress"
     }
   },
   "stretch_target_development_oof_macro_average_precision": 0.6,
+  "remaining_gap_to_target": 0.0316934868759934,
   "v5_submission_retained": false,
   "sealed_gold_evaluated": false,
   "next_action": "Continue leakage-safe development on the immutable split. Do not open sealed gold. Preserve v2 as production fallback until a frozen v5 candidate passes one-shot gold plus runtime/package gates."
