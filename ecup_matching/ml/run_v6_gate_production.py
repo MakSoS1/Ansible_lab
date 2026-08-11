@@ -13,6 +13,7 @@ import pandas as pd
 import sklearn
 
 from .data_subset import select_items_by_ids
+from .metrics import OFFICIAL_CATEGORIES
 from .run_v5_fixed_blend import align_oof_frame
 from .run_v5_pretrained_biencoder import development_rows_and_folds
 from .run_v5_typed_explicit_fusion import CURRENT5_COLUMNS
@@ -25,10 +26,15 @@ from .v6_teacher_gate import GATE_COVERAGES, build_teacher_gated_scores
 
 PRIOR_STRENGTH = 8000.0
 STEP_SCHEDULE = (1.0 / 12.0, 1.0 / 24.0, 1.0 / 48.0)
+MAX_PASSES = 4
 
 
 def _peak_ram_gib() -> float:
     return float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / (1024.0 * 1024.0)
+
+
+def _float_list(values) -> list[float]:
+    return [float(value) for value in np.asarray(values, dtype=np.float64).tolist()]
 
 
 def fit_v6_gate_production(
@@ -82,6 +88,13 @@ def fit_v6_gate_production(
     dev["category"] = dev["id1"].map(category_by_id)
     if dev["category"].isna().any():
         raise RuntimeError("failed to attach official categories")
+    observed_categories = set(dev["category"].astype(str).unique().tolist())
+    expected_categories = set(OFFICIAL_CATEGORIES)
+    if observed_categories != expected_categories:
+        raise RuntimeError(
+            f"development category set mismatch; missing={sorted(expected_categories-observed_categories)}, "
+            f"extra={sorted(observed_categories-expected_categories)}"
+        )
 
     six = {
         **{
@@ -90,61 +103,81 @@ def fit_v6_gate_production(
         },
         "typed_explicit": typed["typed_explicit_score"].to_numpy(dtype=np.float64),
     }
+    if tuple(six) != SIX_SIGNAL_NAMES:
+        raise RuntimeError(f"six-signal order mismatch: {tuple(six)} != {SIX_SIGNAL_NAMES}")
     categories = dev["category"].astype(str).to_numpy()
     target = dev["target"].to_numpy(dtype=np.int8)
     gated, teacher_mask = build_teacher_gated_scores(six, categories, coverage=coverage)
     actual_fraction = float(np.mean(teacher_mask))
 
-    # fit_category_shrunk_full performs the exact six-signal percentile-rank
-    # transformation internally via v5_meta_blend.rank_matrix. Passing the raw
-    # gated score mapping keeps production refit identical to the validated v5 API.
+    print(
+        f"[v6-gate-production] phase=fit_category rows={len(dev)} coverage={coverage:.2f} "
+        f"teacher_fraction={actual_fraction:.6f} elapsed={time.monotonic()-started:.1f}s",
+        flush=True,
+    )
     category_fit = fit_category_shrunk_full(
         gated,
         target,
         categories,
         prior_strength=PRIOR_STRENGTH,
         step_schedule=STEP_SCHEDULE,
-        max_passes=4,
+        max_passes=MAX_PASSES,
     )
     category_payload = {
         "version": "v6-gate-category-shrunk-production",
         "coverage": float(coverage),
         "signal_names": list(SIX_SIGNAL_NAMES),
-        "global_weights": [float(value) for value in category_fit["global_weights"]],
-        "category_weights": category_fit["category_weights"],
-        "category_support": category_fit["category_support"],
+        "global_weights": _float_list(category_fit["global_weights"]),
+        "category_weights": {
+            category: _float_list(category_fit["category_weights"][category])
+            for category in OFFICIAL_CATEGORIES
+        },
+        "category_support": {
+            category: int(category_fit["category_support"][category])
+            for category in OFFICIAL_CATEGORIES
+        },
         "prior_strength": float(PRIOR_STRENGTH),
         "step_schedule": [float(value) for value in STEP_SCHEDULE],
-        "max_passes": 4,
+        "max_passes": MAX_PASSES,
         "split_sha256": expected_split_sha,
         "production_refit_uses_all_development_labels": True,
         "production_refit_score_is_not_validation": True,
     }
+    for category, weights in category_payload["category_weights"].items():
+        array = np.asarray(weights, dtype=np.float64)
+        if np.any(array < -1e-12) or not np.isclose(array.sum(), 1.0, rtol=0.0, atol=1e-8):
+            raise RuntimeError(f"invalid production simplex for category {category!r}")
     category_output_path.parent.mkdir(parents=True, exist_ok=True)
     category_output_path.write_text(
         json.dumps(category_payload, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",
     )
 
-    hgb_fit = fit_fixed_hgb_full(gated, target, categories)
-    hgb_output_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {
-            "version": "v6-gate-hgb-production",
-            "coverage": float(coverage),
-            "signal_names": list(SIX_SIGNAL_NAMES),
-            "category_names": list(hgb_fit["category_names"]),
-            "model": hgb_fit["model"],
-            "params": dict(DEFAULT_HGB_PARAMS),
-            "sklearn_version": str(sklearn.__version__),
-            "split_sha256": expected_split_sha,
-            "production_refit_uses_all_development_labels": True,
-            "production_refit_score_is_not_validation": True,
-        },
-        hgb_output_path,
-        compress=3,
+    print(
+        f"[v6-gate-production] phase=fit_hgb rows={len(dev)} "
+        f"elapsed={time.monotonic()-started:.1f}s peak_ram_gib={_peak_ram_gib():.3f}",
+        flush=True,
     )
+    hgb_fit = fit_fixed_hgb_full(gated, target, categories)
+    hgb_bundle = {
+        "version": "v6-gate-hgb-production",
+        "coverage": float(coverage),
+        "signal_names": list(SIX_SIGNAL_NAMES),
+        "category_names": list(hgb_fit["category_names"]),
+        "model": hgb_fit["model"],
+        "params": dict(hgb_fit["params"]),
+        "sklearn_version": str(sklearn.__version__),
+        "python_version": platform.python_version(),
+        "split_sha256": expected_split_sha,
+        "production_refit_uses_all_development_labels": True,
+        "production_refit_score_is_not_validation": True,
+    }
+    if tuple(hgb_bundle["category_names"]) != tuple(sorted(OFFICIAL_CATEGORIES)):
+        raise RuntimeError("production HGB category vocabulary mismatch")
+    hgb_output_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(hgb_bundle, hgb_output_path, compress=3)
 
+    elapsed = float(time.monotonic() - started)
     payload = {
         "version": "v6-gate-production-refit",
         "coverage": float(coverage),
@@ -162,14 +195,30 @@ def fit_v6_gate_production(
         "production_refit_score_is_not_validation": True,
         "fusion_formula": "0.5*percentile_rank(category_shrunk_score)+0.5*percentile_rank(hgb_score)",
         "development_rows": int(len(dev)),
+        "category_prior_strength": PRIOR_STRENGTH,
+        "hgb_params": dict(DEFAULT_HGB_PARAMS),
         "sklearn_version": str(sklearn.__version__),
         "python_version": platform.python_version(),
-        "elapsed_seconds": float(time.monotonic() - started),
+        "elapsed_seconds": elapsed,
         "peak_ram_gib": _peak_ram_gib(),
     }
     metadata_output_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_output_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+    )
+
+    loaded = joblib.load(hgb_output_path)
+    if tuple(loaded["signal_names"]) != SIX_SIGNAL_NAMES:
+        raise RuntimeError("round-trip HGB bundle signal order mismatch")
+    if tuple(loaded["category_names"]) != tuple(sorted(OFFICIAL_CATEGORIES)):
+        raise RuntimeError("round-trip HGB bundle category vocabulary mismatch")
+    if not hasattr(loaded["model"], "predict_proba"):
+        raise RuntimeError("round-trip HGB bundle is missing predict_proba model")
+
+    print(
+        f"[v6-gate-production] phase=done elapsed={elapsed:.1f}s "
+        f"peak_ram_gib={payload['peak_ram_gib']:.3f}",
+        flush=True,
     )
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
     return payload
