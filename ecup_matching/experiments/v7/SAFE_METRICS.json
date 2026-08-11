@@ -1,0 +1,17 @@
+{
+  "version": "v7",
+  "status": "in_progress",
+  "strict_oof_macro_average_precision": null,
+  "per_category_ap": null,
+  "quality_reference_strict_oof_macro_average_precision": 0.6018115534135564,
+  "runtime_reference_v6_strict_oof_macro_average_precision": 0.6006003614522999,
+  "target_strict_oof_macro_average_precision": 0.7,
+  "validation_rows": 285210,
+  "development_folds": 5,
+  "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+  "cross_split_item_overlap": 0,
+  "gold_metric_opened": false,
+  "gold_rows_scored": 0,
+  "outer_fold_predictions_complete": false,
+  "full_runtime_gate_passed": false
+}
