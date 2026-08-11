@@ -31,6 +31,9 @@ _RUNTIME_FILES = (
     "ecup_matching/submission/predict_v5.py",
 )
 _FORBIDDEN_SUFFIXES = {".parquet", ".csv", ".pcap", ".env"}
+_CREDENTIAL_BASENAMES = {
+    "token", "token.txt", "hf_token", "hf_token.txt", "secret", "secrets", "credentials.json",
+}
 
 
 def _copy_tree_files(source: Path, destination: Path) -> None:
@@ -110,8 +113,7 @@ def build_submission_v5(
             if path.is_file()
             and (
                 path.suffix.lower() in _FORBIDDEN_SUFFIXES
-                or "token" in path.name.lower()
-                or "secret" in path.name.lower()
+                or path.name.lower() in _CREDENTIAL_BASENAMES
             )
         ]
         if forbidden:
