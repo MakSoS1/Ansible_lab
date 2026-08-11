@@ -34,36 +34,31 @@ jobs:
           v2 = Path('ecup_matching/ml/train_v2_structured.py')
           text = v2.read_text(encoding='utf-8')
           import_anchor = 'from .weak_labels import prepare_weak_pairs, remove_human_conflicts, sample_weak_training\n'
-          import_replacement = import_anchor + 'from .weak_stream import prefilter_weak_candidates_parquet\n'
-          if text.count(import_anchor) != 1 or 'from .weak_stream import prefilter_weak_candidates_parquet' in text:
-              raise SystemExit('unexpected v2 import state')
-          text = text.replace(import_anchor, import_replacement, 1)
-          old_weak = '''        weak_raw = pd.read_parquet(llm_matches_path, columns=["id1", "id2", "target"])
-              input_weak_rows = int(len(weak_raw))
-              weak = prefilter_weak_candidates(
-                  weak_raw,
-                  validation_item_ids=valid_items,
-                  max_presample_rows=weak_presample_rows,
-                  seed=SEED,
-              )
-              del weak_raw
+          stream_import = 'from .weak_stream import prefilter_weak_candidates_parquet\n'
+          if stream_import not in text:
+              if text.count(import_anchor) != 1:
+                  raise SystemExit('unexpected v2 import state')
+              text = text.replace(import_anchor, import_anchor + stream_import, 1)
+          call_anchor = '''        weak, input_weak_rows = prefilter_weak_candidates_parquet(
+              llm_matches_path,
+              validation_item_ids=valid_items,
+              max_presample_rows=weak_presample_rows,
+              seed=SEED,
+          )
           '''
-          new_weak = '''        weak, input_weak_rows = prefilter_weak_candidates_parquet(
-                  llm_matches_path,
-                  validation_item_ids=valid_items,
-                  max_presample_rows=weak_presample_rows,
-                  seed=SEED,
+          if text.count(call_anchor) != 1:
+              raise SystemExit('streaming weak call must exist exactly once')
+          if '        after_prefilter_rows = int(len(weak))\n' not in text:
+              text = text.replace(
+                  call_anchor,
+                  call_anchor + '        after_prefilter_rows = int(len(weak))\n',
+                  1,
               )
-              after_prefilter_rows = int(len(weak))
-          '''
-          if text.count(old_weak) != 1:
-              raise SystemExit('expected full-parquet weak block exactly once')
-          text = text.replace(old_weak, new_weak, 1)
           old_report = '            "after_prefilter_rows": int(min(weak_presample_rows, input_weak_rows)),\n'
-          new_report = '            "after_prefilter_rows": after_prefilter_rows,\n'
-          if text.count(old_report) != 1:
-              raise SystemExit('expected weak report line once')
-          text = text.replace(old_report, new_report, 1)
+          if old_report in text:
+              text = text.replace(old_report, '            "after_prefilter_rows": after_prefilter_rows,\n', 1)
+          if '            "after_prefilter_rows": after_prefilter_rows,\n' not in text:
+              raise SystemExit('streaming weak report not patched')
           v2.write_text(text, encoding='utf-8')
 
           v4 = Path('ecup_matching/ml/train_v4_reranker.py')
