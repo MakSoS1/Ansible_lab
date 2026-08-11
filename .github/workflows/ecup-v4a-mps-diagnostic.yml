@@ -32,6 +32,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
+            'pytest==9.1.1' \
             'torch==2.9.1' \
             'transformers==4.57.1' \
             'huggingface_hub>=0.34,<1' \
@@ -49,9 +50,13 @@ jobs:
           print('mps_available', torch.backends.mps.is_available())
           assert platform.machine() == 'arm64'
           assert torch.backends.mps.is_available()
-          x = torch.randn(1024, 1024, device='mps')
-          _ = x @ x
+          torch.mps.empty_cache()
+          x = torch.ones(64, 64, device='mps')
+          y = x + x
           torch.mps.synchronize()
+          assert float(y[0, 0].cpu()) == 2.0
+          del x, y
+          torch.mps.empty_cache()
           print('v4a_mps_preflight_ok')
           PY
       - name: Download authoritative human data
@@ -100,7 +105,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from __future__ import annotations
-          import json, os, shutil, time
+          import json, os, time
           from pathlib import Path
           import numpy as np
           import pandas as pd
@@ -128,6 +133,7 @@ jobs:
           assert accelerator == 'mps'
           device = torch.device('mps')
           _set_seed(torch, 2026)
+          torch.mps.empty_cache()
           tokenizer = AutoTokenizer.from_pretrained(root / 'model-base', local_files_only=True)
           model = AutoModelForSequenceClassification.from_pretrained(
               root / 'model-base', num_labels=1, ignore_mismatched_sizes=True, local_files_only=True
@@ -136,12 +142,13 @@ jobs:
           started = time.perf_counter()
           training = _train_steps(
               model, tokenizer, train,
-              torch=torch, device=device, max_length=160, batch_size=8,
+              torch=torch, device=device, max_length=128, batch_size=2,
               learning_rate=1.5e-5, max_steps=6000, seed=2026,
           )
+          torch.mps.empty_cache()
           neural = _predict(
               model, tokenizer, valid,
-              torch=torch, device=device, max_length=160, batch_size=32,
+              torch=torch, device=device, max_length=128, batch_size=8,
           )
           target = joined['target'].to_numpy(float)
           category = joined['category'].astype(str).to_numpy()
@@ -169,8 +176,8 @@ jobs:
               'train_rows': int(len(train)),
               'validation_rows': int(len(valid)),
               'validation_item_overlap': 0,
-              'max_length': 160,
-              'batch_size': 8,
+              'max_length': 128,
+              'batch_size': 2,
               'steps': 6000,
               'training': training,
               'neural_macro_ap': float(neural_macro),
