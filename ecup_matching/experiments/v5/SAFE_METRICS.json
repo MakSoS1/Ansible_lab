@@ -14,11 +14,6 @@
     "gold_rows_scored": 0,
     "baseline_oof_macro_ap": 0.5315527708634168
   },
-  "historical_hidden_production_anchor": {
-    "version": "v2",
-    "hidden_macro_ap": 0.2583231811423486,
-    "note": "historical platform evidence only; do not compare this old split numerically to v5 strict OOF"
-  },
   "signal_ladder": {
     "category_specialists": 0.5476780661335778,
     "weak_category_specialists": 0.5514237338676234,
@@ -34,8 +29,6 @@
       "decision": "keep_intermediate",
       "fully_outer_cross_fitted": true,
       "oof_macro_ap": 0.5992720660193247,
-      "delta_vs_six_signal": 0.0017274938743506076,
-      "all_folds_improved": true,
       "private_hf_prefix": "experiments/v5/meta-blend/b576270ddd70"
     },
     "nested_category_logistic": {
@@ -57,12 +50,8 @@
       "prior_strength": 8000.0,
       "prior_frozen_before_result": true,
       "oof_macro_ap": 0.60095424180184,
-      "delta_vs_six_signal": 0.0034096696568659564,
-      "delta_vs_global_simplex": 0.001682175782515328,
-      "all_folds_improved_vs_six_signal": true,
       "workflow_run_id": 31524781399,
       "metrics_artifact_id": 9114649149,
-      "metrics_artifact_digest": "d2a6fcde8f9bae75d845e116b25ea23c7703ec7e2d2370f91d0dd5acfbe6ea34",
       "private_hf_prefix": "experiments/v5/category-shrunk/efa629cc0435"
     },
     "fixed_hgb_meta_stack": {
@@ -73,7 +62,7 @@
       "private_hf_prefix": "experiments/v5/hgb-meta-stack/84a934484619"
     },
     "category_shrunk_plus_hgb_equal_rank": {
-      "decision": "current_development_best_keep",
+      "decision": "current_development_and_production_best",
       "fully_outer_cross_fitted_components": true,
       "post_result_weight_tuning": false,
       "fusion_formula": "0.5*percentile_rank(category_shrunk_oof)+0.5*percentile_rank(hgb_stack_oof)",
@@ -94,14 +83,25 @@
       "private_hf_prefix": "experiments/v5/category-hgb-fusion/79de99434912"
     }
   },
+  "current_development_best": {
+    "name": "category_shrunk_plus_hgb_equal_rank",
+    "oof_macro_ap": 0.6018115534135564,
+    "target_0_60_reached": true
+  },
+  "current_verified_production_submission": {
+    "name": "category_hgb_fusion_0_6018115534",
+    "strict_selection_oof_macro_ap": 0.6018115534135564,
+    "competition_zip": "ecup-v5-category-hgb-fusion-0.6018115534-submission.zip",
+    "competition_zip_sha256": "442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5",
+    "workflow_run_id": 31526323018,
+    "actions_artifact_id": 9116032675,
+    "actions_artifact_digest": "fc6a72f63146df414c5ff4de4aef62a4568e516a12d465830492941348824a46",
+    "private_hf_prefix": "submissions/v5/0.6018115534",
+    "organizer_image_smoke_passed": true,
+    "hgb_joblib_loaded_in_organizer_image": true,
+    "full_test_suite": "230 passed, 1 warning"
+  },
   "verified_submission_fallbacks": {
-    "six_signal_0_5975445721": {
-      "competition_zip": "ecup-v5-six-signal-0.5975445721-submission.zip",
-      "competition_zip_sha256": "ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e",
-      "actions_artifact_id": 9112337546,
-      "private_hf_prefix": "submissions/v5/0.5975445721",
-      "organizer_image_smoke_passed": true
-    },
     "category_shrunk_0_6009542418": {
       "competition_zip": "ecup-v5-category-shrunk-0.6009542418-submission.zip",
       "competition_zip_sha256": "3a5341c42346727793ab8877ee6bc8f07e3ac4f18f97c32a9d39d76b5e0609c1",
@@ -109,18 +109,14 @@
       "private_hf_prefix": "submissions/v5/0.6009542418",
       "organizer_image_smoke_passed": true,
       "full_test_suite": "225 passed, 1 warning"
+    },
+    "six_signal_0_5975445721": {
+      "competition_zip": "ecup-v5-six-signal-0.5975445721-submission.zip",
+      "competition_zip_sha256": "ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e",
+      "actions_artifact_id": 9112337546,
+      "private_hf_prefix": "submissions/v5/0.5975445721",
+      "organizer_image_smoke_passed": true
     }
-  },
-  "current_development_best": {
-    "name": "category_shrunk_plus_hgb_equal_rank",
-    "oof_macro_ap": 0.6018115534135564,
-    "target_0_60_reached": true
-  },
-  "current_verified_production_submission": {
-    "name": "category_shrunk_0_6009542418",
-    "strict_selection_oof_macro_ap": 0.60095424180184,
-    "private_hf_prefix": "submissions/v5/0.6009542418",
-    "note": "0.6018115534 category-HGB package is in final organizer-image verification workflow 31526323018 and must not replace this field until GREEN"
   },
   "stretch_target_oof_macro_ap": 0.6,
   "remaining_gap_to_target": 0.0,
