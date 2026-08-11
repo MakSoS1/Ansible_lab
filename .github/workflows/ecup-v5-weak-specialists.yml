@@ -1,0 +1,229 @@
+name: E-CUP v5 weak category specialists
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v5-weak-specialists.yml
+      - ecup_matching/ml/run_v5_weak_specialist_fold.py
+      - ecup_matching/ml/run_v5_weak_specialist_aggregate.py
+      - ecup_matching/ml/v5_weak_specialists.py
+      - ecup_matching/ml/v5_category_specialists.py
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  CATEGORY_PREFIX: experiments/v5/category/e885961388d1
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+
+jobs:
+  fold:
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        fold: [0, 1, 2, 3, 4]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+
+      - name: Verify weak-specialist contracts
+        run: |
+          python -m pytest \
+            ecup_matching/tests/test_v5_weak_specialists.py \
+            ecup_matching/tests/test_v5_category_specialists.py \
+            ecup_matching/tests/test_v5_pretrained_biencoder.py -q
+
+      - name: Download organizer data and sealed manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/data" "${RUNNER_TEMP}/private" "${RUNNER_TEMP}/out"
+          for file in matches.parquet items_human.parquet matches_llm.parquet items.parquet; do
+            echo "Downloading ${file}"
+            curl -fL --retry 5 --retry-all-errors \
+              -o "${RUNNER_TEMP}/data/${file}" "$BASE_URL/${file}"
+            test -s "${RUNNER_TEMP}/data/${file}"
+          done
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'],
+              repo_type='dataset',
+              filename=f"{os.environ['VALIDATION_PREFIX']}/split-manifest.json",
+              token=os.environ['HF_TOKEN'],
+              local_dir=os.path.join(os.environ['RUNNER_TEMP'], 'private'),
+          )
+          PY
+
+      - name: Train one held-fold weak specialist sprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.ml.run_v5_weak_specialist_fold \
+            --human-items "${RUNNER_TEMP}/data/items_human.parquet" \
+            --matches "${RUNNER_TEMP}/data/matches.parquet" \
+            --weak-matches "${RUNNER_TEMP}/data/matches_llm.parquet" \
+            --full-items "${RUNNER_TEMP}/data/items.parquet" \
+            --manifest "${RUNNER_TEMP}/private/${VALIDATION_PREFIX}/split-manifest.json" \
+            --output-dir "${RUNNER_TEMP}/out" \
+            --expected-split-sha "$SPLIT_SHA" \
+            --held-fold ${{ matrix.fold }} \
+            --weak-presample-rows 250000 \
+            --weak-final-rows 150000 \
+            --chunk-size 25000 \
+            --max-iter 300
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          fold='${{ matrix.fold }}'
+          m=json.loads((Path(os.environ['RUNNER_TEMP'])/'out'/f'v5e-weak-fold-{fold}-metrics.json').read_text())
+          assert m['gold_metric_opened'] is False
+          assert m['gold_rows_used'] == 0 and m['gold_items_used'] == 0
+          assert m['held_items_forbidden_from_weak'] is True
+          print('held_fold', fold)
+          print('macro_ap', m['macro_average_precision'])
+          print('weak_final_rows', m['weak_final_rows'])
+          print('weak_unique_items', m['weak_unique_items'])
+          PY
+
+      - name: Persist held-fold OOF privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          fold='${{ matrix.fold }}'
+          out=Path(os.environ['RUNNER_TEMP'])/'out'
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          prefix=f"experiments/v5/weak-specialists/{os.environ['GITHUB_SHA'][:12]}/fold-{fold}"
+          for name in (f'v5e-weak-fold-{fold}-oof.parquet', f'v5e-weak-fold-{fold}-metrics.json'):
+              api.upload_file(
+                  path_or_fileobj=str(out/name),
+                  path_in_repo=f'{prefix}/{name}',
+                  repo_id=os.environ['HF_REPO_ID'],
+                  repo_type='dataset',
+                  commit_message=f'Store v5 weak specialist fold {fold}',
+              )
+          print('private_prefix', prefix)
+          PY
+
+      - if: always()
+        name: Clean fold runner
+        run: rm -rf "${RUNNER_TEMP}/data" "${RUNNER_TEMP}/private" "${RUNNER_TEMP}/out"
+
+  aggregate:
+    needs: fold
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+
+      - name: Download aggregate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/data" "${RUNNER_TEMP}/private" "${RUNNER_TEMP}/folds" "${RUNNER_TEMP}/out"
+          curl -fL --retry 5 --retry-all-errors -o "${RUNNER_TEMP}/data/matches.parquet" "$BASE_URL/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors -o "${RUNNER_TEMP}/data/items_human.parquet" "$BASE_URL/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; root=os.environ['RUNNER_TEMP']
+          hf_hub_download(
+              repo_id=repo, repo_type='dataset',
+              filename=f"{os.environ['VALIDATION_PREFIX']}/split-manifest.json",
+              token=token, local_dir=os.path.join(root,'private'))
+          hf_hub_download(
+              repo_id=repo, repo_type='dataset',
+              filename=f"{os.environ['CATEGORY_PREFIX']}/v5b-category-oof.parquet",
+              token=token, local_dir=os.path.join(root,'private'))
+          prefix=f"experiments/v5/weak-specialists/{os.environ['GITHUB_SHA'][:12]}"
+          for fold in range(5):
+              name=f'v5e-weak-fold-{fold}-oof.parquet'
+              path=hf_hub_download(
+                  repo_id=repo, repo_type='dataset',
+                  filename=f'{prefix}/fold-{fold}/{name}',
+                  token=token, local_dir=os.path.join(root,'folds'))
+              print('fold_file', path)
+          PY
+
+      - name: Aggregate against retained category-specialist base
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.ml.run_v5_weak_specialist_aggregate \
+            --fold-dir "${RUNNER_TEMP}/folds" \
+            --items "${RUNNER_TEMP}/data/items_human.parquet" \
+            --matches "${RUNNER_TEMP}/data/matches.parquet" \
+            --manifest "${RUNNER_TEMP}/private/${VALIDATION_PREFIX}/split-manifest.json" \
+            --category-oof "${RUNNER_TEMP}/private/${CATEGORY_PREFIX}/v5b-category-oof.parquet" \
+            --output-dir "${RUNNER_TEMP}/out" \
+            --expected-split-sha "$SPLIT_SHA"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          m=json.loads((Path(os.environ['RUNNER_TEMP'])/'out'/'v5e-weak-specialist-metrics.json').read_text())
+          assert m['gold_metric_opened'] is False and m['gold_rows_scored']==0
+          print('category_base_oof_macro_ap', m['category_base_oof_macro_ap'])
+          print('weak_specialist_oof_macro_ap', m['weak_specialist_oof_macro_ap'])
+          print('delta_vs_category_base', m['delta_vs_category_base'])
+          print('folds', [(x['fold'],x['macro_average_precision'],x['delta_vs_base']) for x in m['fold_reports']])
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v5-weak-specialist-metrics
+          path: ${{ runner.temp }}/out/v5e-weak-specialist-metrics.json
+          retention-days: 14
+
+      - name: Persist aggregate OOF privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          out=Path(os.environ['RUNNER_TEMP'])/'out'
+          prefix=f"experiments/v5/weak-specialists/{os.environ['GITHUB_SHA'][:12]}/aggregate"
+          for name in ('v5e-weak-specialist-metrics.json','v5e-weak-specialist-oof.parquet'):
+              api.upload_file(
+                  path_or_fileobj=str(out/name),
+                  path_in_repo=f'{prefix}/{name}',
+                  repo_id=os.environ['HF_REPO_ID'],
+                  repo_type='dataset',
+                  commit_message=f'Store v5 weak specialist aggregate {name}',
+              )
+          print('private_prefix', prefix)
+          PY
+
+      - if: always()
+        name: Clean aggregate runner
+        run: rm -rf "${RUNNER_TEMP}/data" "${RUNNER_TEMP}/private" "${RUNNER_TEMP}/folds" "${RUNNER_TEMP}/out"
