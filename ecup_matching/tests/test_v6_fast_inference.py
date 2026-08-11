@@ -1,10 +1,12 @@
 import contextlib
 
+import numpy as np
 import pytest
 
 from ecup_matching.submission.v6_fast import (
     aligned_pair_texts,
     batch_index_ranges,
+    collect_chunked_scores,
     move_token_batch,
     select_runtime_config,
     torch_autocast,
@@ -56,6 +58,55 @@ def test_batch_index_ranges_rejects_invalid_arguments():
         list(batch_index_ranges(-1, 4))
     with pytest.raises(ValueError, match="batch_size"):
         list(batch_index_ranges(10, 0))
+
+
+def test_collect_chunked_scores_preserves_global_order_for_every_signal():
+    seen = []
+
+    def score_chunk(start, end):
+        seen.append((start, end))
+        rows = np.arange(start, end, dtype=np.float64)
+        return {
+            "weak": rows + 0.1,
+            "sparse": rows + 0.2,
+            "explicit": rows + 0.3,
+            "typed_explicit": rows + 0.4,
+        }
+
+    result = collect_chunked_scores(
+        row_count=11,
+        chunk_size=4,
+        signal_names=("weak", "sparse", "explicit", "typed_explicit"),
+        score_chunk=score_chunk,
+    )
+    assert seen == [(0, 4), (4, 8), (8, 11)]
+    expected = np.arange(11, dtype=np.float64)
+    np.testing.assert_allclose(result["weak"], expected + 0.1)
+    np.testing.assert_allclose(result["sparse"], expected + 0.2)
+    np.testing.assert_allclose(result["explicit"], expected + 0.3)
+    np.testing.assert_allclose(result["typed_explicit"], expected + 0.4)
+
+
+def test_collect_chunked_scores_rejects_missing_or_nonfinite_chunk_output():
+    with pytest.raises(ValueError, match="missing score signals"):
+        collect_chunked_scores(
+            row_count=3,
+            chunk_size=2,
+            signal_names=("weak", "sparse"),
+            score_chunk=lambda start, end: {
+                "weak": np.zeros(end - start, dtype=np.float64)
+            },
+        )
+
+    with pytest.raises(ValueError, match="finite"):
+        collect_chunked_scores(
+            row_count=3,
+            chunk_size=2,
+            signal_names=("weak",),
+            score_chunk=lambda start, end: np.full(
+                end - start, np.nan, dtype=np.float64
+            ),
+        )
 
 
 class _FakeTensor:
