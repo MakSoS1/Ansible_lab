@@ -10,10 +10,11 @@ Canonical short registry. Detailed rationale, exact fold evidence and rejected b
 | v2 | historical verified platform fallback | old holdout | hidden `0.2583231811` | previous hidden anchor |
 | v3 | historical | old holdout | hidden canonical `0.2481015189` | historical |
 | v4 | historical | old holdout/cross-fit | hidden canonical `0.2531285195` | historical |
-| v5 | completed quality-first production | 285,210 dev / 80,444 sealed gold / 5 folds / zero item overlap | strict OOF `0.6018115534` | best strict local quality; organizer-smoked, but too slow for v6 runtime objective |
-| v6 | in_progress | same immutable v5 component-disjoint protocol | strict OOF `0.6006003615` | current runtime-constrained gate95 candidate; exact RTX full-run gate pending |
+| v5 | completed quality-first production | 285,210 dev / 80,444 sealed gold / 5 folds / zero item overlap | strict OOF `0.6018115534` | best retained strict local quality |
+| v6 | in_progress runtime reference | same immutable component-disjoint protocol | strict OOF `0.6006003615` | gate95 + prediction-preserving runtime optimization; exact full runtime gate pending |
+| v7 | in_progress quality sprint | same immutable component-disjoint protocol | no strict OOF yet | identity-first 256-token ruBERT-base teacher; `0.70` is a stretch target only |
 
-`0.6018115534` and `0.6006003615` are strict local OOF measurements, not Public/Private leaderboard claims. The sealed gold split remains unopened and platform scores remain a separate evidence axis.
+`0.6018115534` and `0.6006003615` are strict local OOF measurements, not Public/Private leaderboard claims. The sealed gold split remains unopened and platform scores remain a separate evidence axis. v7 has no quality result yet.
 
 ## v5 retained ladder
 
@@ -44,11 +45,11 @@ Canonical short registry. Detailed rationale, exact fold evidence and rejected b
 - exact organizer-image offline smoke: passed;
 - platform Public/Private result: unknown.
 
-v5 remains the quality reference and a reproducible fallback. v6 exists because the production objective now includes a hard inference-runtime constraint.
+v5 remains the quality reference. Its ladder also shows why another lexical/meta micro-tuning pass is unlikely to supply the `~0.10` absolute gain required for the v7 stretch target.
 
 ## v6 runtime-constrained ladder
 
-Hard Pareto rule: first require strict OOF `>= 0.6000`; among passing candidates, minimize measured end-to-end runtime.
+Hard v6 Pareto rule: first require strict OOF `>= 0.6000`; among passing candidates, minimize measured end-to-end runtime.
 
 | Candidate | Strict OOF Macro AP | Decision |
 |---|---:|---|
@@ -60,38 +61,84 @@ Hard Pareto rule: first require strict OOF `>= 0.6000`; among passing candidates
 | teacher gate 85% | `0.5999300792` | reject narrowly |
 | teacher distillation | `0.5931935842` | reject |
 | student + teacher hybrid 85% | `0.5998746123` | reject narrowly |
-| **teacher gate 95%** | **`0.6006003614522999`** | **retain as current v6 candidate** |
+| **teacher gate 95%** | **`0.6006003614522999`** | **retain as v6 runtime reference** |
 
-### Current v6 architecture
+### v6 architecture/runtime evidence
 
 - weak, sparse, explicit, supervised contrastive and typed-explicit signals are retained;
-- target-free disagreement is computed from the five non-teacher percentile-rank signals within each category;
-- real pair teacher is evaluated for the highest-disagreement `95%` of pairs per category;
-- remaining teacher values use the mean rank of the five cheap signals;
-- selected teacher scores are percentile-ranked only over selected teacher rows;
+- target-free disagreement selects the highest-disagreement 95% per category for the real pair teacher;
+- remaining teacher values use the mean percentile rank of the five cheap signals;
 - final target-fitted meta is fully outer-cross-fitted category-shrunk simplex + fixed HGB, frozen 50/50 rank fusion;
-- actual development teacher fraction: `0.9500262964131693`.
+- actual development teacher fraction: `0.9500262964131693`;
+- selection run `31531141700`, job `93911179929`, source `fb15ec43a90c892c416acb2d10fe04cc126a4398`;
+- private selection prefix `experiments/v6/teacher-gate/95/fb15ec43a90c`.
 
-Selection evidence:
+Prediction-preserving runtime engineering, 2026-08-12:
 
-- run `31531141700`, job `93911179929`;
-- source `fb15ec43a90c892c416acb2d10fe04cc126a4398`;
-- private HF `experiments/v6/teacher-gate/95/fb15ec43a90c`.
+| Structured path | us/pair | Note |
+|---|---:|---|
+| as submitted | `2210.1` | single-threaded, duplicated work |
+| shared difflib between passes | `1770.5` | bitwise identical |
+| + fork worker pool | `487.0` | bitwise identical |
 
-### Current v6 packaging/runtime evidence
+Projected structured phase on the organizer host: public `~254s -> ~22s` of `360s`, private `~608s -> ~44s` of `780s`. `select_items_by_ids` measured `13.5x` faster on a 2,000,000-row item file. These are implementation/profile projections, not the final end-to-end exact-byte benchmark.
 
-Latest candidate packaging run `31535674086` reached all model/runtime gates before the repository documentation policy:
+Latest pre-policy packaging evidence from run `31535674086`:
 
 - production meta refit: passed;
-- exact organizer-image offline/read-only smoke: passed;
-- 64-row CPU smoke total: `24.14s`;
-- smoke output schema `id1,id2,predict`: passed;
+- exact organizer-image offline/read-only 64-row smoke: passed;
 - candidate ZIP before documentation gate: `1,143,630,143` bytes;
 - candidate SHA-256 before documentation gate: `20c5f128e43c5303893301f012726381df06a4e20d027ea054acf36e0f6aae40`;
-- test result after smoke: `264 passed, 1 failed, 91 warnings`;
-- the sole failure was the stale repository documentation policy state, not inference/model behavior.
+- full suite at that point: `264 passed, 1 failed, 91 warnings`;
+- sole failure was stale documentation-memory state.
 
-This candidate is **not yet the final artifact**. The final ZIP must be rebuilt after policy becomes GREEN and the exact rebuilt bytes must then pass the RTX 2060 benchmark.
+That pre-policy ZIP is not retained as final. The exact full RTX/runtime gate remains pending.
+
+## v7 neural quality sprint
+
+### Why v7 exists
+
+The final v5 teacher signal was already `ai-forever/ruBert-base`; therefore a simple encoder-name swap is not a meaningful new hypothesis. The retained `teacher2` path nevertheless had four concrete constraints:
+
+1. `max_length=128` for the item pair;
+2. `max_steps=800`;
+3. at most `100,000` weak rows per outer fold;
+4. item serialization ordered generic `[NUMERIC]` before `[ATTR]`, allowing noisy numbers to consume context before canonical typed attributes.
+
+At the same time, the v5 ladder shows the pair teacher is the only retained signal that jointly reads both items and it contributes real ensemble diversity. v7 therefore attacks the pairwise signal directly rather than adding another correlated lexical feature or another meta layer.
+
+### Candidate A contract
+
+- branch: `ecup-v7-neural`, created from accelerated runtime branch commit `0580eeed2fb04f363951a5a325442430e4639e0c`;
+- encoder: `ai-forever/ruBert-base`, revision `43be4261797042e172adf7476c558734f3cbb2a0`;
+- pair context: `max_length=256`;
+- identity-first text: `[NAME]`, `[BRAND]`, canonical `[MODEL]`, canonical typed identity attributes, then residual numeric/attributes;
+- weak data: explicit forbidden-item filtering and confidence weighting;
+- training exposure: must cover the declared curriculum rather than silently truncate at the legacy 800-step limit;
+- validation: same five immutable outer folds, no sealed-gold scoring;
+- stretch target: strict OOF `0.70`;
+- minimum KEEP threshold: beat v5 quality reference `0.6018115534135564` before runtime/packaging consideration.
+
+### v7 implementation evidence so far
+
+RED-by-design:
+
+- Actions run `31546090474`, job `93958793656` failed in the newly introduced v7 unit-test step before the v7 production modules existed.
+
+GREEN code contract after minimal implementation:
+
+- `ecup_matching/ml/v7_item_text.py` created as an isolated serializer so v5/v6 semantics remain unchanged;
+- `ecup_matching/ml/v7_teacher_contract.py` created with 256-token minimum, optimizer-step exposure validation and forbidden weak-endpoint filtering;
+- `ecup_matching/tests/test_v7_neural_contract.py` covers deterministic hard bounds, visible canonical model code, `128 GB == 0.128 TB`, critical typed values, weak leakage exclusion and legacy `128/800` rejection;
+- Actions run `31546214410` passed the targeted v7 code tests and failed only the documentation-memory policy because canonical docs still named v6. The docs are now updated as part of the same v7 iteration.
+
+**No v7 OOF metric is recorded yet.** Do not convert the target into a claim.
+
+### v7 GPU/runtime next gate
+
+Private `MakSoS1/gpu-dispatch` is still intentionally locked to an older allowed source branch and fixed v4-era profiles. Extend that trusted dispatcher narrowly for a fixed v7 benchmark/train profile on the dedicated v7 branch; do not grant arbitrary commands. Then measure 256-token ruBERT-base throughput/VRAM on `ecup-rtx2060`, and run the five-fold Candidate A experiment with progress/timing telemetry.
+
+Candidate B — aligned shared-key pair serialization — is only considered if Candidate A is insufficient, and must earn retention independently.
 
 ## Immutable validation facts
 
@@ -103,17 +150,6 @@ This candidate is **not yet the final artifact**. The final ZIP must be rebuilt 
 - sealed gold opened: **false**;
 - sealed gold rows scored: **0**.
 
-## Runtime implementation retained in v6
-
-- FP32 neural semantics while the quality margin over `0.6000` is small;
-- stable length bucketing for contrastive item texts and teacher pairs;
-- VRAM-aware CUDA batches (`256` contrastive / `96` teacher on 8 GiB RTX class);
-- CUDA OOM batch-halving fallback;
-- non-blocking device transfer;
-- SDPA where supported with eager fallback;
-- offline/local-files-only inference;
-- phase telemetry for load, structured, contrastive, gate, teacher, meta and write.
-
 ## Failure lessons that remain binding
 
 - infrastructure/OOM/API failures are not model-quality evidence;
@@ -121,23 +157,13 @@ This candidate is **not yet the final artifact**. The final ZIP must be rebuilt 
 - learned meta layers require outer cross-fitting;
 - direct attribute likelihood shift was harmful even though explicit attribute estimator features were useful;
 - pretrained-only embeddings were insufficient; supervised contrastive was the useful neural signal;
+- the final pair teacher already used ruBERT-base; model-name substitution is not a sufficient hypothesis;
 - do not tune post-result fusion weights on the same held labels without another nested layer;
-- do not use sealed gold to recover runtime-induced quality loss.
-
-## Runtime engineering, 2026-08-12
-
-Prediction-preserving only; strict OOF is unchanged at `0.6006003614522999`.
-
-| Structured path | us/pair | Note |
-|---|---:|---|
-| as submitted | `2210.1` | single-threaded, duplicated work |
-| shared difflib between passes | `1770.5` | bitwise identical |
-| + fork worker pool | `487.0` | bitwise identical |
-
-Projected structured phase on the organizer host: public `~254s -> ~22s` of
-`360s`, private `~608s -> ~44s` of `780s`. `select_items_by_ids` measured
-`13.5x` faster on a 2,000,000-row item file. See `DECISIONS.md` D034-D037.
+- do not use sealed gold to recover runtime-induced quality loss;
+- a fixed-overhead smoke is not runtime evidence;
+- the submission file list must be derived from the import graph, never hand-maintained;
+- never claim the v7 `0.70` target until a complete comparable five-fold aggregate proves it.
 
 ## Next gate
 
-Rebuild the exact gate95 archive from a GREEN repository with the parallel structured runtime, publish immutable SHA/provenance, benchmark those exact bytes on `ecup-rtx2060` inside the organizer image including a full reference `matches.parquet` run, and retain it only if runtime fits while strict OOF remains `>= 0.6000`.
+Make `scripts/memory_policy.py` GREEN for v7, extend the trusted private GPU dispatcher with a narrow v7 profile, benchmark the real 256-token path, then produce all five held-fold Candidate A vectors and strict aggregate metrics. Every KEEP/REJECT/FAIL must update v7 results, safe metrics, current state and Memora before the next hypothesis.
