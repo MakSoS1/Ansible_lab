@@ -17,8 +17,6 @@ from .run_v5_fixed_blend import align_oof_frame
 from .run_v5_pretrained_biencoder import development_rows_and_folds
 from .run_v5_typed_explicit_fusion import CURRENT5_COLUMNS
 from .v5_category_shrunk import fit_category_shrunk_full
-from .v5_evaluation import OFFICIAL_CATEGORIES
-from .v5_fixed_blend import percentile_rank
 from .v5_hgb_stack import DEFAULT_HGB_PARAMS, fit_fixed_hgb_full
 from .v5_meta_blend import SIX_SIGNAL_NAMES
 from .v5_validation import manifest_sha256
@@ -97,17 +95,14 @@ def fit_v6_gate_production(
     gated, teacher_mask = build_teacher_gated_scores(six, categories, coverage=coverage)
     actual_fraction = float(np.mean(teacher_mask))
 
-    ranked = {
-        name: percentile_rank(np.asarray(gated[name], dtype=np.float64))
-        for name in SIX_SIGNAL_NAMES
-    }
+    # fit_category_shrunk_full performs the exact six-signal percentile-rank
+    # transformation internally via v5_meta_blend.rank_matrix. Passing the raw
+    # gated score mapping keeps production refit identical to the validated v5 API.
     category_fit = fit_category_shrunk_full(
-        ranked,
+        gated,
         target,
         categories,
-        signal_names=SIX_SIGNAL_NAMES,
         prior_strength=PRIOR_STRENGTH,
-        category_names=OFFICIAL_CATEGORIES,
         step_schedule=STEP_SCHEDULE,
         max_passes=4,
     )
