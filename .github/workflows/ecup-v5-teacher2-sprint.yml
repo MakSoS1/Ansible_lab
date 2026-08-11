@@ -1,0 +1,86 @@
+name: E-CUP v5 field-aware weak teacher
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths: [.github/workflows/ecup-v5-teacher2-sprint.yml, ecup_matching/ml/train_v5_teacher2_outer_fold.py, ecup_matching/ml/run_v5_teacher2_aggregate.py, ecup_matching/ml/v5_teacher2_objective.py]
+permissions: {contents: read}
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  CATEGORY_PREFIX: experiments/v5/category/e885961388d1
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  MODEL_ID: ai-forever/ruBert-base
+  MODEL_REVISION: 43be4261797042e172adf7476c558734f3cbb2a0
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+jobs:
+  fold:
+    strategy: {fail-fast: false, max-parallel: 5, matrix: {fold: [0,1,2,3,4]}}
+    runs-on: macos-15
+    timeout-minutes: 240
+    env: {HF_TOKEN: "${{ secrets.HF_TOKEN }}", PYTORCH_ENABLE_MPS_FALLBACK: '1', TOKENIZERS_PARALLELISM: 'false'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install 'numpy<3' 'pandas<3' 'pyarrow<24' 'scikit-learn<2' 'huggingface_hub>=0.34,<1' 'torch==2.9.1' 'transformers==4.57.1' 'safetensors>=0.4,<1' 'pytest>=8,<10'
+      - run: python -m pytest ecup_matching/tests/test_v5_teacher2_objective.py ecup_matching/tests/test_v5_teacher_fold.py ecup_matching/tests/test_v5_weak_specialists.py -q
+      - name: Inputs
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/model" "$RUNNER_TEMP/out"
+          for f in matches.parquet items_human.parquet matches_llm.parquet items.parquet; do curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/$f" "$BASE_URL/$f"; done
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download,snapshot_download
+          r=os.environ['HF_REPO_ID'];t=os.environ['HF_TOKEN'];root=os.environ['RUNNER_TEMP'];p=os.environ['VALIDATION_PREFIX']
+          for n in ('split-manifest.json','development-oof.parquet'):hf_hub_download(repo_id=r,repo_type='dataset',filename=f'{p}/{n}',token=t,local_dir=os.path.join(root,'private'))
+          snapshot_download(repo_id=os.environ['MODEL_ID'],revision=os.environ['MODEL_REVISION'],local_dir=os.path.join(root,'model'),allow_patterns=['config.json','model.safetensors','pytorch_model.bin','tokenizer.json','tokenizer_config.json','vocab.txt','special_tokens_map.json'])
+          PY
+      - name: Train fold
+        run: |
+          python -m ecup_matching.ml.train_v5_teacher2_outer_fold --human-items "$RUNNER_TEMP/data/items_human.parquet" --full-items "$RUNNER_TEMP/data/items.parquet" --matches "$RUNNER_TEMP/data/matches.parquet" --weak-matches "$RUNNER_TEMP/data/matches_llm.parquet" --manifest "$RUNNER_TEMP/private/$VALIDATION_PREFIX/split-manifest.json" --base-oof "$RUNNER_TEMP/private/$VALIDATION_PREFIX/development-oof.parquet" --model-dir "$RUNNER_TEMP/model" --output-dir "$RUNNER_TEMP/out" --expected-split-sha "$SPLIT_SHA" --held-fold ${{ matrix.fold }}
+      - name: Persist
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          f='${{ matrix.fold }}';o=Path(os.environ['RUNNER_TEMP'])/'out';p=f"experiments/v5/teacher2/{os.environ['GITHUB_SHA'][:12]}/fold-{f}";api=HfApi(token=os.environ['HF_TOKEN'])
+          for n in (f'v5g-teacher2-fold-{f}-oof.parquet',f'v5g-teacher2-fold-{f}-metrics.json'):api.upload_file(path_or_fileobj=str(o/n),path_in_repo=f'{p}/{n}',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message=f'v5 teacher2 fold {f}')
+          PY
+  aggregate:
+    needs: fold
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env: {HF_TOKEN: "${{ secrets.HF_TOKEN }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11', cache: pip, cache-dependency-path: ecup_matching/requirements-ci.txt}
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Inputs
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/folds" "$RUNNER_TEMP/out"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/matches.parquet" "$BASE_URL/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/items_human.parquet" "$BASE_URL/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          r=os.environ['HF_REPO_ID'];t=os.environ['HF_TOKEN'];root=os.environ['RUNNER_TEMP']
+          for p in (f"{os.environ['VALIDATION_PREFIX']}/split-manifest.json",f"{os.environ['CATEGORY_PREFIX']}/v5b-category-oof.parquet"):hf_hub_download(repo_id=r,repo_type='dataset',filename=p,token=t,local_dir=os.path.join(root,'private'))
+          pref=f"experiments/v5/teacher2/{os.environ['GITHUB_SHA'][:12]}"
+          for f in range(5):hf_hub_download(repo_id=r,repo_type='dataset',filename=f'{pref}/fold-{f}/v5g-teacher2-fold-{f}-oof.parquet',token=t,local_dir=os.path.join(root,'folds'))
+          PY
+      - name: Aggregate
+        run: |
+          python -m ecup_matching.ml.run_v5_teacher2_aggregate --fold-dir "$RUNNER_TEMP/folds" --items "$RUNNER_TEMP/data/items_human.parquet" --matches "$RUNNER_TEMP/data/matches.parquet" --manifest "$RUNNER_TEMP/private/$VALIDATION_PREFIX/split-manifest.json" --category-oof "$RUNNER_TEMP/private/$CATEGORY_PREFIX/v5b-category-oof.parquet" --output-dir "$RUNNER_TEMP/out" --expected-split-sha "$SPLIT_SHA"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          m=json.loads((Path(os.environ['RUNNER_TEMP'])/'out'/'v5g-teacher2-metrics.json').read_text());print('base',m['category_base_oof_macro_ap'],'direct',m['teacher2_direct_oof_macro_ap'],'stack',m['teacher2_stack_oof_macro_ap'],'delta',m['delta_vs_category_base'],'folds',[(x['fold'],x['delta_vs_base']) for x in m['fold_reports']])
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: ecup-v5-teacher2-metrics, path: "${{ runner.temp }}/out/v5g-teacher2-metrics.json", retention-days: 14}
