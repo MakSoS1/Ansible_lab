@@ -5,6 +5,10 @@ on:
     branches: [ecup-matching-2026]
     paths:
       - .github/workflows/ecup-v5-package-first-structured.yml
+      - ecup_matching/submission/run_v5.py
+      - ecup_matching/submission/predict_v5.py
+      - ecup_matching/build_submission_v5.py
+      - ecup_matching/ci/v5_artifacts.py
 
 permissions:
   contents: read
