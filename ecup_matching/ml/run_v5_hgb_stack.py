@@ -105,13 +105,18 @@ def run_v5_hgb_stack(
             flush=True,
         )
 
+    supported_params = {
+        name: value
+        for name, value in DEFAULT_HGB_PARAMS.items()
+        if name != "early_stopping"
+    }
     result = crossfit_fixed_hgb_stack(
         six_scores,
         dev["target"].to_numpy(dtype=np.int8),
         dev["category"].to_numpy(dtype=str),
         folds,
         progress=progress,
-        **DEFAULT_HGB_PARAMS,
+        **supported_params,
     )
     oof = np.asarray(result["oof_score"], dtype=np.float64)
     report = macro_ap_report(dev, oof, strict_official=True)
