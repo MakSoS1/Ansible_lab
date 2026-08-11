@@ -7,6 +7,7 @@ import pytest
 
 from ecup_matching.build_submission_v4 import build_submission_v4
 from ecup_matching.submission.predict_v3 import apply_category_blend, categories_requiring_neural
+from ecup_matching.submission.predict_v4 import choose_neural_batch_size
 
 
 def _structured_manifest(path: Path) -> None:
@@ -52,6 +53,15 @@ def test_v4_global_manifest_routes_all_pairs_to_neural() -> None:
         manifest,
     )
     np.testing.assert_allclose(out, [0.53, 0.51])
+
+
+def test_v4_neural_batch_scales_with_available_gpu_memory() -> None:
+    gib = 1024**3
+    assert choose_neural_batch_size(512, cuda_available=False, cuda_memory_bytes=None) == 16
+    assert choose_neural_batch_size(512, cuda_available=True, cuda_memory_bytes=8 * gib) == 32
+    assert choose_neural_batch_size(512, cuda_available=True, cuda_memory_bytes=16 * gib) == 128
+    assert choose_neural_batch_size(512, cuda_available=True, cuda_memory_bytes=80 * gib) == 512
+    assert choose_neural_batch_size(24, cuda_available=True, cuda_memory_bytes=8 * gib) == 24
 
 
 def test_build_submission_v4_contains_exact_offline_runtime_and_models(tmp_path: Path) -> None:
