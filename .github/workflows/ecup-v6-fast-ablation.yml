@@ -1,0 +1,121 @@
+name: E-CUP v6 fast ablation
+
+on:
+  push:
+    branches: [ecup-v6-fast]
+    paths:
+      - .github/workflows/ecup-v6-fast-ablation.yml
+      - ecup_matching/ml/v6_fast_ablation.py
+      - ecup_matching/ml/run_v6_fast_ablation.py
+      - ecup_matching/tests/test_v6_fast_ablation.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  ANCHOR_PREFIX: experiments/v5/fixed-blend/8a017cc12776
+  TYPED_FUSION_PREFIX: experiments/v5/typed-explicit-fusion/681ce53c6967
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+
+jobs:
+  evaluate:
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: [structured_only, no_teacher, no_contrastive]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - name: Install CI stack
+        run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Verify frozen fast-candidate contract
+        run: python -m pytest ecup_matching/tests/test_v6_fast_ablation.py ecup_matching/tests/test_v5_category_shrunk.py ecup_matching/tests/test_v5_hgb_stack.py ecup_matching/tests/test_metrics.py -q
+      - name: Download immutable OOF inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/out"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/matches.parquet" "$BASE_URL/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/items_human.parquet" "$BASE_URL/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; root=os.environ['RUNNER_TEMP']
+          for filename in (
+              f"{os.environ['VALIDATION_PREFIX']}/split-manifest.json",
+              f"{os.environ['ANCHOR_PREFIX']}/v5-fixed-blend-oof.parquet",
+              f"{os.environ['TYPED_FUSION_PREFIX']}/v5-typed-explicit-fusion-oof.parquet",
+          ):
+              print(hf_hub_download(repo_id=repo,repo_type='dataset',filename=filename,token=token,local_dir=os.path.join(root,'private')))
+          PY
+      - name: Run honest fast outer-OOF candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u -m ecup_matching.ml.run_v6_fast_ablation \
+            --candidate "${{ matrix.candidate }}" \
+            --items "$RUNNER_TEMP/data/items_human.parquet" \
+            --matches "$RUNNER_TEMP/data/matches.parquet" \
+            --manifest "$RUNNER_TEMP/private/$VALIDATION_PREFIX/split-manifest.json" \
+            --anchor-oof "$RUNNER_TEMP/private/$ANCHOR_PREFIX/v5-fixed-blend-oof.parquet" \
+            --typed-fusion-oof "$RUNNER_TEMP/private/$TYPED_FUSION_PREFIX/v5-typed-explicit-fusion-oof.parquet" \
+            --output-dir "$RUNNER_TEMP/out" \
+            --expected-split-sha "$SPLIT_SHA"
+      - name: Print quality gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          candidate='${{ matrix.candidate }}'
+          path=Path(os.environ['RUNNER_TEMP'])/'out'/f'v6-fast-{candidate}-metrics.json'
+          m=json.loads(path.read_text(encoding='utf-8'))
+          print('candidate',candidate)
+          print('category_shrunk',m['category_shrunk_macro_ap'])
+          print('hgb',m['hgb_macro_ap'])
+          print('fusion',m['fusion_macro_ap'])
+          print('target_0_60_reached',m['target_0_60_reached'])
+          print('elapsed_seconds',m['elapsed_seconds'])
+          PY
+      - name: Upload candidate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v6-fast-${{ matrix.candidate }}
+          path: |
+            ${{ runner.temp }}/out/v6-fast-${{ matrix.candidate }}-metrics.json
+            ${{ runner.temp }}/out/v6-fast-${{ matrix.candidate }}-oof.parquet
+          if-no-files-found: error
+          retention-days: 14
+      - name: Persist candidate evidence privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          candidate='${{ matrix.candidate }}'
+          api=HfApi(token=os.environ['HF_TOKEN']); out=Path(os.environ['RUNNER_TEMP'])/'out'
+          prefix=f"experiments/v6/fast-ablation/{candidate}/{os.environ['GITHUB_SHA'][:12]}"
+          for suffix in ('metrics.json','oof.parquet'):
+              name=f'v6-fast-{candidate}-{suffix}'
+              api.upload_file(path_or_fileobj=str(out/name),path_in_repo=f'{prefix}/{name}',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message=f'Store v6 fast {candidate} {suffix}')
+          print('private_prefix',prefix)
+          PY
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/out"
