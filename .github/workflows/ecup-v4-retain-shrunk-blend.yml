@@ -1,0 +1,242 @@
+name: E-CUP v4 retain shrunk blend
+
+on:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v4-retain-shrunk-blend.yml
+
+permissions:
+  contents: read
+
+jobs:
+  retain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      V3_ZIP: submissions/v3/canonical/b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660/ecup-v3-submission.zip
+      EXPECTED_V3_SHA: b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install private-artifact client
+        run: python -m pip install 'huggingface_hub>=0.34,<1' 'pandas>=2.2,<3' 'pyarrow>=17,<24' 'numpy>=1.26,<3'
+      - name: Download and verify immutable v3 package
+        run: |
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          root = Path(os.environ['RUNNER_TEMP'])/'v4retain'
+          root.mkdir(parents=True,exist_ok=True)
+          path = Path(hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',
+              filename=os.environ['V3_ZIP'],token=os.environ['HF_TOKEN'],local_dir=root/'private',
+          ))
+          digest=hashlib.sha256(path.read_bytes()).hexdigest()
+          print('v3_sha256',digest)
+          assert digest==os.environ['EXPECTED_V3_SHA']
+          (root/'v3_path.txt').write_text(str(path),encoding='utf-8')
+          PY
+      - name: Patch only validated blend coefficients and rebuild v4 ZIP
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib,json,os,stat,zipfile
+          from pathlib import Path,PurePosixPath
+          root=Path(os.environ['RUNNER_TEMP'])/'v4retain'
+          source=Path((root/'v3_path.txt').read_text(encoding='utf-8'))
+          extracted=root/'submission'
+          extracted.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(source) as z:
+              for info in z.infolist():
+                  rel=PurePosixPath(info.filename)
+                  if rel.is_absolute() or '..' in rel.parts:
+                      raise RuntimeError(f'unsafe path {info.filename}')
+                  mode=(info.external_attr>>16)&0xFFFF
+                  if stat.S_ISLNK(mode):
+                      raise RuntimeError(f'symlink forbidden {info.filename}')
+                  target=extracted.joinpath(*rel.parts)
+                  if info.is_dir(): target.mkdir(parents=True,exist_ok=True); continue
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  with z.open(info) as src,target.open('wb') as dst:
+                      while chunk:=src.read(1024*1024): dst.write(chunk)
+          manifest_path=extracted/'model_v3_manifest.json'
+          if not manifest_path.is_file():
+              raise RuntimeError('canonical v3 manifest missing')
+          manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+          old=manifest.get('category_alphas')
+          if not isinstance(old,dict):
+              raise RuntimeError('canonical v3 category_alphas missing')
+          alphas={
+            'Автотовары':0.44456521739130433,
+            'Аптека':0.44689655172413795,
+            'Бытовая техника':0.528,
+            'Бытовая химия':0.6092,
+            'Галантерея и аксессуары':0.4624242424242424,
+            'Детские товары':0.5654716981132075,
+            'Дом и сад':0.48085106382978726,
+            'Канцелярские товары':0.47833333333333333,
+            'Красота и гигиена':0.5504545454545454,
+            'Мебель':0.4335593220338983,
+            'Музыкальные инструменты':0.4172413793103449,
+            'Обувь':0.47870370370370374,
+            'Одежда':0.48725490196078436,
+            'Продукты питания':0.47857142857142854,
+            'Спорт и отдых':0.4875,
+            'Строительство и ремонт':0.44375,
+            'Товары для животных':0.5222222222222223,
+            'Хобби и творчество':0.527027027027027,
+            'Электроника':0.47413793103448276,
+            'Ювелирные изделия':0.39444444444444443,
+          }
+          if set(alphas)!=set(old):
+              raise RuntimeError(f'category set mismatch old={sorted(old)} new={sorted(alphas)}')
+          manifest['category_alphas']=alphas
+          manifest['validation_macro_ap']=0.5291958847698244
+          manifest['blend_iteration']='v4-shrunk-category-prior250'
+          manifest['blend_baseline_v3_macro_ap']=0.5254642645846543
+          manifest['blend_delta_vs_v3']=0.0037316201851701487
+          manifest['blend_prior_strength']=250
+          manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          output=root/'ecup-v4-submission.zip'
+          with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for path in sorted(extracted.rglob('*')):
+                  if path.is_file(): z.write(path,path.relative_to(extracted).as_posix())
+          if output.stat().st_size>=5*1024**3:
+              raise RuntimeError('v4 ZIP exceeds 5 GiB')
+          sha=hashlib.sha256(output.read_bytes()).hexdigest()
+          evidence={
+            'version':'v4-shrunk-category-blend',
+            'source_v3_sha256':os.environ['EXPECTED_V3_SHA'],
+            'submission_sha256':sha,
+            'zip_bytes':output.stat().st_size,
+            'validation_rows':73131,
+            'validation_item_overlap':0,
+            'macro_average_precision':0.5291958847698244,
+            'baseline_v3_macro_average_precision':0.5254642645846543,
+            'delta_vs_v3':0.0037316201851701487,
+            'prior_strength':250,
+            'category_alphas':alphas,
+            'per_category_ap':{
+              'Автотовары':0.5167783796585483,'Аптека':0.5585560094084241,
+              'Бытовая техника':0.6666318509279329,'Бытовая химия':0.6926067566176238,
+              'Галантерея и аксессуары':0.4000282249192136,'Детские товары':0.775417794632369,
+              'Дом и сад':0.5425912277390764,'Канцелярские товары':0.5538271657574761,
+              'Красота и гигиена':0.6138113312214881,'Мебель':0.37459978908150415,
+              'Музыкальные инструменты':0.6120674043235055,'Обувь':0.30256505923061106,
+              'Одежда':0.2958960976458168,'Продукты питания':0.5680171197569645,
+              'Спорт и отдых':0.486392040082028,'Строительство и ремонт':0.5278590654848805,
+              'Товары для животных':0.6066778780865696,'Хобби и творчество':0.8142894028662608,
+              'Электроника':0.3318822405070757,'Ювелирные изделия':0.3438448564221172,
+            },
+          }
+          (root/'v4-package-metrics.json').write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps(evidence,ensure_ascii=False,indent=2))
+          PY
+      - name: Download small smoke inputs
+        run: |
+          mkdir -p "$RUNNER_TEMP/v4retain/smoke"
+          curl --fail --location --retry 3 'https://storage.yandexcloud.net/ozon-ecup-2026/Matching/items_human.parquet' --output "$RUNNER_TEMP/v4retain/smoke/items_human.parquet"
+          curl --fail --location --retry 3 'https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matches.parquet' --output "$RUNNER_TEMP/v4retain/smoke/matches_all.parquet"
+          python - <<'PY'
+          import os,pandas as pd
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'v4retain/smoke'
+          m=pd.read_parquet(root/'matches_all.parquet').head(1000).copy()
+          ids=set(m.id1)|set(m.id2)
+          items=pd.read_parquet(root/'items_human.parquet')
+          items=items[items.id.isin(ids)].copy()
+          m[['id1','id2']].to_parquet(root/'matches.parquet',index=False)
+          items.to_parquet(root/'items.parquet',index=False)
+          PY
+      - name: Exact organizer-image offline smoke
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/v4retain"
+          mkdir -p "$ROOT/runtime" "$ROOT/out"
+          python - <<'PY'
+          import os,stat,zipfile
+          from pathlib import Path,PurePosixPath
+          root=Path(os.environ['RUNNER_TEMP'])/'v4retain'
+          with zipfile.ZipFile(root/'ecup-v4-submission.zip') as z:
+              for info in z.infolist():
+                  rel=PurePosixPath(info.filename)
+                  if rel.is_absolute() or '..' in rel.parts: raise RuntimeError('unsafe path')
+                  if stat.S_ISLNK((info.external_attr>>16)&0xFFFF): raise RuntimeError('symlink')
+                  target=root/'runtime'/Path(*rel.parts)
+                  if info.is_dir(): target.mkdir(parents=True,exist_ok=True); continue
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  with z.open(info) as src,target.open('wb') as dst:
+                      while chunk:=src.read(1024*1024): dst.write(chunk)
+          PY
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --pids-limit 512 --memory 12g --shm-size 2g \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=4g \
+            --volume "$ROOT/runtime:/submission:ro" \
+            --volume "$ROOT/smoke:/smoke:ro" \
+            --volume "$ROOT/out:/out:rw" \
+            --workdir /submission \
+            odsai/ecup26-matching-baseline:1.0 \
+            python -u run.py --items_path /smoke/items.parquet --matches_path /smoke/matches.parquet --output_path /out/submit.csv \
+            | tee "$ROOT/smoke.log"
+          python - <<'PY'
+          import os,numpy as np,pandas as pd
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'v4retain'
+          src=pd.read_parquet(root/'smoke/matches.parquet')
+          out=pd.read_csv(root/'out/submit.csv')
+          assert list(out.columns)==['id1','id2','predict']
+          assert len(out)==len(src)==1000
+          assert out[['id1','id2']].reset_index(drop=True).equals(src[['id1','id2']].reset_index(drop=True))
+          score=out.predict.to_numpy(float)
+          assert np.isfinite(score).all() and (score>=0).all() and (score<=1).all()
+          assert len(np.unique(score))>100
+          log=(root/'smoke.log').read_text(encoding='utf-8',errors='replace').casefold()
+          assert 'neural_pairs=1,000' in log or 'neural_pairs=1000' in log
+          print('v4_exact_image_offline_smoke_verified',len(out),len(np.unique(score)))
+          PY
+      - name: Freeze canonical v4 privately
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          root=Path(os.environ['RUNNER_TEMP'])/'v4retain'
+          zip_path=root/'ecup-v4-submission.zip'
+          metrics_path=root/'v4-package-metrics.json'
+          sha=hashlib.sha256(zip_path.read_bytes()).hexdigest()
+          prefix=f'submissions/v4/canonical/{sha}'
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          for local,name in ((zip_path,'ecup-v4-submission.zip'),(metrics_path,'v4-package-metrics.json')):
+              api.upload_file(path_or_fileobj=str(local),path_in_repo=f'{prefix}/{name}',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message=f'Freeze E-CUP v4 {sha[:12]}')
+          api.upload_file(path_or_fileobj=str(zip_path),path_in_repo='submissions/v4/ecup-v4-submission.zip',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message='Update E-CUP v4 convenience alias')
+          api.upload_file(path_or_fileobj=str(metrics_path),path_in_repo='submissions/v4/v4-package-metrics.json',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message='Update E-CUP v4 metrics alias')
+          files=set(api.list_repo_files(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset'))
+          required={f'{prefix}/ecup-v4-submission.zip',f'{prefix}/v4-package-metrics.json','submissions/v4/ecup-v4-submission.zip','submissions/v4/v4-package-metrics.json'}
+          missing=required-files
+          if missing: raise RuntimeError(f'private freeze missing {sorted(missing)}')
+          evidence=json.loads(metrics_path.read_text(encoding='utf-8'))
+          evidence['canonical_private_prefix']=prefix
+          evidence['exact_image_offline_smoke_verified']=True
+          metrics_path.write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('canonical_private_prefix',prefix)
+          print('submission_sha256',sha)
+          PY
+      - name: Upload safe package metrics only
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ecup-v4-package-metrics
+          path: ${{ runner.temp }}/v4retain/v4-package-metrics.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Cleanup private binaries
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/v4retain"
