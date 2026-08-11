@@ -74,3 +74,36 @@ def test_v5_manifest_keeps_connected_components_indivisible():
     assert split_by_row[3] == split_by_row[4]  # 20-21-22 component
     assert split_by_row[6] == split_by_row[7]  # 40-41-42 component
     assert split_by_row[9] == split_by_row[10]  # 60-61-62 component
+
+
+def test_v5_balancer_spreads_category_and_target_strata_across_every_split():
+    rows = []
+    item_id = 1000
+    for category in ("a", "b"):
+        for target in (0, 1):
+            for _ in range(4):
+                rows.append(
+                    {
+                        "id1": item_id,
+                        "id2": item_id + 1,
+                        "target": target,
+                        "category": category,
+                    }
+                )
+                item_id += 10
+    pairs = pd.DataFrame(rows)
+    descriptors = pairs[["category", "target"]].copy()
+    descriptors["difficulty_bin"] = ["easy", "hard"] * 8
+
+    manifest = build_v5_split_manifest(
+        pairs,
+        descriptors,
+        gold_fraction=0.25,
+        n_folds=3,
+        seed=2026,
+    )
+
+    for split_rows in [manifest["gold_rows"], *manifest["fold_rows"]]:
+        subset = pairs.iloc[split_rows]
+        assert set(subset["category"]) == {"a", "b"}
+        assert set(subset["target"]) == {0, 1}
