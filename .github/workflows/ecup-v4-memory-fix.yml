@@ -1,0 +1,120 @@
+name: E-CUP v4 bounded-memory patch
+
+on:
+  push:
+    branches:
+      - ecup-matching-2026
+    paths:
+      - .github/workflows/ecup-v4-memory-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ecup-matching-2026
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Patch structured streaming and neural load order
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          v2 = Path('ecup_matching/ml/train_v2_structured.py')
+          text = v2.read_text(encoding='utf-8')
+          import_anchor = 'from .weak_labels import prepare_weak_pairs, remove_human_conflicts, sample_weak_training\n'
+          import_replacement = import_anchor + 'from .weak_stream import prefilter_weak_candidates_parquet\n'
+          if text.count(import_anchor) != 1 or 'from .weak_stream import prefilter_weak_candidates_parquet' in text:
+              raise SystemExit('unexpected v2 import state')
+          text = text.replace(import_anchor, import_replacement, 1)
+          old_weak = '''        weak_raw = pd.read_parquet(llm_matches_path, columns=["id1", "id2", "target"])
+              input_weak_rows = int(len(weak_raw))
+              weak = prefilter_weak_candidates(
+                  weak_raw,
+                  validation_item_ids=valid_items,
+                  max_presample_rows=weak_presample_rows,
+                  seed=SEED,
+              )
+              del weak_raw
+          '''
+          new_weak = '''        weak, input_weak_rows = prefilter_weak_candidates_parquet(
+                  llm_matches_path,
+                  validation_item_ids=valid_items,
+                  max_presample_rows=weak_presample_rows,
+                  seed=SEED,
+              )
+              after_prefilter_rows = int(len(weak))
+          '''
+          if text.count(old_weak) != 1:
+              raise SystemExit('expected full-parquet weak block exactly once')
+          text = text.replace(old_weak, new_weak, 1)
+          old_report = '            "after_prefilter_rows": int(min(weak_presample_rows, input_weak_rows)),\n'
+          new_report = '            "after_prefilter_rows": after_prefilter_rows,\n'
+          if text.count(old_report) != 1:
+              raise SystemExit('expected weak report line once')
+          text = text.replace(old_report, new_report, 1)
+          v2.write_text(text, encoding='utf-8')
+
+          v4 = Path('ecup_matching/ml/train_v4_reranker.py')
+          text = v4.read_text(encoding='utf-8')
+          if 'import gc\n' not in text:
+              text = text.replace('import argparse\n', 'import argparse\nimport gc\n', 1)
+          early = '''    _verify_model_revision(model_name, base_model_revision)
+              torch, tokenizer, model = _load_local_model(
+                  model_name, gradient_checkpointing=gradient_checkpointing
+              )
+              cuda_device = torch.cuda.get_device_name(0)
+          '''
+          if text.count(early) != 1:
+              raise SystemExit('expected early BERT load block exactly once')
+          text = text.replace(early, '    _verify_model_revision(model_name, base_model_revision)\n', 1)
+          anchor = '    structured_scores = aligned[STRUCTURED_COLUMN].to_numpy(float)\n\n'
+          insertion = '''    structured_scores = aligned[STRUCTURED_COLUMN].to_numpy(float)
+
+              # Release transient structured/preparation allocations before the
+              # 178M-parameter cross-encoder is materialized in host RAM.
+              gc.collect()
+              torch, tokenizer, model = _load_local_model(
+                  model_name, gradient_checkpointing=gradient_checkpointing
+              )
+              cuda_device = torch.cuda.get_device_name(0)
+
+          '''
+          if text.count(anchor) != 1:
+              raise SystemExit('expected structured score anchor exactly once')
+          text = text.replace(anchor, insertion, 1)
+          v4.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Install CI dependencies
+        run: python -m pip install -r ecup_matching/requirements-ci.txt
+
+      - name: Verify focused memory regressions
+        run: |
+          python -m pytest \
+            ecup_matching/tests/test_v4_structured_stream.py \
+            ecup_matching/tests/test_train_v4_reranker.py -q
+
+      - name: Verify full public suite and memory policy
+        run: |
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+
+      - name: Commit only verified patch
+        run: |
+          git config user.name 'E-CUP verified automation'
+          git config user.email '90937209+MakSoS1@users.noreply.github.com'
+          git add ecup_matching/ml/train_v2_structured.py ecup_matching/ml/train_v4_reranker.py
+          git commit -m 'fix: bound v4 preprocessing memory before loading BERT'
+          git push origin HEAD:ecup-matching-2026
