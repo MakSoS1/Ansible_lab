@@ -68,8 +68,6 @@ jobs:
                   result['experiments'][key] = {'status': 'not_available_yet', 'private_path': filename}
                   continue
               payload = json.loads(Path(local).read_text(encoding='utf-8'))
-              # Metrics files produced by v5 workflows contain aggregate counts,
-              # scores and hashes only. Keep a second defensive deny-list anyway.
               forbidden_fragments = ('row_index', 'id1', 'id2', 'product', 'text', 'name_value')
               serialized = json.dumps(payload, ensure_ascii=False).lower()
               if any(fragment in serialized for fragment in forbidden_fragments):
@@ -88,12 +86,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- ecup_matching/experiments/v5/SAFE_METRICS.json; then
+          target='ecup_matching/experiments/v5/SAFE_METRICS.json'
+          git add "$target"
+          if git diff --cached --quiet -- "$target"; then
             echo 'No safe metric changes'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add ecup_matching/experiments/v5/SAFE_METRICS.json
           git commit -m 'docs: snapshot public-safe v5 metrics'
           git push origin HEAD:ecup-matching-2026
