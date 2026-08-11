@@ -76,8 +76,8 @@ def test_category_shrunk_rank_fusion_applies_category_specific_simplex():
     categories = np.asarray(["a", "b", "a", "b"])
     score = category_shrunk_six_rank_fusion(_signals(), categories, model)
 
-    weak_rank = np.asarray([1.0, 0.25, 0.75, 0.5])
-    sparse_rank = np.asarray([1.0, 0.25, 0.75, 0.5])
+    weak_rank = np.asarray([1.0, 0.0, 2.0 / 3.0, 1.0 / 3.0])
+    sparse_rank = np.asarray([1.0, 0.0, 2.0 / 3.0, 1.0 / 3.0])
     expected = np.asarray([weak_rank[0], sparse_rank[1], weak_rank[2], sparse_rank[3]])
     assert np.allclose(score, expected)
     assert ((score >= 0.0) & (score <= 1.0)).all()
