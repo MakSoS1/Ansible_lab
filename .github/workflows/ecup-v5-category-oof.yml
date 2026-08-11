@@ -8,6 +8,9 @@ on:
       - .github/workflows/ecup-v5-category-oof.yml
       - ecup_matching/ml/run_v5_category_oof.py
       - ecup_matching/ml/v5_category_specialists.py
+      - ecup_matching/ml/textnorm.py
+      - ecup_matching/ml/features.py
+      - ecup_matching/ml/features_v2.py
 
 permissions:
   contents: read
