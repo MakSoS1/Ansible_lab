@@ -6,6 +6,7 @@ from ecup_matching.ml.run_v5_fixed_blend import align_oof_frame
 from ecup_matching.ml.v5_fixed_blend import (
     fixed_blend_candidates,
     grouped_percentile_rank,
+    orthogonal_rank_candidates,
     percentile_rank,
     rank_ablation_candidates,
 )
@@ -78,6 +79,40 @@ def test_rank_ablation_candidates_are_predeclared_target_free_and_group_aligned(
         assert np.all((0.0 <= values) & (values <= 1.0))
 
 
+def test_orthogonal_rank_candidates_match_predeclared_source_sets_and_are_target_free():
+    current4 = {
+        "weak": np.array([0.2, 0.8, 0.4, 0.6]),
+        "sparse": np.array([0.3, 0.7, 0.5, 0.4]),
+        "explicit": np.array([0.25, 0.75, 0.45, 0.55]),
+        "contrastive": np.array([-0.2, 0.5, 0.1, 0.4]),
+    }
+    extras = {
+        "teacher2_raw": np.array([-1.0, 2.0, 0.0, 0.5]),
+        "weighted": np.array([0.1, 0.9, 0.2, 0.7]),
+        "pretrained_raw": np.array([-0.1, 0.4, 0.3, 0.2]),
+    }
+
+    result = orthogonal_rank_candidates(current4, extras)
+    assert set(result) == {
+        "current4_plus_teacher",
+        "current4_plus_weighted",
+        "current4_plus_pretrained",
+        "current4_plus_teacher_weighted",
+        "current4_plus_all_three",
+    }
+    for values in result.values():
+        assert values.shape == (4,)
+        assert np.isfinite(values).all()
+        assert np.all((0.0 <= values) & (values <= 1.0))
+
+    reversed_result = orthogonal_rank_candidates(
+        dict(reversed(list(current4.items()))),
+        dict(reversed(list(extras.items()))),
+    )
+    for name in result:
+        assert np.allclose(result[name], reversed_result[name])
+
+
 def test_fixed_blend_identical_rankings_preserve_ranking():
     common = np.array([0.05, 0.3, 0.2, 0.95, 0.7])
     sources = {name: common.copy() for name in ("category", "weak", "sparse", "explicit")}
@@ -105,6 +140,12 @@ def test_fixed_blend_rejects_missing_nonfinite_or_misaligned_inputs():
 
     with pytest.raises(ValueError, match="equal length"):
         grouped_percentile_rank(np.array([0.1, 0.2]), np.array(["a"]))
+
+    with pytest.raises(ValueError, match="missing required"):
+        orthogonal_rank_candidates(
+            {"weak": good, "sparse": good, "explicit": good, "contrastive": good},
+            {"teacher2_raw": good},
+        )
 
 
 def test_align_oof_frame_requires_exact_rows_and_folds(tmp_path):
