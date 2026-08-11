@@ -3,7 +3,12 @@ import pandas as pd
 import pytest
 
 from ecup_matching.ml.run_v5_fixed_blend import align_oof_frame
-from ecup_matching.ml.v5_fixed_blend import fixed_blend_candidates, percentile_rank
+from ecup_matching.ml.v5_fixed_blend import (
+    fixed_blend_candidates,
+    grouped_percentile_rank,
+    percentile_rank,
+    rank_ablation_candidates,
+)
 
 
 def test_percentile_rank_is_finite_monotonic_bounded_and_tie_stable():
@@ -15,6 +20,18 @@ def test_percentile_rank_is_finite_monotonic_bounded_and_tie_stable():
     assert np.all((0.0 <= ranks) & (ranks <= 1.0))
     assert ranks[1] == pytest.approx(ranks[2])
     assert ranks[3] > ranks[0] > ranks[1]
+
+
+def test_grouped_percentile_rank_ignores_cross_category_scale():
+    values = np.array([1.0, 2.0, 100.0, 200.0])
+    groups = np.array(["a", "a", "b", "b"])
+    ranks = grouped_percentile_rank(values, groups)
+
+    assert ranks.tolist() == pytest.approx([0.0, 1.0, 0.0, 1.0])
+
+    rescaled = values.copy()
+    rescaled[groups == "b"] *= 1000.0
+    assert grouped_percentile_rank(rescaled, groups).tolist() == pytest.approx(ranks.tolist())
 
 
 def test_fixed_blend_candidates_are_order_independent_and_target_free():
@@ -35,6 +52,30 @@ def test_fixed_blend_candidates_are_order_independent_and_target_free():
         assert first[name].shape == (4,)
         assert np.isfinite(first[name]).all()
         assert np.allclose(first[name], second[name])
+
+
+def test_rank_ablation_candidates_are_predeclared_target_free_and_group_aligned():
+    scores = {
+        "category": np.array([0.1, 0.9, 0.2, 0.8, 0.3, 0.7]),
+        "weak": np.array([0.2, 0.8, 0.4, 0.6, 0.1, 0.9]),
+        "sparse": np.array([0.3, 0.7, 0.5, 0.4, 0.2, 0.95]),
+        "explicit": np.array([0.25, 0.75, 0.45, 0.55, 0.15, 0.85]),
+    }
+    cosine = np.array([-0.2, 0.5, 0.1, 0.4, -0.1, 0.8])
+    groups = np.array(["a", "a", "b", "b", "c", "c"])
+
+    result = rank_ablation_candidates(scores, groups=groups, contrastive_cosine=cosine)
+    assert set(result) == {
+        "global_rank_mean_4_no_category",
+        "global_rank_mean_3_strong",
+        "category_rank_mean_5",
+        "category_rank_mean_4_no_category",
+        "category_rank_mean_3_strong",
+    }
+    for values in result.values():
+        assert values.shape == (6,)
+        assert np.isfinite(values).all()
+        assert np.all((0.0 <= values) & (values <= 1.0))
 
 
 def test_fixed_blend_identical_rankings_preserve_ranking():
@@ -61,6 +102,9 @@ def test_fixed_blend_rejects_missing_nonfinite_or_misaligned_inputs():
     bad["sparse"] = np.array([0.1])
     with pytest.raises(ValueError, match="equal length"):
         fixed_blend_candidates(bad)
+
+    with pytest.raises(ValueError, match="equal length"):
+        grouped_percentile_rank(np.array([0.1, 0.2]), np.array(["a"]))
 
 
 def test_align_oof_frame_requires_exact_rows_and_folds(tmp_path):
