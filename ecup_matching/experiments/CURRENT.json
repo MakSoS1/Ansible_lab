@@ -1,10 +1,10 @@
 {
-  "version": "v5",
-  "status": "production_verified",
-  "model": "v5-category-shrunk-hgb-equal-rank-fusion",
-  "plan": "ecup_matching/experiments/v5/PLAN.md",
-  "results": "ecup_matching/experiments/v5/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v5/SAFE_METRICS.json",
+  "version": "v6",
+  "status": "in_progress",
+  "model": "v6-fast-gate95-category-shrunk-hgb",
+  "plan": "ecup_matching/experiments/v6/PLAN.md",
+  "results": "ecup_matching/experiments/v6/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v6/SAFE_METRICS.json",
   "validation_protocol": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -17,83 +17,67 @@
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
-  "development_baseline_macro_average_precision": 0.5315527708634168,
-  "development_best": {
+  "quality_best_reference": {
+    "version": "v5",
     "name": "v5-category-shrunk-hgb-equal-rank-fusion",
-    "macro_average_precision": 0.6018115534135564,
-    "delta_vs_six_signal": 0.004266981268582252,
-    "delta_vs_category_shrunk": 0.000857311611716427,
-    "fold_macro_average_precision": [
-      0.600317954001536,
-      0.6073630562662657,
-      0.6122052716465903,
-      0.5973819202189384,
-      0.6105222735923926
-    ],
-    "all_folds_improved_vs_category_shrunk": true,
-    "workflow_run_id": 31525549063,
-    "metrics_artifact_id": 9114783508,
-    "metrics_artifact_digest": "cca521d4c402fbd9d1aa9bce17902a1499d97b8fac97d681190c5365098ef8e0",
-    "private_hf_prefix": "experiments/v5/category-hgb-fusion/79de99434912",
-    "fully_outer_cross_fitted_components": true,
-    "post_result_weight_tuning": false,
-    "retained_for_development": true,
-    "retained_as_submission": true
-  },
-  "production_best": {
-    "name": "v5-category-shrunk-hgb-equal-rank-fusion",
-    "strict_selection_oof_macro_average_precision": 0.6018115534135564,
+    "strict_oof_macro_average_precision": 0.6018115534135564,
     "competition_zip": "ecup-v5-category-hgb-fusion-0.6018115534-submission.zip",
     "competition_zip_sha256": "442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5",
-    "workflow_run_id": 31526323018,
-    "actions_artifact_id": 9116032675,
-    "actions_artifact_digest": "fc6a72f63146df414c5ff4de4aef62a4568e516a12d465830492941348824a46",
-    "private_hf_repo": "Maksim123321/e-cup-2026-matching-private",
     "private_hf_prefix": "submissions/v5/0.6018115534",
-    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
     "organizer_image_smoke_passed": true,
-    "hgb_joblib_loaded_in_organizer_image": true,
-    "full_test_suite": "230 passed, 1 warning",
-    "verified_at_commit": "695ea6ec38e47048007b58389d15c611899bdfe5"
+    "runtime_reason_for_v6": "quality passes but the production path is too slow for the runtime-constrained v6 objective"
   },
-  "verified_submission_fallbacks": [
-    {
-      "name": "v5-category-shrunk-0.6009542418",
-      "strict_selection_oof_macro_average_precision": 0.60095424180184,
-      "competition_zip_sha256": "3a5341c42346727793ab8877ee6bc8f07e3ac4f18f97c32a9d39d76b5e0609c1",
-      "actions_artifact_id": 9114889240,
-      "private_hf_prefix": "submissions/v5/0.6009542418",
-      "organizer_image_smoke_passed": true
-    },
-    {
-      "name": "v5-six-signal-0.5975445721",
-      "strict_selection_oof_macro_average_precision": 0.5975445721449741,
-      "competition_zip_sha256": "ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e",
-      "actions_artifact_id": 9112337546,
-      "private_hf_prefix": "submissions/v5/0.5975445721",
-      "organizer_image_smoke_passed": true
-    }
-  ],
-  "retained_development_steps": {
-    "category_specialists": 0.5476780661335778,
-    "weak_category_specialists": 0.5514237338676234,
-    "sparse_category_specialists": 0.5651306838802859,
-    "explicit_attribute_specialists": 0.5683065131240066,
-    "supervised_contrastive": 0.5662217062664492,
-    "four_signal_equal_rank": 0.5870570848443828,
-    "five_signal_plus_teacher_equal_rank": 0.5952697490140912,
-    "six_signal_equal_rank": 0.5975445721449741,
-    "global_simplex_meta": 0.5992720660193247,
-    "global_meta_plus_category_logistic_equal_rank": 0.5995921709945611,
-    "category_shrunk_simplex": 0.60095424180184,
-    "fixed_hgb_meta_stack": 0.6006290884983169,
-    "category_shrunk_plus_hgb_equal_rank": 0.6018115534135564
+  "selected_runtime_candidate": {
+    "name": "v6-fast-gate95-category-shrunk-hgb",
+    "strict_selection_oof_macro_average_precision": 0.6006003614522999,
+    "quality_gate_macro_average_precision": 0.6,
+    "quality_gate_passed": true,
+    "teacher_coverage_requested": 0.95,
+    "teacher_fraction_on_development": 0.9500262964131693,
+    "selection_workflow_run_id": 31531141700,
+    "selection_job_id": 93911179929,
+    "selection_source_commit": "fb15ec43a90c892c416acb2d10fe04cc126a4398",
+    "private_selection_prefix": "experiments/v6/teacher-gate/95/fb15ec43a90c",
+    "fully_outer_cross_fitted_meta": true,
+    "post_result_weight_tuning": false
   },
-  "stretch_target_development_oof_macro_average_precision": 0.6,
-  "remaining_gap_to_target": 0.0,
-  "target_exceeded_by": 0.0018115534135563916,
-  "v5_submission_retained": true,
+  "runtime_implementation": {
+    "teacher_gate": "target-free per-category disagreement gate",
+    "unselected_teacher_surrogate": "mean percentile rank of weak+sparse+explicit+contrastive+typed_explicit",
+    "length_bucketing": true,
+    "cuda_vram_aware_batches": true,
+    "cuda_oom_fallback": true,
+    "non_blocking_cuda_transfers": true,
+    "sdpa_when_supported": true,
+    "mixed_precision": false,
+    "rtx_2060_super_default_contrastive_batch": 256,
+    "rtx_2060_super_default_teacher_batch": 96
+  },
+  "latest_packaging_evidence": {
+    "workflow_run_id": 31535674086,
+    "source_commit": "4da50f66942472b8e8b70270cbeb00639930b6b5",
+    "production_meta_refit_passed": true,
+    "organizer_image_offline_readonly_smoke_passed": true,
+    "organizer_smoke_rows": 64,
+    "organizer_cpu_smoke_total_seconds": 24.14,
+    "candidate_zip_sha256_before_documentation_gate": "20c5f128e43c5303893301f012726381df06a4e20d027ea054acf36e0f6aae40",
+    "candidate_zip_bytes": 1143630143,
+    "full_test_suite": "264 passed, 1 failed, 91 warnings",
+    "full_test_failure_scope": "documentation memory policy only; model/runtime smoke passed",
+    "final_artifact_published": false,
+    "rtx_full_runtime_verified": false
+  },
+  "rejected_runtime_candidates": {
+    "structured_only": 0.5808404005946962,
+    "no_teacher": 0.5931387077244183,
+    "no_contrastive": 0.5928725263319,
+    "teacher_gate_25": 0.5929214688140778,
+    "teacher_gate_55": 0.5966896566149946,
+    "teacher_gate_85": 0.5999300791828578,
+    "teacher_distillation": 0.5931935841654697,
+    "student_teacher_hybrid_85": 0.5998746122650258
+  },
   "sealed_gold_evaluated": false,
   "leaderboard_result_known": false,
-  "next_action": "Upload exactly the verified competition ZIP from private HF submissions/v5/0.6018115534 to the E-CUP platform. Record Public/Private results separately from strict local OOF. Keep sealed gold unopened unless a separately frozen one-shot gate is explicitly chosen."
+  "next_action": "Make repository policy GREEN, rebuild and publish the exact gate95 ZIP, benchmark those exact bytes on ecup-rtx2060 in the organizer image including a full reference run, then retain the archive only if strict OOF remains >=0.6000 and measured runtime fits the execution budget. Keep sealed gold unopened."
 }
