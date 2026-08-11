@@ -629,10 +629,6 @@ def train_v4(
     started = time.perf_counter()
     output_dir.mkdir(parents=True, exist_ok=True)
     _verify_model_revision(model_name, base_model_revision)
-    torch, tokenizer, model = _load_local_model(
-        model_name, gradient_checkpointing=gradient_checkpointing
-    )
-    cuda_device = torch.cuda.get_device_name(0)
 
     # Reproduce the retained structured anchor from raw competition data so the
     # isolated GPU runner never needs private-HF credentials.
@@ -668,6 +664,14 @@ def train_v4(
     )
     aligned = _align_structured_validation(valid, structured_validation_path)
     structured_scores = aligned[STRUCTURED_COLUMN].to_numpy(float)
+
+    # Keep the large transformer out of RAM while structured/weak preprocessing
+    # materializes its bounded CPU-side frames. This preserves the exact data
+    # recipe while avoiding the WSL peak that previously killed the runner.
+    torch, tokenizer, model = _load_local_model(
+        model_name, gradient_checkpointing=gradient_checkpointing
+    )
+    cuda_device = torch.cuda.get_device_name(0)
 
     stages_runtime: dict[str, Any] = {}
     stage_reports: dict[str, dict[str, Any]] = {}
