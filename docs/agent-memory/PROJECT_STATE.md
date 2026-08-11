@@ -4,143 +4,186 @@ Updated: 2026-08-11
 
 ## Objective
 
-Score strongly in the ODS E-CUP 2026 Ozon pairwise product matching task while keeping the final submission reproducible, legal under competition rules, robust to unseen items, and compatible with the organizer's offline runtime.
+Score strongly in the ODS E-CUP 2026 Ozon pairwise product matching task while keeping model selection honest for unseen products, the final submission reproducible/offline-compatible, and all competition artifacts private.
 
 ## Fixed task/evaluation facts
 
 - 20 product categories.
-- Metric: unweighted macro mean of `sklearn.metrics.average_precision_score` across categories.
-- Hidden test uses different/new products; same-item leakage in offline validation is unacceptable.
-- Human training data: 365,654 labelled pairs; soft LLM data: >11M pairs.
-- Fixed validation: 73,131 human pairs with **0 item IDs shared with outer train**.
-- Submission CLI: `--items_path`, `--matches_path`, `--output_path`; output CSV columns `id1,id2,predict`.
-- Exact organizer image: `odsai/ecup26-matching-baseline:1.0`.
-- Public Git stores code/docs only. Raw competition data, model weights and submission ZIPs remain private.
+- Official metric: unweighted macro mean of `sklearn.metrics.average_precision_score` across categories.
+- Human labels: `365,654` pairs; soft LLM labels: `>11M` pairs.
+- Hidden test contains new/unseen products; item leakage is unacceptable.
+- Submission CLI: `--items_path`, `--matches_path`, `--output_path`; output `id1,id2,predict`.
+- Organizer image: `odsai/ecup26-matching-baseline:1.0`.
+- Public Git contains code/docs only. Raw data, learned models, OOF prediction files, Memora DBs and submission ZIPs remain private.
+- Private artifact/data repo: `Maksim123321/e-cup-2026-matching-private`.
 
-Private artifact dataset: `Maksim123321/e-cup-2026-matching-private`.
+## Two different meanings of “best” — never merge them
 
-## Current retained solution — v4
+### Production / hidden-leaderboard anchor
 
-**v4 is the current best retained submission candidate.**
+The best observed hidden score among submitted v1-v4 candidates is **v2**:
 
-Architecture:
+| Submission | Hidden Macro AP |
+|---|---:|
+| v1 | 0.23458522924335687 |
+| v2 | **0.2583231811423486** |
+| v3 non-canonical | 0.2583231811423486 |
+| v3 canonical | 0.24810151893254498 |
+| v4 canonical | 0.2531285194869718 |
 
-- unchanged v2b structured model from v3;
-- unchanged retained `cointegrated/rubert-tiny2` neural checkpoint from v3;
-- v4 replaces the single global neural blend alpha with a shrinkage-regularized per-category alpha vector.
+Therefore **v2 is the immutable production/leaderboard fallback while v5 is being developed**. Old v3/v4 local gains remain valid historical offline measurements but did not transfer monotonically to hidden evaluation and are no longer the primary model-selection proxy.
 
-The v4 model-selection protocol is deliberately leakage-aware at the routing layer:
+### Current development best
 
-- frozen validation rows: `73,131`;
-- train/validation item overlap: `0`;
-- routing cross-fit groups: connected components of **all validation candidate edges**;
-- number of validation components: `53,131`;
-- folds: 5-fold `GroupKFold`;
-- tested shrinkage priors: `250, 500, 1000, 2000, 4000, 8000`;
-- selected prior: **`4000`**.
+v5 is **in progress**. The strongest honest development OOF result currently available is the leakage-safe cross-fitted combo:
 
-Quality:
+- development OOF Macro AP: **`0.559512531439709`**;
+- baseline OOF: `0.5315527708634168`;
+- delta vs baseline: `+0.0279597605762922`;
+- category-specialist base: `0.5476780661335778`;
+- delta vs category base: `+0.011834465306131192`;
+- held-fold AP: `0.562580065789817`, `0.5605549739646596`, `0.5667063354890245`, `0.5579194708823281`, `0.5631351691480011`;
+- **all five held folds improved** relative to the category-specialist base;
+- run `31485240666`, source `7a1c1764a2bdda8f007b9bfea7d088911623e7f0`;
+- private prefix `experiments/v5/combo/7a1c1764a2bd`.
 
-- retained v3 Macro AP: `0.5254642645846543`;
-- cross-fitted global blend: `0.526005894031544`;
-- **v4 cross-fitted regularized category blend: `0.5276431099433088`**;
-- honest OOF delta vs v3: **`+0.0021788453586544243`**;
-- deployable full-data coefficient fit: `0.5284493942551521`.
+This is development evidence only. No v5 submission is retained yet.
 
-The `0.5276431099433088` cross-fitted value is the retained headline quality number. The larger `0.5284493942551521` value is recorded only as the score of the final coefficients fitted on all labelled validation rows after the prior was chosen OOF.
+## v5 immutable validation protocol
 
-Selection run: `31473553650`.
-Freeze/runtime run: `31474888023`, job `93726203398`.
+v5 replaced the repeatedly reused 73,131-row development holdout with a new sealed protocol before further model selection:
 
-Immutable source evidence:
+- authoritative human rows: `365,654`;
+- connected item components: `345,654`;
+- development rows: `285,210`;
+- sealed gold rows: **`80,444`**;
+- development folds: `5`;
+- cross-split item overlap: **`0`**;
+- split SHA-256: **`aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`**;
+- sealed gold metric opened: **false**;
+- sealed gold rows scored: **0**.
 
-- v3 canonical ZIP SHA-256: `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`;
-- frozen v3 validation predictions SHA-256: `4112aa2556cb683ffca27cd9bd16c00a7149bb7e3279d1f2a6abb2b20438d643`.
+Rules:
 
-Canonical v4 package:
+1. Do not use sealed-gold labels for model choice, calibration, feature selection, hard-negative mining or blend weights.
+2. During development, do not encode/mine sealed-gold items as if they were unlabeled adaptation data.
+3. Candidate, preprocessing, config and relevant artifact hashes must be frozen before the one-shot gold evaluation.
+4. The user-requested `0.60` target means honest development OOF on this immutable split, not a repeatedly tuned holdout score.
 
-- private prefix: `submissions/v4/canonical/b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849`;
-- ZIP SHA-256: **`b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849`**;
-- ZIP bytes: `109,185,879`;
-- convenience alias: `submissions/v4/ecup-v4-submission.zip`;
-- metrics alias: `submissions/v4/v4-package-metrics.json`.
+Validation-audit run: `31479778679`, source `93e4396330997c41bfb309f449f1dcb79a5e4db6`, private prefix `experiments/v5/validation/93e439633099`.
 
-Runtime gate:
+## v5 retained development steps
 
-- exact organizer image;
-- `--network none`;
-- read-only submission/runtime inputs;
-- 1,000 smoke pairs;
-- **1,000 / 1,000 real neural pairs**;
-- valid output schema/order/range/finite checks;
-- 1,000 unique prediction values;
-- private canonical upload/presence verification PASS.
+### Category specialists — KEEP
 
-The hosted smoke ran the organizer image on CPU because the hosted Ubuntu runner has no NVIDIA driver. The retained v3 runtime automatically selects CUDA when available in the organizer environment.
+Train one structured HGB per category instead of sharing one global HGB across heterogeneous product regimes.
 
-Full details: `ecup_matching/experiments/v4/RESULTS.md`.
+- exact current category-base OOF: **`0.5476780661335778`**;
+- delta vs audit baseline: `+0.016125295270161044`;
+- all five folds improved;
+- private prefix `experiments/v5/category/e885961388d1`.
 
-## v3 — immutable fallback
+This is the retained structured base for later v5 comparisons.
 
-Architecture: v2b structured score + compact `cointegrated/rubert-tiny2` pairwise reranker.
+### Leakage-safe weak category specialists — KEEP
 
-Selected blend: structured `0.55`, neural `0.45`.
+Weak LLM rows are filtered so neither held-fold items nor sealed-gold items enter the fold curriculum.
 
-- Macro AP: `0.5254642645846543`;
-- fixed validation rows: `73,131`;
-- overlap: `0`;
-- canonical ZIP SHA-256: `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`;
-- canonical package smoke: 10,000 / 10,000 real neural pairs, network disabled, output verified.
+- category base: `0.5476780661335778`;
+- weak-specialist OOF: **`0.5514237338676234`**;
+- delta: **`+0.00374566773404561`**;
+- every fold improved: `+0.0041804098`, `+0.0042080950`, `+0.0029123788`, `+0.0016674369`, `+0.0050265978`;
+- run `31484641329`, source `319993a469cfa37770d66cfaf1b2203515dc9841`;
+- private prefix `experiments/v5/weak-specialists/319993a469cf/aggregate`;
+- sprint used `250,000` confidence-filtered presample rows and `150,000` final weak rows per fold from `11,187,780` weak input rows.
 
-v3 remains the immutable fallback and also supplies the learned structured/neural weights used by v4.
+### Cross-fitted combo — current development best
 
-## Earlier iterations
+Cross-fit combines already-OOF category-specialist, fold-weighted and pretrained semantic signals. The second level never trains on in-sample base predictions of its own held fold.
 
-### v1 — superseded
+- OOF: **`0.559512531439709`**;
+- all five folds improved vs category base;
+- private prefix `experiments/v5/combo/7a1c1764a2bd`.
 
-Structured HGB on the fixed item-disjoint split: `0.49616548946964434` Macro AP.
+KEEP as the current development benchmark, but **not yet a retained submission**.
 
-### v2 — superseded structured anchor
+## v5 rejected / diagnostic branches — do not repeat blindly
 
-Selected `v2b-weak-curriculum`: `0.5010008994958702` Macro AP.
+### Direct attribute log-likelihood score addition — REJECT
 
-v2 introduced product-aware structured features and confidence-filtered weak labels. Its model remains the fast structured anchor inside v3/v4.
+- OOF `0.523218903672764` vs base `0.5315527708634168`;
+- delta `-0.008333867190652766`;
+- all five folds regressed.
 
-## Stronger encoder branch developed during v4
+Do not rescue this branch by tuning a scalar on the same development folds. Attribute information may be supplied as ordinary model features instead of a direct logit shift.
 
-The original v4 design implemented an additional pinned `ai-forever/ruBert-base` ladder:
+### Fold-weighted category specialists — diagnostic input only
 
-- v4a complete human curriculum;
-- v4b confidence-filtered weak continuation;
-- v4c model-mined hard negatives with 50% ordinary replay.
+- OOF `0.5498696731704964`;
+- delta vs category base `+0.0021916070369185636`;
+- folds 2 and 3 regressed slightly (`-0.0003191988`, `-0.0009191638`).
 
-This branch is **not** the retained v4 artifact and no ruBERT metric is attributed to v4.
+Do not promote standalone. It is allowed as an OOF input to a separately cross-fitted stack because the combo proved consistent gain.
 
-A first home RTX 2060 SUPER production attempt terminated with exit `137` during a host-memory-heavy preparation phase before any validation metric existed. The public code was then hardened:
+### Pretrained multilingual bi-encoder without supervised adaptation — insufficient standalone
 
-- >11M-row weak presampling now streams with PyArrow rather than loading the full table into pandas;
-- CPU-heavy structured/curriculum preparation precedes BERT loading;
-- weak serialized pair direction is regression-tested;
-- the private dispatcher fail-contains v4 at 10 GiB RAM with no extra swap.
+- stacked OOF `0.5318080650341337`;
+- delta vs audit base only `+0.0002552941707169021`;
+- raw semantic cosine Macro AP about `0.3120`.
 
-The WSL runner went offline after the original host shutdown. A separate GitHub Apple-Silicon/MPS diagnostic remains supplemental only. Future work may resume this stronger encoder as **v4.1/v5**, but it must not overwrite or reinterpret the retained v4 evidence.
+A ready-made item embedding space is not enough; a neural path must prove supervised/weak OOF value over the retained structured base.
+
+## Active v5 branches at this snapshot
+
+Do not invent metrics for these until their aggregate run completes:
+
+- supervised contrastive outer-CV: run `31483288887` — in progress;
+- `ruBert-base` teacher outer-CV: run `31485127564` — in progress;
+- strict train-only sparse specialists: run `31485396599` — in progress;
+- explicit per-attribute specialists: run `31485990777` — in progress;
+- field-aware weak ranking teacher: run `31486298300` — queued at this snapshot.
+
+## v5 debugging / implementation lessons
+
+- MPS contrastive physical batch `96` caused OOM at roughly the full available MPS memory. The fix preserves effective batch `96` using physical microbatch `24` plus gradient accumulation `4`; do not interpret the OOM as a negative ML result.
+- Train-only TF-IDF tests must verify representation contracts (unseen `transform`, symmetry, finite/bounded values), not force a hand-written ranking such as unknown SKU/color conflicts. OOF decides utility.
+- An apparent serializer CI failure was caused by the next intentionally RED embedding test in the same evolving branch, not the serializer. Always read the exact failing test/stack trace before attributing a regression.
+- Weak sampling must exclude held-fold and sealed-gold items. The successful weak-specialist run asserts these invariants.
+- For >11M weak rows, keep PyArrow streaming/bounded sampling; do not return to full-table pandas materialization before loading a Transformer.
+
+## Historical v4/v3 artifacts
+
+v4 remains a reproducible historical package, not the current production anchor:
+
+- v4 OOF routing score `0.5276431099433088`;
+- v4 full-fit coefficient score `0.5284493942551521`;
+- canonical ZIP SHA-256 `b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849`;
+- exact organizer-image offline smoke passed.
+
+v3 canonical historical package:
+
+- local Macro AP `0.5254642645846543`;
+- canonical SHA-256 `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`.
+
+Do not reinterpret these old local metrics as evidence that v3/v4 beat v2 on hidden evaluation.
 
 ## Current action
 
-1. Use canonical v4 as the current submission candidate.
-2. Keep immutable v3 as fallback.
-3. Do not modify the canonical v4 ZIP in place; any new model/alpha change must create a new immutable experiment/artifact.
-4. Treat ruBERT-base training as a future ablation and retain it only if a new honest item-disjoint evaluation beats v4.
+1. Continue v5 only on the immutable split SHA `aae58f...eb55b`.
+2. Compare new branches against current OOF benchmarks; do not move the split or open gold to chase `0.60`.
+3. Keep v2 as production/leaderboard fallback until a frozen v5 candidate passes the one-shot sealed-gold gate plus organizer runtime/package verification.
+4. Update durable memory after each meaningful KEEP/REJECT/FAIL result, but checkpoint Memora only from a GREEN repository state.
 
 ## Persistent agent memory — operational
 
-The hardened Memora integration remains installed, packaged and CI-verified.
+Hardened Memora remains pinned/local-only:
 
-- pinned upstream: `bc64ff745a9b2c0e6245e0137654f041fba0c155`;
-- resolved MCP: `1.29.0` (`mcp>=1,<2`);
-- local SQLite + TF-IDF only;
-- LLM/external embeddings/graph/auto-capture disabled in the supported profile;
+- upstream `bc64ff745a9b2c0e6245e0137654f041fba0c155`;
+- SQLite + TF-IDF only;
+- LLM/external embeddings/graph/auto-capture disabled;
 - public Markdown is canonical;
-- private mutable memory lives under `agent-memory/latest/` with immutable checkpoints under `agent-memory/checkpoints/`.
+- private DB lives under `agent-memory/latest/` with immutable checkpoints under `agent-memory/checkpoints/`.
 
-Every retained experiment must update PLAN/RESULTS/index/state, pass `memory_policy.py`, be ingested into Memora and create a verified private checkpoint before it is considered fully closed.
+Important incident: two v5 Memora runs (`31481012401`, `31482891498`) failed **before ingest** because their memory-doc commits occurred while the repository was intentionally RED during TDD. In run `31482891498`, collection failed with `ModuleNotFoundError: ecup_matching.ml.v5_weighted_specialists`; subsequent production code made the workspace GREEN, but that did not retroactively create the skipped checkpoint.
+
+**Rule:** never weaken the test gate. A retained memory snapshot is valid only after full tests + `memory_policy.py` pass, Memora ingestion succeeds, SQLite integrity/secret checks pass, and the private checkpoint is uploaded/verified. If a docs-triggered run occurred during RED TDD, force a later memory-triggering commit or manual dispatch after GREEN.
