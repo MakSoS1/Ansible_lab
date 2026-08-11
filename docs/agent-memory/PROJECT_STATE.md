@@ -4,206 +4,145 @@ Updated: 2026-08-11
 
 ## Objective
 
-Score strongly in the ODS E-CUP 2026 Ozon pairwise product matching task while keeping model selection honest for unseen products, the final submission reproducible/offline-compatible, and all competition artifacts private.
+Score strongly in ODS E-CUP 2026 Ozon product matching while keeping model selection honest for unseen products, final submission reproducible/offline-compatible, and competition artifacts private.
 
-## Fixed task/evaluation facts
+## Fixed facts
 
-- 20 product categories.
-- Official metric: unweighted macro mean of `sklearn.metrics.average_precision_score` across categories.
-- Human labels: `365,654` pairs; soft LLM labels: `>11M` pairs.
-- Hidden test contains new/unseen products; item leakage is unacceptable.
+- 20 categories; official metric is unweighted category Macro Average Precision.
+- Human labels: `365,654`; soft LLM labels: `>11M`.
+- Hidden test contains unseen products; item leakage is unacceptable.
 - Organizer image: `odsai/ecup26-matching-baseline:1.0`.
-- Public Git contains code/docs only. Raw data, learned models, OOF predictions, Memora DBs and submission ZIPs remain private.
+- Public Git contains code/source-backed docs only. Raw data, models, OOF predictions, Memora DBs and submission ZIPs stay private.
 - Private artifact/data repo: `Maksim123321/e-cup-2026-matching-private`.
 
 ## Never merge these two meanings of “best”
 
-### Production / hidden-leaderboard anchor
+### Production / hidden anchor
 
-Best observed hidden score among submitted v1-v4 candidates is **v2**:
+Observed hidden Macro AP: v1 `0.23458522924335687`, v2 **`0.2583231811423486`**, v3 noncanonical `0.2583231811423486`, v3 canonical `0.24810151893254498`, v4 canonical `0.2531285194869718`.
 
-| Submission | Hidden Macro AP |
-|---|---:|
-| v1 | 0.23458522924335687 |
-| v2 | **0.2583231811423486** |
-| v3 non-canonical | 0.2583231811423486 |
-| v3 canonical | 0.24810151893254498 |
-| v4 canonical | 0.2531285194869718 |
-
-Therefore v2 is the immutable production/leaderboard fallback while v5 is being developed. Old v3/v4 local gains remain valid historical measurements but did not transfer monotonically to hidden evaluation.
+**v2 remains the immutable production/leaderboard fallback while v5 is developed.** Old v3/v4 local gains are historical and did not transfer monotonically to hidden evaluation.
 
 ### Current development best
 
-v5 is **in progress**. Current strongest honest development result is the supervised contrastive item-space stack:
+Current honest v5 development best is **explicit per-key attribute category specialists**:
 
-- development OOF Macro AP: **`0.5662217062664492`**;
+- OOF Macro AP: **`0.5683065131240066`**;
 - audit baseline: `0.5315527708634168`;
-- delta vs audit baseline: `+0.0346689354030324`;
-- category-specialist base: `0.5476780661335778`;
-- delta vs category base: **`+0.018543640132871353`**;
-- raw supervised semantic cosine Macro AP: `0.40597111640267125`;
-- held-fold AP: `0.5692965046798911`, `0.5683388560864314`, `0.5694312406050667`, `0.5632500994392833`, `0.5684466083884651`;
-- **all five held folds improve** versus the category base;
-- workflow `31483288887`, source `b30821f613bf7051da51c42b64c7f79361d5619c`;
-- private aggregate `experiments/v5/contrastive-sprint/b30821f613bf/aggregate`;
-- metrics artifact ID `9099713308`.
+- delta vs audit: `+0.036753742260589806`;
+- category base: `0.5476780661335778`;
+- delta vs category base: **`+0.02062844699042876`**;
+- held-fold AP: `0.5706378464826163`, `0.5682631251392076`, `0.5754313094571646`, `0.5633705139683869`, `0.5731185912680369`;
+- all five folds improve;
+- run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`;
+- metrics artifact ID `9100228112`, artifact digest `6417c94041c3443f03acf85227dceb94e65abea668d1b33bc6dc477f41f5a8fb`.
 
-This is development evidence only. No v5 submission has been retained and sealed gold remains unopened.
+This is development evidence only. No v5 submission is retained and sealed gold remains unopened.
 
-## v5 immutable validation protocol
+## Immutable v5 validation
 
-- authoritative human rows: `365,654`;
-- connected item components: `345,654`;
-- development rows: `285,210`;
-- sealed gold rows: **`80,444`**;
-- development folds: `5`;
-- cross-split item overlap: **`0`**;
-- split SHA-256: **`aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`**;
-- sealed gold metric opened: **false**;
-- sealed gold rows scored: **0**.
+- human rows `365,654`;
+- item components `345,654`;
+- development rows `285,210`;
+- sealed gold rows **`80,444`**;
+- five development folds;
+- cross-split item overlap **`0`**;
+- split SHA-256 **`aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`**;
+- gold metric opened **false**; gold rows scored **0**.
 
 Rules:
 
-1. Do not use sealed-gold labels for model choice, calibration, feature selection, hard-negative mining or blend weights.
-2. During development, do not encode/mine sealed-gold items as unlabeled adaptation data.
-3. Freeze candidate, preprocessing, config and artifact hashes before the one-shot gold evaluation.
-4. The requested `0.60` target means honest development OOF on this immutable split, not a repeatedly tuned holdout score.
+1. Never use sealed-gold labels for model choice/calibration/features/mining/blend weights.
+2. Do not use sealed-gold items for representation adaptation or hard/weak mining during development.
+3. Freeze candidate/config/preprocessing/artifact hashes before one-shot gold.
+4. `0.60` means honest OOF on this immutable development protocol, not a repeatedly tuned holdout.
 
-Validation audit: run `31479778679`, source `93e4396330997c41bfb309f449f1dcb79a5e4db6`, private `experiments/v5/validation/93e439633099`.
+Audit: run `31479778679`, source `93e4396330997c41bfb309f449f1dcb79a5e4db6`, private `experiments/v5/validation/93e439633099`.
 
 ## Retained v5 development ladder
 
-### 1. Category specialists — KEEP
+### Category specialists — KEEP
 
-- OOF `0.5476780661335778`;
-- delta vs audit baseline `+0.016125295270161044`;
+OOF **`0.5476780661335778`**, delta `+0.016125295270161044` vs audit, all folds improve. Private `experiments/v5/category/e885961388d1`. This remains the structured base used for incremental comparisons.
+
+### Leakage-safe weak category specialists — KEEP
+
+OOF **`0.5514237338676234`**, delta `+0.00374566773404561` vs category base, all folds improve. Run `31484641329`, source `319993a469cfa37770d66cfaf1b2203515dc9841`, private `experiments/v5/weak-specialists/319993a469cf/aggregate`. Weak input `11,187,780`; presample `250,000`; final weak `150,000` per fold; held and gold items excluded.
+
+### Cross-fitted category + weighted + pretrained combo — KEEP intermediate
+
+OOF **`0.559512531439709`**, delta `+0.011834465306131192` vs category base, all folds improve by about `+0.012`. Run `31485240666`, source `7a1c1764a2bdda8f007b9bfea7d088911623e7f0`, private `experiments/v5/combo/7a1c1764a2bd`. The meta layer is itself cross-fitted.
+
+### Strict train-only sparse TF-IDF specialists — KEEP
+
+OOF **`0.5651306838802859`**, delta `+0.017452617746708032` vs category base, all folds improve. Run `31485396599`, source `634ee66890c39ad97c0fa725135b1b00e56ac126`, artifact `9099873750`. Vocabulary/IDF fit only on outer-train items; held items only `transform()`.
+
+### Supervised contrastive item-space stack — KEEP
+
+OOF **`0.5662217062664492`**, delta `+0.018543640132871353` vs category base, raw semantic cosine `0.40597111640267125`, all folds improve. Run `31483288887`, source `b30821f613bf7051da51c42b64c7f79361d5619c`, private `experiments/v5/contrastive-sprint/b30821f613bf/aggregate`, artifact `9099713308`.
+
+Initial physical batch 96 caused MPS OOM; successful run preserved effective batch 96 via microbatch 24 + accumulation 4. This was infrastructure failure, not model rejection.
+
+### Explicit per-key attribute specialists — CURRENT DEV BEST / KEEP
+
+Explicit fold-trained key features let each category model see separate match/conflict/missing information for selected attributes rather than only aggregate agreement/conflict ratios.
+
+- OOF **`0.5683065131240066`**;
+- delta vs category base **`+0.02062844699042876`**;
+- folds: `0.5706378464826163`, `0.5682631251392076`, `0.5754313094571646`, `0.5633705139683869`, `0.5731185912680369`;
+- fold deltas: `+0.02018836532922219`, `+0.020426888153363132`, `+0.021253276885868533`, `+0.01798425865636577`, `+0.02304479442014251`;
 - all five folds improve;
-- private `experiments/v5/category/e885961388d1`.
+- run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, artifact `9100228112`.
 
-This is the retained structured base for later comparisons.
+This demonstrates that key identity (`size`, `memory`, `model`, etc.) contains useful information lost by aggregate attribute ratios.
 
-### 2. Leakage-safe weak category specialists — KEEP
+## Rejected / diagnostic / failed branches
 
-- OOF **`0.5514237338676234`**;
-- delta vs category base `+0.00374566773404561`;
-- all five folds improve;
-- run `31484641329`, source `319993a469cfa37770d66cfaf1b2203515dc9841`;
-- private `experiments/v5/weak-specialists/319993a469cf/aggregate`;
-- weak input `11,187,780`, presample `250,000`, final weak rows `150,000` per fold;
-- held-fold and sealed-gold items excluded from weak sampling.
+### Direct attribute likelihood shift — REJECT
 
-### 3. Cross-fitted category/weighted/pretrained combo — KEEP intermediate
-
-- OOF `0.559512531439709`;
-- delta vs category base `+0.011834465306131192`;
-- every fold improves by roughly `+0.012`;
-- run `31485240666`, source `7a1c1764a2bdda8f007b9bfea7d088911623e7f0`;
-- private `experiments/v5/combo/7a1c1764a2bd`.
-
-The second level is itself cross-fitted; no row is trained on its own target plus an in-sample base prediction.
-
-### 4. Strict train-only sparse TF-IDF category specialists — KEEP
-
-- OOF **`0.5651306838802859`**;
-- delta vs category base **`+0.017452617746708032`**;
-- held-fold AP: `0.5638679943688357`, `0.5644112795204157`, `0.5729250493264109`, `0.5646827428419179`, `0.5676889194024459`;
-- all five folds improve;
-- run `31485396599`, source `634ee66890c39ad97c0fa725135b1b00e56ac126`;
-- metrics artifact ID `9099873750`.
-
-Vocabulary/IDF are learned only on outer-train items; held items enter via `transform()` only. This is strong evidence that rare model/SKU tokens provide transferable signal.
-
-### 5. Supervised contrastive item-space stack — CURRENT DEV BEST / KEEP
-
-- OOF **`0.5662217062664492`**;
-- delta vs category base **`+0.018543640132871353`**;
-- raw semantic cosine AP `0.40597111640267125`;
-- all five folds improve;
-- run `31483288887`, source `b30821f613bf7051da51c42b64c7f79361d5619c`;
-- private `experiments/v5/contrastive-sprint/b30821f613bf/aggregate`;
-- metrics artifact ID `9099713308`.
-
-Initial physical batch `96` OOMed on MPS. The successful run preserved effective batch `96` via microbatch `24` and gradient accumulation `4`. The OOM was an infrastructure event, not a model rejection.
-
-## Rejected / diagnostic branches — do not repeat blindly
-
-### Direct attribute log-likelihood score addition — REJECT
-
-- OOF `0.523218903672764` vs audit base `0.5315527708634168`;
-- delta `-0.008333867190652766`;
-- all five folds regress.
-
-Do not rescue it with a scalar tuned on the same folds. Attribute specificity may enter as ordinary estimator features instead.
+OOF `0.523218903672764`, delta `-0.008333867190652766` vs audit, every fold regressed. Do not rescue with a scalar tuned on the same folds; key-specific evidence should enter as estimator features instead.
 
 ### Fold-weighted category specialists — diagnostic OOF input only
 
-- OOF `0.5498696731704964`;
-- delta vs category base `+0.0021916070369185636`;
-- folds 2 and 3 regress slightly.
-
-Do not promote standalone; it may be used only as already-OOF input to another independently cross-fitted layer.
+OOF `0.5498696731704964`, delta `+0.0021916070369185636`; folds 2/3 regress slightly. Do not promote standalone; may only survive as already-OOF input to another cross-fitted layer.
 
 ### Pretrained multilingual bi-encoder — insufficient standalone
 
-- stacked OOF `0.5318080650341337`;
-- delta vs audit base `+0.0002552941707169021`;
-- raw semantic cosine AP about `0.3120`.
-
-Ready-made embeddings alone are not enough; supervised task adaptation is what produced the material neural gain.
+OOF `0.5318080650341337`, only `+0.0002552941707169021`; raw cosine `~0.3120`. Ready-made item embeddings alone are insufficient; supervised item-space produced the real neural gain.
 
 ### First `ruBert-base` pair teacher — INTEGRATION FAIL, not model REJECT
 
-Workflow `31485127564`, source `00cc48dca806752d92496fa79f703a9ce3bcce63`, failed on all five folds before any comparable OOF prediction was produced. Exact failure:
+Run `31485127564`, source `00cc48dca806752d92496fa79f703a9ce3bcce63`, failed before comparable OOF. Exact error: `build_reranker_examples() missing 1 required positional argument: 'attribute_importance'`. The runner used a stale helper call. Fix and integration-test the composed path before rerunning; never invent a teacher score.
 
-`TypeError: build_reranker_examples() missing 1 required positional argument: 'attribute_importance'`
+## Active branch at this snapshot
 
-`train_v5_teacher_fold.py` still called `build_reranker_examples(items, curriculum)` after the helper API required `(items, pairs, attribute_importance)`. Fix the integration call and add an integration-level contract test before rerunning. Never record a teacher AP or mark the modeling hypothesis rejected from this run.
+- field-aware weak ranking teacher: run `31486298300`, source `411a5349fe731506757fdc1a3c8857a370225fb8` — **in progress**.
 
-## Active v5 branches at this snapshot
-
-Do not invent metrics until aggregate completion:
-
-- explicit per-key attribute specialists: run `31485990777` — in progress;
-- field-aware weak ranking teacher: run `31486298300` — in progress.
+No metric is claimed until the aggregate completes.
 
 ## Debugging / implementation lessons
 
-- >11M weak rows: keep deterministic PyArrow streaming/bounded sampling; never materialize the whole table in pandas before loading a Transformer.
-- MPS physical batch 96 can exhaust memory; preserve the intended effective batch with microbatching/gradient accumulation instead of changing the statistical experiment silently.
-- Train-only TF-IDF unit tests must verify unseen transform, symmetry and finite/bounded values, not force a hand-written OOV ranking outcome.
-- An apparent serializer regression was actually the next intentionally RED embedding test; inspect the exact failing test before assigning blame.
-- Weak sampling must exclude held-fold and sealed-gold items.
-- Helper APIs used by heavy workflows need integration tests, not only unit tests around isolated helper functions; the first ruBERT teacher failure is the canonical example.
+- >11M weak rows: deterministic PyArrow streaming/bounded sampling only; never full-table pandas before Transformer load.
+- Physical MPS batch 96 can OOM; distinguish resource failure from model evidence and preserve effective batch with accumulation when appropriate.
+- TF-IDF tests verify unseen transform/symmetry/finite-bounded behavior, not a hand-written OOV ranking.
+- Read exact failing test before blaming the latest code; an apparent serializer failure was the next intentionally RED embedding test.
+- Weak rows must exclude held-fold and sealed-gold items.
+- Heavy workflow helper composition needs integration tests; first ruBERT teacher is the canonical failure example.
+- Direct attribute likelihood addition is harmful; explicit attribute features are beneficial. Do not conflate the two approaches.
 
-## Historical artifacts
+## Memora operational state and audit findings
 
-v4 remains a reproducible historical package, not the production anchor:
-
-- v4 local OOF routing `0.5276431099433088`;
-- v4 full-fit coefficient score `0.5284493942551521`;
-- canonical ZIP SHA-256 `b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849`;
-- exact organizer-image offline smoke passed.
-
-v3 canonical historical package: local `0.5254642645846543`, SHA `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`.
+- Hardened Memora pin: `bc64ff745a9b2c0e6245e0137654f041fba0c155`; SQLite + TF-IDF local only; LLM/graph/auto-capture disabled.
+- Earlier v5 memory runs `31481012401` and `31482891498` failed before ingest because docs-triggering commits landed during intentionally RED TDD. In `31482891498`, collection failed on missing `v5_weighted_specialists`; later GREEN code did not retroactively checkpoint.
+- Do not weaken Memora test gates. Checkpoint only from GREEN state.
+- A memory audit found `scripts/memory_ingest.py` omitted machine-readable `experiments/CURRENT.json` and `v*/SAFE_METRICS.json`; a regression test now requires both as canonical sources.
 
 ## Current action
 
-1. Continue v5 only on split SHA `aae58f...eb55b`.
-2. Current honest dev target gap: `0.6000000000 - 0.5662217063 = 0.0337782937`.
-3. Do not move the split or open sealed gold to chase the target.
-4. Keep v2 as production fallback until a frozen v5 candidate passes one-shot sealed gold plus organizer runtime/package verification.
-5. Record KEEP/REJECT/FAIL evidence immediately, but checkpoint Memora only from a GREEN repository state.
+- production fallback: **v2**, hidden `0.2583231811423486`;
+- current honest dev best: **explicit attributes `0.5683065131240066`**;
+- target gap: `0.0316934868759934` to `0.60`;
+- sealed gold: `80,444`, unopened;
+- v5 submit: not retained.
 
-## Persistent Memora — operational rules
-
-- pinned upstream `bc64ff745a9b2c0e6245e0137654f041fba0c155`;
-- local SQLite + TF-IDF only;
-- LLM/external embeddings/graph/auto-capture disabled;
-- public source-backed files are canonical; private DB mirrors them for semantic retrieval;
-- private DB lives under `agent-memory/latest/` with immutable checkpoints under `agent-memory/checkpoints/`.
-
-Two v5 Memora runs (`31481012401`, `31482891498`) failed **before ingest** because memory-doc commits occurred while the repository was intentionally RED during TDD. In `31482891498`, test collection failed on missing `v5_weighted_specialists`; later GREEN code did not retroactively create a checkpoint.
-
-A second memory-audit issue was found on 2026-08-11: `scripts/memory_ingest.py` indexed PLAN/RESULTS and durable Markdown but omitted machine-readable `experiments/CURRENT.json` and `v*/SAFE_METRICS.json`. A regression test now requires both sources to be part of `canonical_sources()`.
-
-**Rule:** never weaken the full-test gate. A retained memory snapshot is valid only after full tests + `memory_policy.py`, Memora ingest, SQLite integrity/secret scan, private HF checkpoint upload and remote verification all pass.
+Continue only on the immutable split; do not open gold to guide the next experiment. A v5 submission can be promoted only after candidate/config/preprocessing freeze, one-shot sealed-gold evaluation and organizer runtime/package gates.
