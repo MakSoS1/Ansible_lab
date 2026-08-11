@@ -1,0 +1,23 @@
+{
+  "version": "v6-fast-gate95-selection",
+  "status": "selected_for_runtime_verification",
+  "strict_outer_oof_macro_average_precision": 0.6006003614522999,
+  "quality_gate_macro_average_precision": 0.6,
+  "quality_gate_passed": true,
+  "selected_architecture": "target-free 95% teacher disagreement gate + four structured signals + full contrastive + category-shrunk/HGB 50/50 rank fusion",
+  "teacher_gate_requested_fraction": 0.95,
+  "teacher_gate_actual_development_fraction": 0.9500262964131693,
+  "development_rows": 285210,
+  "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+  "sealed_gold_opened": false,
+  "sealed_gold_rows_scored": 0,
+  "fully_outer_cross_fitted_meta": true,
+  "post_result_weight_search": false,
+  "selection_run_id": 31531141700,
+  "selection_job_id": 93911179929,
+  "selection_source_commit": "fb15ec43a90c892c416acb2d10fe04cc126a4398",
+  "private_evidence_prefix": "experiments/v6/teacher-gate/95/fb15ec43a90c",
+  "leaderboard_public_macro_ap": null,
+  "leaderboard_private_macro_ap": null,
+  "runtime_verification": null
+}
