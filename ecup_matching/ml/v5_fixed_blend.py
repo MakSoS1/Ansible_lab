@@ -7,6 +7,8 @@ import pandas as pd
 
 
 _REQUIRED_SOURCES: tuple[str, ...] = ("category", "weak", "sparse", "explicit")
+_ORTHOGONAL_BASE: tuple[str, ...] = ("weak", "sparse", "explicit", "contrastive")
+_ORTHOGONAL_EXTRAS: tuple[str, ...] = ("teacher2_raw", "weighted", "pretrained_raw")
 
 
 def _finite_1d(values, *, name: str) -> np.ndarray:
@@ -18,11 +20,14 @@ def _finite_1d(values, *, name: str) -> np.ndarray:
     return array
 
 
-def _validated_sources(scores: Mapping[str, object]) -> tuple[dict[str, np.ndarray], int]:
-    missing = [name for name in _REQUIRED_SOURCES if name not in scores]
+def _validated_named_sources(
+    scores: Mapping[str, object],
+    required_names: tuple[str, ...],
+) -> tuple[dict[str, np.ndarray], int]:
+    missing = [name for name in required_names if name not in scores]
     if missing:
         raise ValueError(f"missing required score sources: {missing}")
-    arrays = {name: _finite_1d(scores[name], name=name) for name in _REQUIRED_SOURCES}
+    arrays = {name: _finite_1d(scores[name], name=name) for name in required_names}
     lengths = {len(values) for values in arrays.values()}
     if len(lengths) != 1:
         raise ValueError("all score sources must have equal length")
@@ -30,6 +35,10 @@ def _validated_sources(scores: Mapping[str, object]) -> tuple[dict[str, np.ndarr
     if row_count == 0:
         raise ValueError("score sources must not be empty")
     return arrays, row_count
+
+
+def _validated_sources(scores: Mapping[str, object]) -> tuple[dict[str, np.ndarray], int]:
+    return _validated_named_sources(scores, _REQUIRED_SOURCES)
 
 
 def percentile_rank(values) -> np.ndarray:
@@ -153,4 +162,33 @@ def rank_ablation_candidates(
             np.vstack([grouped_ranks["sparse"], grouped_ranks["explicit"], grouped_cosine]),
             axis=0,
         ),
+    }
+
+
+def orthogonal_rank_candidates(
+    current4_scores: Mapping[str, object],
+    extra_scores: Mapping[str, object],
+) -> dict[str, np.ndarray]:
+    """Build the five predeclared global rank fusions from the orthogonal-evidence spec."""
+    current4, row_count = _validated_named_sources(current4_scores, _ORTHOGONAL_BASE)
+    extras, extra_count = _validated_named_sources(extra_scores, _ORTHOGONAL_EXTRAS)
+    if extra_count != row_count:
+        raise ValueError("all score sources must have equal length")
+
+    ranked = {
+        **{name: percentile_rank(values) for name, values in current4.items()},
+        **{name: percentile_rank(values) for name, values in extras.items()},
+    }
+
+    def mean_rank(names: tuple[str, ...]) -> np.ndarray:
+        return np.mean(np.vstack([ranked[name] for name in names]), axis=0)
+
+    return {
+        "current4_plus_teacher": mean_rank(_ORTHOGONAL_BASE + ("teacher2_raw",)),
+        "current4_plus_weighted": mean_rank(_ORTHOGONAL_BASE + ("weighted",)),
+        "current4_plus_pretrained": mean_rank(_ORTHOGONAL_BASE + ("pretrained_raw",)),
+        "current4_plus_teacher_weighted": mean_rank(
+            _ORTHOGONAL_BASE + ("teacher2_raw", "weighted")
+        ),
+        "current4_plus_all_three": mean_rank(_ORTHOGONAL_BASE + _ORTHOGONAL_EXTRAS),
     }
