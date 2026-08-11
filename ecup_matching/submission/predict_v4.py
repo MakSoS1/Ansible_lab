@@ -18,6 +18,51 @@ from ecup_matching.submission.predict_v3 import (
 )
 
 
+def choose_neural_batch_size(
+    requested: int,
+    *,
+    cuda_available: bool,
+    cuda_memory_bytes: int | None,
+) -> int:
+    if requested <= 0:
+        raise ValueError("requested neural batch size must be positive")
+    if not cuda_available:
+        return min(requested, 16)
+    if cuda_memory_bytes is None or cuda_memory_bytes <= 0:
+        return min(requested, 32)
+    gib = float(cuda_memory_bytes) / float(1024**3)
+    if gib < 12.0:
+        cap = 32
+    elif gib < 32.0:
+        cap = 128
+    else:
+        cap = 512
+    return min(requested, cap)
+
+
+def _runtime_neural_batch_size(requested: int) -> int:
+    try:
+        import torch
+    except ImportError:
+        return choose_neural_batch_size(
+            requested,
+            cuda_available=False,
+            cuda_memory_bytes=None,
+        )
+    cuda_available = bool(torch.cuda.is_available())
+    memory: int | None = None
+    if cuda_available:
+        try:
+            memory = int(torch.cuda.get_device_properties(0).total_memory)
+        except Exception:
+            memory = None
+    return choose_neural_batch_size(
+        requested,
+        cuda_available=cuda_available,
+        cuda_memory_bytes=memory,
+    )
+
+
 def predict_to_csv_v4(
     items_path: Path,
     matches_path: Path,
@@ -93,6 +138,11 @@ def predict_to_csv_v4(
     neural = structured.copy()
     neural_seconds = 0.0
     if len(candidate_positions):
+        effective_batch_size = _runtime_neural_batch_size(neural_batch_size)
+        print(
+            f"[v4] neural_batch_size={effective_batch_size} requested={neural_batch_size}",
+            flush=True,
+        )
         neural_started = time.perf_counter()
         candidate_scores = _predict_neural_subset(
             matches=matches,
@@ -101,7 +151,7 @@ def predict_to_csv_v4(
             attribute_importance=importance,
             model_dir=neural_model_dir,
             manifest=neural_manifest,
-            batch_size=neural_batch_size,
+            batch_size=effective_batch_size,
         )
         neural[candidate_positions] = candidate_scores
         neural_seconds = time.perf_counter() - neural_started
