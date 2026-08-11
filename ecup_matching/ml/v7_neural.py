@@ -6,12 +6,17 @@ import os
 import resource
 import time
 from dataclasses import dataclass
-from typing import Mapping
+from pathlib import Path
+from typing import Iterable, Mapping
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 
 from .features import normalize_items
+from .textnorm import normalize_item
 from .train_v5_teacher_fold import _find_bert_layers
 from .v5_teacher2_objective import torch_category_ranking_loss
 from .v7_item_text import serialize_item_v7
@@ -124,6 +129,69 @@ def build_v7_text_cache(
         item_id: f"[CAT] {norm.category}\n{serialize_item_v7(norm, max_chars=max_chars, attribute_importance=attribute_importance)}"
         for item_id, norm in normalized.items()
     }
+
+
+def build_v7_text_cache_from_parquet(
+    parquet_path: Path,
+    item_ids: Iterable[object],
+    *,
+    max_chars: int,
+    batch_size: int = 131_072,
+    attribute_importance: Mapping[str, float] | None = None,
+) -> tuple[dict[object, str], dict[object, str]]:
+    """Stream selected full item records and serialize them without a giant DataFrame.
+
+    v7 weak pretraining depends on canonical typed attributes. The legacy
+    `include_attributes=False` fast path intentionally replaced attributes by `{}`;
+    that is correct for name-only consumers but silently defeats the v7 hypothesis.
+    This scanner keeps the real attributes while retaining only the final serialized
+    strings and category map in memory.
+    """
+    requested = set(item_ids)
+    if not requested:
+        return {}, {}
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    parquet = pq.ParquetFile(str(parquet_path))
+    columns = ("id", "name", "attributes", "category")
+    missing = set(columns) - set(parquet.schema_arrow.names)
+    if missing:
+        raise ValueError(f"items parquet missing columns: {sorted(missing)}")
+    id_type = parquet.schema_arrow.field("id").type
+    value_set = pa.array(list(requested), type=id_type)
+    texts: dict[object, str] = {}
+    categories: dict[object, str] = {}
+    for batch in parquet.iter_batches(batch_size=batch_size, columns=list(columns)):
+        id_column = batch.column(batch.schema.get_field_index("id"))
+        selected = batch.filter(pc.is_in(id_column, value_set=value_set))
+        if selected.num_rows:
+            payload = selected.to_pydict()
+            for item_id, name, attributes, category in zip(
+                payload["id"],
+                payload["name"],
+                payload["attributes"],
+                payload["category"],
+            ):
+                if item_id in texts:
+                    continue
+                norm = normalize_item(item_id, name, attributes, category)
+                texts[item_id] = (
+                    f"[CAT] {norm.category}\n"
+                    f"{serialize_item_v7(norm, max_chars=max_chars, attribute_importance=attribute_importance)}"
+                )
+                categories[item_id] = str(category)
+        del id_column, selected, batch
+        if len(texts) == len(requested):
+            break
+    missing_ids = requested - set(texts)
+    if missing_ids:
+        first = min(missing_ids, key=lambda value: (type(value).__name__, repr(value)))
+        raise KeyError(
+            f"items parquet is missing {len(missing_ids)} requested IDs; first={first!r}"
+        )
+    del value_set
+    pa.default_memory_pool().release_unused()
+    return texts, categories
 
 
 def configure_trainable_layers(model, *, last_n_layers: int) -> list:
