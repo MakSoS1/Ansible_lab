@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 
+from ecup_matching.ml.features import normalize_items
 from ecup_matching.ml.v5_explicit_attributes import (
     build_explicit_attribute_features,
+    build_explicit_leaf_cache,
     learn_explicit_attribute_keys,
 )
 
@@ -102,3 +104,43 @@ def test_explicit_attributes_treat_equivalent_storage_units_as_equal():
     assert features.loc[0, "attr_conflict::storage"] == 0.0
     assert features.loc[1, "attr_eq::storage"] == 0.0
     assert features.loc[1, "attr_conflict::storage"] == 1.0
+
+
+def test_explicit_leaf_cache_can_be_reused_without_changing_features_or_key_learning():
+    items = _items()
+    normalized = normalize_items(items)
+    leaf_cache = build_explicit_leaf_cache(normalized)
+    train = pd.DataFrame(
+        {
+            "id1": [0, 4, 0, 0, 4, 4],
+            "id2": [1, 5, 2, 3, 6, 7],
+            "target": [1, 1, 0, 0, 0, 0],
+            "category": ["electronics"] * 6,
+        }
+    )
+    spec_uncached = learn_explicit_attribute_keys(
+        items, train, max_keys_per_category=3, min_support=2, item_cache=normalized
+    )
+    spec_cached = learn_explicit_attribute_keys(
+        items,
+        train,
+        max_keys_per_category=3,
+        min_support=2,
+        item_cache=normalized,
+        leaf_cache=leaf_cache,
+    )
+    assert spec_cached == spec_uncached
+
+    pairs = train[["id1", "id2", "category"]].iloc[:3].reset_index(drop=True)
+    uncached = build_explicit_attribute_features(
+        items, pairs, spec_uncached, item_cache=normalized, category="electronics"
+    )
+    cached = build_explicit_attribute_features(
+        items,
+        pairs,
+        spec_cached,
+        item_cache=normalized,
+        category="electronics",
+        leaf_cache=leaf_cache,
+    )
+    pd.testing.assert_frame_equal(cached, uncached)
