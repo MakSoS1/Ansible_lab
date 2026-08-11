@@ -211,3 +211,30 @@ def leave_one_out_rank_candidates(five_signal_scores: Mapping[str, object]) -> d
         "loo_drop_contrastive": mean_without("contrastive"),
         "loo_drop_teacher": mean_without("teacher"),
     }
+
+
+def typed_explicit_rank_candidates(
+    current5_scores: Mapping[str, object],
+    typed_explicit_scores,
+) -> dict[str, np.ndarray]:
+    """Build exactly the add/replace typed-explicit candidates frozen before training completed."""
+    current5, row_count = _validated_named_sources(current5_scores, _FIVE_SIGNAL_NAMES)
+    typed = _finite_1d(typed_explicit_scores, name="typed_explicit")
+    if len(typed) != row_count:
+        raise ValueError("typed_explicit and current five score sources must have equal length")
+    ranked = {name: percentile_rank(values) for name, values in current5.items()}
+    typed_rank = percentile_rank(typed)
+
+    add = np.mean(
+        np.vstack([ranked[name] for name in _FIVE_SIGNAL_NAMES] + [typed_rank]),
+        axis=0,
+    )
+    replace_names = ("weak", "sparse", "contrastive", "teacher")
+    replace = np.mean(
+        np.vstack([ranked[name] for name in replace_names] + [typed_rank]),
+        axis=0,
+    )
+    return {
+        "current5_plus_typed_explicit": add,
+        "current5_replace_explicit_with_typed": replace,
+    }
