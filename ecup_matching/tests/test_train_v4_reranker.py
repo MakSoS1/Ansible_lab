@@ -7,10 +7,10 @@ import pytest
 from ecup_matching.ml.train_v4_reranker import (
     V3_MACRO_AP,
     build_v4_metrics_payload,
-    select_manifest_alphas,
     select_v4_candidate,
     shrink_category_alphas,
 )
+from ecup_matching.ml.v4_manifest import select_manifest_alphas
 
 
 def _per_category(value: float = 0.5) -> dict[str, float]:
