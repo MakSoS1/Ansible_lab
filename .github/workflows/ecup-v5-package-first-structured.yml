@@ -30,7 +30,7 @@ jobs:
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
       - run: python -m pip install -r ecup_matching/requirements-ci.txt
-      - name: Wait for first verified structured artifact and neural artifacts
+      - name: Download and resolve production component artifacts
         shell: bash
         run: |
           set -euo pipefail
@@ -49,25 +49,14 @@ jobs:
             echo "downloaded $name artifact_id=$artifact_id"
           }
 
-          structured_id=""
-          structured_name=""
-          structured_run=""
-          for attempt in $(seq 1 300); do
-            structured_id="$(artifact_id_for "$MAIN_RUN_ID" v5-prod-structured)"
-            if [[ -n "$structured_id" ]]; then
-              structured_name=v5-prod-structured
-              structured_run="$MAIN_RUN_ID"
-              break
-            fi
+          structured_id="$(artifact_id_for "$MAIN_RUN_ID" v5-prod-structured)"
+          structured_name=v5-prod-structured
+          structured_run="$MAIN_RUN_ID"
+          if [[ -z "$structured_id" ]]; then
             structured_id="$(artifact_id_for "$MAC_STRUCTURED_RUN_ID" v5-prod-structured-macos)"
-            if [[ -n "$structured_id" ]]; then
-              structured_name=v5-prod-structured-macos
-              structured_run="$MAC_STRUCTURED_RUN_ID"
-              break
-            fi
-            echo "structured artifact not ready (attempt $attempt)"
-            sleep 20
-          done
+            structured_name=v5-prod-structured-macos
+            structured_run="$MAC_STRUCTURED_RUN_ID"
+          fi
           test -n "$structured_id"
           echo "selected_structured_run=$structured_run selected_structured_artifact=$structured_name"
           download_artifact "$structured_id" "$structured_name" "$RUNNER_TEMP/artifacts/structured"
@@ -78,7 +67,20 @@ jobs:
           download_artifact "$contrastive_id" v5-prod-contrastive "$RUNNER_TEMP/artifacts/contrastive"
           download_artifact "$teacher_id" v5-prod-teacher-exact "$RUNNER_TEMP/artifacts/teacher"
 
-          test -f "$RUNNER_TEMP/artifacts/structured/model_v5_structured.joblib"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from ecup_matching.ci.v5_artifacts import resolve_structured_artifact
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'artifacts' / 'structured'
+          paths = resolve_structured_artifact(root)
+          with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as stream:
+              stream.write(f'STRUCTURED_MODEL_PATH={paths.model}\n')
+              stream.write(f'STRUCTURED_LEGACY_PATH={paths.legacy_runtime}\n')
+          print('structured_model', paths.model)
+          print('structured_legacy_runtime', paths.legacy_runtime)
+          PY
+
           test -f "$RUNNER_TEMP/artifacts/contrastive/config.json"
           test -f "$RUNNER_TEMP/artifacts/contrastive/model.safetensors"
           test -f "$RUNNER_TEMP/artifacts/teacher/config.json"
@@ -97,10 +99,10 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/final"
           python -m ecup_matching.build_submission_v5 \
-            --structured-model "$RUNNER_TEMP/artifacts/structured/model_v5_structured.joblib" \
+            --structured-model "$STRUCTURED_MODEL_PATH" \
             --contrastive-model-dir "$RUNNER_TEMP/artifacts/contrastive" \
             --teacher-model-dir "$RUNNER_TEMP/artifacts/teacher" \
-            --legacy-runtime-dir "$RUNNER_TEMP/artifacts/structured/legacy_ecup" \
+            --legacy-runtime-dir "$STRUCTURED_LEGACY_PATH" \
             --output "$RUNNER_TEMP/final/ecup-v5-six-signal-0.5975445721-submission.zip"
           sha256sum "$RUNNER_TEMP/final/ecup-v5-six-signal-0.5975445721-submission.zip" | tee "$RUNNER_TEMP/final/SHA256SUMS.txt"
           cp "$RUNNER_TEMP/artifacts/PROVENANCE.txt" "$RUNNER_TEMP/final/PROVENANCE.txt"
