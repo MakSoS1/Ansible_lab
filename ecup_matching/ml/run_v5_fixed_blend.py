@@ -11,7 +11,11 @@ import pandas as pd
 from .data_subset import select_items_by_ids
 from .run_v5_pretrained_biencoder import development_rows_and_folds
 from .v5_evaluation import macro_ap_report
-from .v5_fixed_blend import fixed_blend_candidates, rank_ablation_candidates
+from .v5_fixed_blend import (
+    fixed_blend_candidates,
+    orthogonal_rank_candidates,
+    rank_ablation_candidates,
+)
 from .v5_validation import manifest_sha256
 
 
@@ -93,6 +97,9 @@ def run_fixed_blend(
     sparse_fold_dir: Path,
     explicit_fold_dir: Path,
     contrastive_oof_path: Path,
+    teacher2_fold_dir: Path,
+    weighted_oof_path: Path,
+    pretrained_oof_path: Path,
     output_dir: Path,
     expected_split_sha: str,
 ) -> dict:
@@ -124,6 +131,19 @@ def run_fixed_blend(
     contrastive = align_oof_frame(
         [contrastive_oof_path], expected_rows=dev_rows, expected_folds=folds,
         required_columns=("embedding_cosine",), source_name="contrastive"
+    )
+    teacher2 = align_oof_frame(
+        sorted(Path(teacher2_fold_dir).rglob("v5g-teacher2-fold-*-oof.parquet")),
+        expected_rows=dev_rows, expected_folds=folds,
+        required_columns=("teacher2_score",), source_name="teacher2_raw"
+    )
+    weighted = align_oof_frame(
+        [weighted_oof_path], expected_rows=dev_rows, expected_folds=folds,
+        required_columns=("score",), source_name="weighted"
+    )
+    pretrained = align_oof_frame(
+        [pretrained_oof_path], expected_rows=dev_rows, expected_folds=folds,
+        required_columns=("embedding_cosine",), source_name="pretrained_raw"
     )
 
     dev = matches.iloc[dev_rows].reset_index(drop=True)
@@ -202,12 +222,52 @@ def run_fixed_blend(
             "per_category_ap": report["per_category_ap"],
         }
 
-    combined_scores = {**first_candidates, **ablation_candidates}
-    combined_reports = {**candidate_reports, **ablation_reports}
+    current_clean_name = "global_rank_mean_4_no_category"
+    current_clean_scores = ablation_candidates[current_clean_name]
+    current_clean_ap = ablation_reports[current_clean_name]["macro_average_precision"]
+    current4_sources = {
+        "weak": source_scores["weak"],
+        "sparse": source_scores["sparse"],
+        "explicit": source_scores["explicit"],
+        "contrastive": cosine,
+    }
+    orthogonal_sources = {
+        "teacher2_raw": teacher2["teacher2_score"].to_numpy(dtype=np.float64),
+        "weighted": weighted["score"].to_numpy(dtype=np.float64),
+        "pretrained_raw": pretrained["embedding_cosine"].to_numpy(dtype=np.float64),
+    }
+    orthogonal_candidates = orthogonal_rank_candidates(current4_sources, orthogonal_sources)
+    orthogonal_source_metrics = {
+        name: float(macro_ap_report(dev, score, strict_official=True)["macro_average_precision"])
+        for name, score in orthogonal_sources.items()
+    }
+    orthogonal_reports: dict[str, dict] = {}
+    orthogonal_eligible: list[str] = []
+    for name, score in orthogonal_candidates.items():
+        report = macro_ap_report(dev, score, strict_official=True)
+        folds_report = _fold_reports(
+            dev, folds, current_clean_scores, score, anchor_name="current_clean"
+        )
+        min_fold_delta = min(row["delta_vs_current_clean"] for row in folds_report)
+        candidate_ap = float(report["macro_average_precision"])
+        keep_eligible = bool(candidate_ap > current_clean_ap and min_fold_delta >= -0.001)
+        if keep_eligible:
+            orthogonal_eligible.append(name)
+        orthogonal_reports[name] = {
+            "macro_average_precision": candidate_ap,
+            "delta_vs_current_clean": float(candidate_ap - current_clean_ap),
+            "min_fold_delta_vs_current_clean": float(min_fold_delta),
+            "keep_eligible": keep_eligible,
+            "fold_reports": folds_report,
+            "per_category_ap": report["per_category_ap"],
+        }
+
+    combined_scores = {**first_candidates, **ablation_candidates, **orthogonal_candidates}
+    combined_reports = {**candidate_reports, **ablation_reports, **orthogonal_reports}
     best_name = max(combined_reports, key=lambda name: combined_reports[name]["macro_average_precision"])
     best_ap = float(combined_reports[best_name]["macro_average_precision"])
     payload = {
-        "version": "v5-fixed-label-free-blend-v2",
+        "version": "v5-fixed-label-free-blend-v3",
         "split_sha256": expected_split_sha,
         "development_rows": int(len(dev)),
         "gold_metric_opened": False,
@@ -215,17 +275,23 @@ def run_fixed_blend(
         "target_fitted_blender": False,
         "initial_predeclared_candidate_count": int(len(candidate_reports)),
         "ablation_predeclared_candidate_count": int(len(ablation_reports)),
+        "orthogonal_predeclared_candidate_count": int(len(orthogonal_reports)),
         "explicit_anchor_macro_average_precision": float(explicit_ap),
         "previous_best_name": previous_best_name,
         "previous_best_macro_average_precision": float(previous_best_ap),
+        "current_clean_name": current_clean_name,
+        "current_clean_macro_average_precision": float(current_clean_ap),
         "source_metrics": source_metrics,
+        "orthogonal_source_metrics": orthogonal_source_metrics,
         "candidates": candidate_reports,
         "rank_ablation_candidates": ablation_reports,
+        "orthogonal_rank_candidates": orthogonal_reports,
         "best_observed_name": best_name,
         "best_observed_macro_average_precision": best_ap,
-        "best_observed_delta_vs_previous_best": float(best_ap - previous_best_ap),
+        "best_observed_delta_vs_current_clean": float(best_ap - current_clean_ap),
         "keep_eligible_candidates": eligible,
         "rank_ablation_keep_eligible_candidates": ablation_eligible,
+        "orthogonal_keep_eligible_candidates": orthogonal_eligible,
     }
     (output_dir / "v5-fixed-blend-metrics.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
@@ -237,6 +303,7 @@ def run_fixed_blend(
             "fold": folds,
             **{f"source_{name}": values for name, values in source_scores.items()},
             "source_contrastive_cosine": cosine,
+            **{f"source_{name}": values for name, values in orthogonal_sources.items()},
             **{f"candidate_{name}": values for name, values in combined_scores.items()},
         }
     )
@@ -254,6 +321,9 @@ def main() -> int:
     parser.add_argument("--sparse-fold-dir", type=Path, required=True)
     parser.add_argument("--explicit-fold-dir", type=Path, required=True)
     parser.add_argument("--contrastive-oof", type=Path, required=True)
+    parser.add_argument("--teacher2-fold-dir", type=Path, required=True)
+    parser.add_argument("--weighted-oof", type=Path, required=True)
+    parser.add_argument("--pretrained-oof", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--expected-split-sha", required=True)
     args = parser.parse_args()
@@ -266,6 +336,9 @@ def main() -> int:
         sparse_fold_dir=args.sparse_fold_dir,
         explicit_fold_dir=args.explicit_fold_dir,
         contrastive_oof_path=args.contrastive_oof,
+        teacher2_fold_dir=args.teacher2_fold_dir,
+        weighted_oof_path=args.weighted_oof,
+        pretrained_oof_path=args.pretrained_oof,
         output_dir=args.output_dir,
         expected_split_sha=args.expected_split_sha,
     )
