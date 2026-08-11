@@ -1,65 +1,51 @@
 # E-CUP Matching — Canonical Project State
 
 Updated: 2026-08-11
+Current iteration: **v6**
 
 ## Objective
 
-Maximize E-CUP 2026 product-matching Macro AP while keeping validation honest for unseen products, submission runtime reproducible/offline-compatible, and competition artifacts private.
+Maximize E-CUP 2026 product-matching Macro AP while preserving honest unseen-product validation and producing an offline organizer-compatible submission that also fits the competition runtime constraint.
+
+The v6 decision rule is Pareto-ordered:
+
+1. strict component-disjoint OOF Macro AP must be `>= 0.6000`;
+2. among candidates that pass quality, minimize measured end-to-end inference runtime;
+3. keep sealed gold unopened.
 
 ## Current state — read this first
 
-- **Current honest development best:** `0.6018115534135564` strict OOF Macro AP.
-- **Current verified production submission:** `v5-category-shrunk-hgb-equal-rank-fusion`.
-- Competition ZIP: `ecup-v5-category-hgb-fusion-0.6018115534-submission.zip`.
-- Competition ZIP SHA-256: `442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5`.
-- Private HF: `Maksim123321/e-cup-2026-matching-private`, prefix `submissions/v5/0.6018115534`.
-- Final production workflow: run `31526323018`, job `93895429369`.
-- Actions artifact: ID `9116032675`, digest `fc6a72f63146df414c5ff4de4aef62a4568e516a12d465830492941348824a46`.
-- Exact organizer-image offline smoke: **passed**.
-- HGB joblib load inside organizer image before packaging: **passed**.
-- Full repository tests after smoke: **230 passed, 1 warning**.
+- **Best strict local quality reference:** v5, `0.6018115534135564` OOF Macro AP.
+- **Current runtime-constrained iteration:** v6.
+- **Selected v6 candidate:** `v6-fast-gate95-category-shrunk-hgb`.
+- **Selected v6 strict OOF:** `0.6006003614522999`.
+- Requested teacher coverage: `0.95`; actual development fraction: `0.9500262964131693`.
+- v6 uses the real pair teacher only for the target-free highest-disagreement 95% of pairs per category and a five-signal rank surrogate elsewhere.
+- Exact organizer-image offline/read-only 64-row smoke for the current code path: **passed** in run `31535674086`.
+- That run reached `264 passed, 1 failed`; the only failure was stale documentation-memory policy, not inference/model behavior.
+- The candidate ZIP from that pre-policy run was `1,143,630,143` bytes with SHA-256 `20c5f128e43c5303893301f012726381df06a4e20d027ea054acf36e0f6aae40`, but it is **not retained as final** because the full repository gate was not GREEN.
+- Exact rebuilt v6 ZIP + RTX 2060 full-run benchmark: **pending**.
 - Sealed gold: **unopened**, `0` rows scored.
-- Public/private leaderboard score: **unknown until the exact verified ZIP is submitted to the platform**.
+- Public/private leaderboard score: **unknown**.
 
-Do not regress this state to the old `0.5683065` explicit-only best, the `0.5975446` six-signal fallback, or the historical v2 hidden anchor when answering “current best”. They remain history/fallbacks only.
+Do not report the v5 or v6 local OOF number as a Public/Private leaderboard result.
 
-## Official metric and validation comparability
+## Immutable validation protocol
 
-- Competition metric is `sklearn.metrics.average_precision_score` separately for each of the 20 official categories, then the unweighted mean.
-- Local strict metric uses the same formula and requires exactly the official 20 categories and both classes.
-- Human labels: `365,654` rows.
-- Connected item components: `345,654`.
-- Development rows: `285,210`.
-- Sealed-gold rows: `80,444`.
-- Five immutable development folds.
-- Cross-split item overlap: `0`.
-- Split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
+- human labels: `365,654` rows;
+- connected item components: `345,654`;
+- development rows: `285,210`;
+- sealed-gold rows: `80,444`;
+- five immutable development folds;
+- cross-split item/component overlap: `0`;
+- split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`;
+- strict metric: `average_precision_score` per official category, unweighted mean over exactly 20 categories.
 
-The component-disjoint split is deliberately stricter than random pair splitting: one item/component cannot occur in both meta-train and held fold. Local absolute AP may differ from Public/Private due to distribution shift, but deltas under this protocol are meaningful and the metric definition is organizer-compatible.
+Every target-fitted meta layer must be genuinely outer-cross-fitted. Full-development production refits are not validation. Sealed-gold labels are not available for architecture choice, runtime tuning, mining or calibration.
 
-## Retained v5 ladder
+## v5 quality reference
 
-| Stage | Strict OOF Macro AP | Decision |
-|---|---:|---|
-| audit baseline | `0.5315527708634168` | baseline |
-| category specialists | `0.5476780661335778` | keep |
-| weak specialists | `0.5514237338676234` | keep |
-| sparse specialists | `0.5651306838802859` | keep signal |
-| supervised contrastive | `0.5662217062664492` | keep signal |
-| explicit attributes | `0.5683065131240066` | keep signal |
-| four-signal equal-rank | `0.5870570848443828` | keep intermediate |
-| + pair teacher | `0.5952697490140912` | keep signal |
-| + typed explicit, six-signal equal-rank | `0.5975445721449741` | verified fallback |
-| outer-cross-fitted global simplex | `0.5992720660193247` | keep intermediate |
-| nested category logistic | `0.5988060044248327` | reject standalone, retain diversity |
-| global-meta + logistic frozen 50/50 rank | `0.5995921709945611` | keep intermediate |
-| fixed category-shrunk simplex | `0.60095424180184` | verified fallback, first honest `>0.60` |
-| fixed HGB meta stack | `0.6006290884983169` | complementary source |
-| **category-shrunk + HGB frozen 50/50 rank** | **`0.6018115534135564`** | **current dev + production best** |
-
-## Current best architecture
-
-The six underlying production signals are unchanged from the verified `0.5975446` package:
+v5 final quality-first architecture uses six signals:
 
 1. weak category specialist;
 2. sparse TF-IDF specialist;
@@ -68,108 +54,102 @@ The six underlying production signals are unchanged from the verified `0.5975446
 5. pair-teacher score;
 6. typed/canonicalized explicit specialist.
 
-All six are converted target-free to percentile ranks.
+It combines a fixed category-shrunk simplex and fixed HGB meta stack with a frozen 50/50 percentile-rank fusion.
 
-Two complementary meta components are fit on development OOF evidence:
+Strict OOF: `0.6018115534135564`.
 
-### A. Fixed category-shrunk simplex
+Verified v5 package:
 
-- global nonnegative simplex optimized for Macro AP on outer-train;
-- local simplex per official category on outer-train;
-- fixed shrinkage prior `8000`, frozen before result:
-  `(support * local + 8000 * global) / (support + 8000)`;
-- strict OOF `0.60095424180184`.
+- ZIP: `ecup-v5-category-hgb-fusion-0.6018115534-submission.zip`;
+- SHA-256: `442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5`;
+- private HF: `submissions/v5/0.6018115534`;
+- Actions artifact `9116032675`;
+- exact organizer smoke passed.
 
-### B. Fixed nonlinear HGB meta stack
+v5 remains the quality reference/fallback, but v6 is the active iteration because runtime is now a hard production dimension.
 
-- six percentile ranks + official category categorical feature;
-- `HistGradientBoostingClassifier` with parameters frozen before result;
-- no HPO on the observed OOF result;
-- strict OOF `0.6006290884983169`.
+## v6 quality/runtime exploration
 
-### Final retained fusion
+| Candidate | Strict OOF Macro AP | Decision |
+|---|---:|---|
+| structured only | `0.5808404005946962` | reject |
+| no teacher | `0.5931387077244183` | reject |
+| no contrastive | `0.5928725263319000` | reject |
+| teacher gate 25% | `0.5929214688140778` | reject |
+| teacher gate 55% | `0.5966896566149946` | reject |
+| teacher gate 85% | `0.5999300791828578` | reject narrowly |
+| distilled teacher | `0.5931935841654697` | reject |
+| student + real teacher 85% | `0.5998746122650258` | reject narrowly |
+| **teacher gate 95%** | **`0.6006003614522999`** | **current v6 candidate** |
 
-Frozen before its result was inspected:
+The 95% gate is intentionally the lowest retained quality point found so far. Lower teacher coverage did not clear the hard `0.6000` quality gate under honest outer OOF.
 
-`0.5 * percentile_rank(category_shrunk_score) + 0.5 * percentile_rank(hgb_score)`
+## Current v6 architecture
 
-Strict OOF: **`0.6018115534135564`**.
+The five non-teacher signals remain weak, sparse, explicit, supervised contrastive and typed explicit. They are converted to target-free percentile ranks and their disagreement is measured per pair. Inside each official category, the real teacher is evaluated for the highest-disagreement 95% of pairs.
 
-It improved category-shrunk alone on **all five outer folds**:
+For the other 5%, the teacher signal is replaced by the unweighted mean of the five non-teacher percentile ranks. Selected teacher outputs are percentile-ranked only among selected teacher rows. The final category-shrunk + HGB meta stack is trained/evaluated with the same gated signal under outer cross-fitting.
 
-- fold 0: `0.600317954001536`;
-- fold 1: `0.6073630562662657`;
-- fold 2: `0.6122052716465903`;
-- fold 3: `0.5973819202189384`;
-- fold 4: `0.6105222735923926`.
+Selection evidence:
 
-Evidence run `31525549063`; metrics artifact `9114783508`; private HF `experiments/v5/category-hgb-fusion/79de99434912`.
+- run `31531141700`, job `93911179929`;
+- source `fb15ec43a90c892c416acb2d10fe04cc126a4398`;
+- private HF `experiments/v6/teacher-gate/95/fb15ec43a90c`.
 
-## Why this OOF is honest
+## v6 runtime implementation
 
-- Every target-fitted meta component predicts an outer fold using parameters fit without labels from that fold.
-- Leakage tests explicitly mutate a held fold's labels and require its predictions/weights to remain unchanged.
-- The category-logistic branch selected regularization by inner OOF only inside outer-train.
-- Category-shrinkage prior `8000`, HGB hyperparameters, and final 50/50 fusion were frozen before inspecting their respective real OOF result.
-- Full-development production refits are explicitly marked **not validation**.
-- Sealed gold remains unopened; no gold item/label was used for feature learning, mining, meta fitting, or model choice.
+The quality margin above `0.6000` is small, so current production inference deliberately retains FP32 neural semantics. Speedups are semantic-preserving implementation changes:
 
-## Verified production package
+- stable length bucketing for contrastive item texts;
+- stable length bucketing for selected teacher pairs;
+- 8 GiB RTX defaults: contrastive batch `256`, teacher batch `96`;
+- larger batches on larger VRAM;
+- CUDA OOM batch-halving fallback;
+- non-blocking CUDA transfers;
+- SDPA requested where supported, eager fallback otherwise;
+- structured feature chunking at `50,000`;
+- offline/local-files-only inference;
+- phase telemetry for load, structured, contrastive, gate, teacher, meta and write.
 
-The final package reuses the byte-verified six-signal production models and changes only the retained final meta fusion/artifacts.
+The authoritative runtime benchmark must execute the **exact final ZIP bytes** on self-hosted `ecup-rtx2060` inside `odsai/ecup26-matching-baseline:1.0` with `--gpus all`, including a full reference `matches.parquet` run. CPU smoke timing is compatibility evidence, not the production runtime claim.
 
-Final run `31526323018` verified:
+## Current production-gate evidence
 
-1. exact CI/organizer sklearn version compatibility (`1.9.0`);
-2. immutable fusion evidence `0.6018115534135564`;
-3. deterministic full-development category/HGB production refits;
-4. HGB joblib deserialization inside `odsai/ecup26-matching-baseline:1.0`;
-5. base fallback inner ZIP SHA before patching;
-6. final ZIP integrity and `<5GB` size;
-7. full `run.py` execution in organizer image with `--network none`, read-only filesystem, 64-pair smoke;
-8. output columns exactly `id1,id2,predict`, all finite, all 64 predictions nonconstant;
-9. full tests: `230 passed, 1 warning`;
-10. exact final ZIP upload to private HF;
-11. exact same final package retained as GitHub Actions artifact.
+Run `31535674086`, source `4da50f66942472b8e8b70270cbeb00639930b6b5`:
 
-Final ZIP size: `1,144,877,898` bytes.
+- selected v6 contract tests: passed;
+- production category/HGB refit: passed;
+- verified v5 six-signal base SHA: passed;
+- current runtime package creation: passed;
+- exact organizer-image offline/read-only smoke: passed;
+- 64-row CPU smoke phases: load `6.696s`, structured `0.913s`, contrastive `7.864s`, gate `0.002s`, teacher `8.654s`, meta `0.008s`, write `0.003s`, total `24.14s`;
+- output schema/order/finite/nonconstant checks: passed;
+- full suite: `264 passed, 1 failed, 91 warnings`;
+- sole failure: documentation memory-policy state (`CURRENT.status` and experiment index formatting).
 
-## Verified fallbacks
+Because the repository gate was not GREEN, that archive was not uploaded as final and the temporary GPU-benchmark release was not created. The documentation state is now being corrected before rebuilding.
 
-### Category-shrunk only — `0.6009542418`
+## Binding failure lessons
 
-- ZIP: `ecup-v5-category-shrunk-0.6009542418-submission.zip`;
-- SHA-256: `3a5341c42346727793ab8877ee6bc8f07e3ac4f18f97c32a9d39d76b5e0609c1`;
-- HF: `submissions/v5/0.6009542418`;
-- Actions artifact `9114889240`;
-- organizer smoke passed; `225 passed, 1 warning`.
+- Infrastructure, OOM, packaging or API failures are not model scores.
+- Do not weaken full tests to publish an artifact.
+- Production refit scores are not validation.
+- Do not use sealed gold to recover a runtime-induced quality loss.
+- Direct attribute score shifts failed while explicit per-key estimator features were useful; do not conflate them.
+- Pretrained-only embeddings were weak; supervised contrastive was the useful neural signal.
+- Any mixed-precision/quantized path that can alter ordering requires its own honest quality verification before replacing the FP32 candidate.
 
-### Six-signal — `0.5975445721`
+## Current files to read
 
-- ZIP: `ecup-v5-six-signal-0.5975445721-submission.zip`;
-- SHA-256: `ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e`;
-- HF: `submissions/v5/0.5975445721`;
-- Actions artifact `9112337546`;
-- organizer smoke passed.
-
-## Rejected/diagnostic branches worth remembering
-
-- Direct attribute likelihood score shift: `0.523218903672764`, reject. Explicit estimator features are useful; unconditional score shifts are not.
-- Pretrained bi-encoder alone: `0.5318080650341337`, insufficient. Supervised contrastive item-space is materially better.
-- First ruBERT teacher run failed integration before metrics due stale helper call; it was not evidence against the model family.
-- Nested category logistic `0.5988060044248327` is not standalone best but its diversity previously helped a frozen fusion.
-- Do not interpret infrastructure failures/OOM/API mismatches as model-quality evidence.
-
-## Memora policy
-
-- Memora pin: `bc64ff745a9b2c0e6245e0137654f041fba0c155`.
-- Local SQLite/TF-IDF only; LLM/graph/auto-capture disabled.
-- Canonical sources include `PROJECT_STATE.md`, `EXPERIMENT_INDEX.md`, `DECISIONS.md`, `CURRENT.json`, plans/specs/results and `SAFE_METRICS.json`.
-- Checkpoint only from GREEN repository state.
-- Machine-readable `CURRENT.json` and `SAFE_METRICS.json` are mandatory memory sources so semantic retrieval cannot silently regress to an old narrative state.
+1. `ecup_matching/experiments/CURRENT.json`
+2. `ecup_matching/experiments/v6/PLAN.md`
+3. `ecup_matching/experiments/v6/RESULTS.md`
+4. `ecup_matching/experiments/v6/SAFE_METRICS.json`
+5. `docs/agent-memory/EXPERIMENT_INDEX.md`
+6. `docs/agent-memory/DECISIONS.md`
+7. `docs/agent-memory/SECURITY.md`
+8. `docs/agent-memory/ITERATION_PROTOCOL.md`
 
 ## Next action
 
-**Submit exactly** `ecup-v5-category-hgb-fusion-0.6018115534-submission.zip` from private HF `submissions/v5/0.6018115534` to the E-CUP platform.
-
-After platform evaluation, record Public/Private score separately. Do not overwrite strict local OOF with leaderboard AP and do not claim local `0.6018115534` is the Public/Private score.
+Make the repository policy GREEN, rebuild the exact v6 gate95 ZIP, publish immutable SHA/provenance, run the exact same bytes on `ecup-rtx2060` in the organizer image including a full reference run, and retain the archive only if the measured runtime fits the execution budget. If not, continue architecture/runtime optimization while preserving strict OOF `>= 0.6000` and unopened sealed gold.
