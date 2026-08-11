@@ -1,0 +1,94 @@
+name: E-CUP v5 recover production teacher
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v5-recover-teacher.yml
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+  LEGACY_COMMIT: cb350b4e7ba6
+  TEACHER_MODEL_ID: ai-forever/ruBert-base
+  TEACHER_MODEL_REVISION: 43be4261797042e172adf7476c558734f3cbb2a0
+
+jobs:
+  teacher:
+    runs-on: macos-15
+    timeout-minutes: 240
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTORCH_ENABLE_MPS_FALLBACK: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install neural dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'numpy<3' 'pandas<3' 'pyarrow<24' 'scikit-learn<2' 'huggingface_hub>=1.0,<2' 'torch>=2.3' 'transformers>=4.45,<6'
+      - name: Verify MPS and build exact legacy runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import torch
+          print('mps_available',torch.backends.mps.is_available())
+          assert torch.backends.mps.is_available()
+          PY
+          root="$RUNNER_TEMP/legacy/legacy_ecup"; mkdir -p "$root/ml"; : > "$root/__init__.py"; : > "$root/ml/__init__.py"
+          for file in textnorm.py features.py category_attrs.py features_v2.py v5_item_text.py v5_sparse.py; do git show "$LEGACY_COMMIT:ecup_matching/ml/$file" > "$root/ml/$file"; done
+      - name: Download data, sealed split and complete pinned base model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/model" "$RUNNER_TEMP/out"
+          for file in matches.parquet items_human.parquet matches_llm.parquet items.parquet; do
+            curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/$file" "$BASE_URL/$file"
+            test -s "$RUNNER_TEMP/data/$file"
+          done
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download, snapshot_download
+          root=os.environ['RUNNER_TEMP']; repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; prefix=os.environ['VALIDATION_PREFIX']
+          for name in ('split-manifest.json','development-oof.parquet'):
+              hf_hub_download(repo_id=repo,repo_type='dataset',filename=f'{prefix}/{name}',token=token,local_dir=os.path.join(root,'private'))
+          snapshot_download(
+              repo_id=os.environ['TEACHER_MODEL_ID'], revision=os.environ['TEACHER_MODEL_REVISION'],
+              local_dir=os.path.join(root,'model'),
+              allow_patterns=['*.json','*.safetensors','*.bin','*.model','*.txt'],
+          )
+          assert any(os.path.isfile(os.path.join(root,'model',name)) for name in ('model.safetensors','pytorch_model.bin'))
+          PY
+      - name: Train production field-aware teacher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.ml.train_v5_production_teacher \
+            --human-items "$RUNNER_TEMP/data/items_human.parquet" \
+            --full-items "$RUNNER_TEMP/data/items.parquet" \
+            --matches "$RUNNER_TEMP/data/matches.parquet" \
+            --weak-matches "$RUNNER_TEMP/data/matches_llm.parquet" \
+            --manifest "$RUNNER_TEMP/private/$VALIDATION_PREFIX/split-manifest.json" \
+            --base-oof "$RUNNER_TEMP/private/$VALIDATION_PREFIX/development-oof.parquet" \
+            --legacy-package-dir "$RUNNER_TEMP/legacy/legacy_ecup" \
+            --model-dir "$RUNNER_TEMP/model" \
+            --output-dir "$RUNNER_TEMP/out" \
+            --expected-split-sha "$SPLIT_SHA" \
+            --device mps --max-steps 800
+          du -sh "$RUNNER_TEMP/out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-prod-teacher-recovered
+          path: ${{ runner.temp }}/out
+          retention-days: 3
