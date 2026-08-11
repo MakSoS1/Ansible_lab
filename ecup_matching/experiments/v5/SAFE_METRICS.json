@@ -1,464 +1,149 @@
 {
-  "experiments": {
-    "attribute_evidence": {
-      "metrics": {
-        "attribute_oof_macro_ap": 0.523218903672764,
-        "base_oof_macro_ap": 0.5315527708634168,
-        "delta_vs_base": -0.008333867190652766,
-        "development_items": 550425,
-        "development_rows": 285210,
-        "elapsed_seconds": 145.64968654599988,
-        "evidence_clip": 8.0,
-        "fold_reports": [
-          {
-            "base_macro_average_precision": 0.535137201283413,
-            "delta_vs_base": -0.004407802913674264,
-            "fold": 0,
-            "learned_categories": 20,
-            "learned_keys": 667,
-            "macro_average_precision": 0.5307293983697388,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "base_macro_average_precision": 0.5293875046954674,
-            "delta_vs_base": -0.006267433707208281,
-            "fold": 1,
-            "learned_categories": 20,
-            "learned_keys": 662,
-            "macro_average_precision": 0.5231200709882591,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "base_macro_average_precision": 0.5375146978687112,
-            "delta_vs_base": -0.010836069631330214,
-            "fold": 2,
-            "learned_categories": 20,
-            "learned_keys": 669,
-            "macro_average_precision": 0.526678628237381,
-            "train_rows": 228167,
-            "valid_rows": 57043
-          },
-          {
-            "base_macro_average_precision": 0.531512424671052,
-            "delta_vs_base": -0.00942910890384685,
-            "fold": 3,
-            "learned_categories": 20,
-            "learned_keys": 665,
-            "macro_average_precision": 0.5220833157672051,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "base_macro_average_precision": 0.5337619678140229,
-            "delta_vs_base": -0.009296400437025731,
-            "fold": 4,
-            "learned_categories": 20,
-            "learned_keys": 671,
-            "macro_average_precision": 0.5244655673769971,
-            "train_rows": 228169,
-            "valid_rows": 57041
-          }
-        ],
-        "gold_items_used": 0,
-        "gold_metric_opened": false,
-        "gold_rows_scored": 0,
-        "min_support": 20,
-        "per_category_ap": {
-          "Автотовары": 0.48512502733191504,
-          "Аптека": 0.46539612146256365,
-          "Бытовая техника": 0.6836886434067327,
-          "Бытовая химия": 0.6896422064791268,
-          "Галантерея и аксессуары": 0.3644690253009382,
-          "Детские товары": 0.767310663896208,
-          "Дом и сад": 0.544705683416568,
-          "Канцелярские товары": 0.5624931863547703,
-          "Красота и гигиена": 0.5777425195691602,
-          "Мебель": 0.3945288421049803,
-          "Музыкальные инструменты": 0.6769320457834612,
-          "Обувь": 0.2837818535191756,
-          "Одежда": 0.2631773065327394,
-          "Продукты питания": 0.5593077874708121,
-          "Спорт и отдых": 0.470192276438199,
-          "Строительство и ремонт": 0.5278125304047586,
-          "Товары для животных": 0.6204827510906981,
-          "Хобби и творчество": 0.791827687971618,
-          "Электроника": 0.3937907790570151,
-          "Ювелирные изделия": 0.34197113586383987
-        },
-        "smoothing": 2.0,
-        "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
-        "version": "v5b-attribute-evidence"
-      },
-      "private_path": "experiments/v5/attribute/f19e58475dd8/v5b-attribute-metrics.json",
-      "status": "available"
-    },
+  "version": "v5",
+  "snapshot_date": "2026-08-11",
+  "validation": {
+    "human_rows": 365654,
+    "development_rows": 285210,
+    "sealed_gold_rows": 80444,
+    "development_folds": 5,
+    "connected_components": 345654,
+    "cross_split_item_overlap": 0,
+    "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "gold_metric_opened": false,
+    "gold_rows_scored": 0,
+    "baseline_oof_macro_ap": 0.5315527708634168,
+    "baseline_fold_macro_ap": [
+      0.535137201283413,
+      0.5293875046954674,
+      0.5375146978687112,
+      0.531512424671052,
+      0.5337619678140229
+    ]
+  },
+  "production_anchor": {
+    "version": "v2",
+    "hidden_macro_ap": 0.2583231811423486
+  },
+  "completed_experiments": {
     "category_specialists": {
-      "metrics": {
-        "base_oof_macro_ap": 0.5315527708634168,
-        "category_specialist_oof_macro_ap": 0.5476780661335778,
-        "delta_vs_base": 0.016125295270161044,
-        "development_items": 550425,
-        "development_rows": 285210,
-        "elapsed_seconds": 429.025813577,
-        "feature_seconds": 322.852399486,
-        "fold_reports": [
-          {
-            "fold": 0,
-            "macro_average_precision": 0.5504494811533941,
-            "valid_rows": 57042
-          },
-          {
-            "fold": 1,
-            "macro_average_precision": 0.5478362369858445,
-            "valid_rows": 57042
-          },
-          {
-            "fold": 2,
-            "macro_average_precision": 0.554178032571296,
-            "valid_rows": 57043
-          },
-          {
-            "fold": 3,
-            "macro_average_precision": 0.5453862553120211,
-            "valid_rows": 57042
-          },
-          {
-            "fold": 4,
-            "macro_average_precision": 0.5500737968478944,
-            "valid_rows": 57041
-          }
-        ],
-        "gold_metric_opened": false,
-        "gold_rows_scored": 0,
-        "per_category_ap": {
-          "Автотовары": 0.5262144023813877,
-          "Аптека": 0.5663832520423767,
-          "Бытовая техника": 0.6857958127339124,
-          "Бытовая химия": 0.692699426302496,
-          "Галантерея и аксессуары": 0.40617541317966765,
-          "Детские товары": 0.7690527677404946,
-          "Дом и сад": 0.5506324204075271,
-          "Канцелярские товары": 0.5503803919729897,
-          "Красота и гигиена": 0.5780978189401061,
-          "Мебель": 0.44663231546453946,
-          "Музыкальные инструменты": 0.6871064477253056,
-          "Обувь": 0.31266623061887855,
-          "Одежда": 0.3407467438749426,
-          "Продукты питания": 0.5810108449043884,
-          "Спорт и отдых": 0.46763334038758586,
-          "Строительство и ремонт": 0.5437134994173566,
-          "Товары для животных": 0.6247315811399123,
-          "Хобби и творчество": 0.8005251618170024,
-          "Электроника": 0.44379604562023367,
-          "Ювелирные изделия": 0.379567406000454
-        },
-        "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
-        "version": "v5b-category-specialists"
-      },
-      "private_path": "experiments/v5/category/e885961388d1/v5b-category-metrics.json",
-      "status": "available"
+      "decision": "keep",
+      "oof_macro_ap": 0.5476780661335778,
+      "delta_vs_audit_baseline": 0.016125295270161044,
+      "all_folds_improved": true
     },
-    "contrastive_sprint": {
-      "private_path": "experiments/v5/contrastive-sprint/b30821f613bf/aggregate/v5d-contrastive-sprint-metrics.json",
-      "status": "not_available_yet"
+    "direct_attribute_likelihood": {
+      "decision": "reject",
+      "oof_macro_ap": 0.523218903672764,
+      "delta_vs_audit_baseline": -0.008333867190652766,
+      "all_folds_improved": false,
+      "all_folds_regressed": true
     },
     "pretrained_biencoder": {
-      "metrics": {
-        "base_oof_macro_ap": 0.5315527708634168,
-        "batch_size": 192,
-        "delta_vs_base": 0.0002552941707169021,
-        "development_items_encoded": 550425,
-        "development_rows": 285210,
-        "device": "mps",
-        "elapsed_seconds": 1119.317700542,
-        "encode_seconds": 995.8018347090001,
-        "fold_reports": [
-          {
-            "base_macro_average_precision": 0.535137201283413,
-            "delta_vs_base": 0.0012856564746110966,
-            "fold": 0,
-            "macro_average_precision": 0.5364228577580241,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "base_macro_average_precision": 0.5293875046954674,
-            "delta_vs_base": 0.0009406899879461639,
-            "fold": 1,
-            "macro_average_precision": 0.5303281946834135,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "base_macro_average_precision": 0.5375146978687112,
-            "delta_vs_base": 0.0014964005537463354,
-            "fold": 2,
-            "macro_average_precision": 0.5390110984224575,
-            "train_rows": 228167,
-            "valid_rows": 57043
-          },
-          {
-            "base_macro_average_precision": 0.531512424671052,
-            "delta_vs_base": 0.001811304347267062,
-            "fold": 3,
-            "macro_average_precision": 0.533323729018319,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "base_macro_average_precision": 0.5337619678140229,
-            "delta_vs_base": 0.0006692701322073003,
-            "fold": 4,
-            "macro_average_precision": 0.5344312379462302,
-            "train_rows": 228169,
-            "valid_rows": 57041
-          }
-        ],
-        "gold_items_encoded": 0,
-        "gold_metric_opened": false,
-        "gold_rows_encoded": 0,
-        "max_seq_length": 96,
-        "model": "v5-model",
-        "per_category_ap": {
-          "Автотовары": 0.5004880579178439,
-          "Аптека": 0.5384981058167291,
-          "Бытовая техника": 0.6869016699224849,
-          "Бытовая химия": 0.6919765303142333,
-          "Галантерея и аксессуары": 0.37949443736191,
-          "Детские товары": 0.767184770208359,
-          "Дом и сад": 0.5430753425504948,
-          "Канцелярские товары": 0.5579708865256279,
-          "Красота и гигиена": 0.5816859833501973,
-          "Мебель": 0.41314508859533067,
-          "Музыкальные инструменты": 0.676424856219649,
-          "Обувь": 0.26964081498865644,
-          "Одежда": 0.28843774311859993,
-          "Продукты питания": 0.5632419489906348,
-          "Спорт и отдых": 0.4686721307231792,
-          "Строительство и ремонт": 0.5337465229906753,
-          "Товары для животных": 0.6201454774129596,
-          "Хобби и творчество": 0.7916071817115756,
-          "Электроника": 0.4108734751077716,
-          "Ювелирные изделия": 0.352950276855757
-        },
-        "semantic_cosine_macro_ap": 0.31201359969464276,
-        "stack_oof_macro_ap": 0.5318080650341337,
-        "version": "v5c-pretrained-biencoder"
-      },
-      "private_path": "experiments/v5/pretrained/d812ad8d6a00/v5c-pretrained-metrics.json",
-      "status": "available"
+      "decision": "insufficient_standalone",
+      "oof_macro_ap": 0.5318080650341337,
+      "delta_vs_audit_baseline": 0.0002552941707169021,
+      "raw_semantic_cosine_macro_ap": 0.31201359969464276
     },
-    "validation": {
-      "metrics": {
-        "candidate": "human-structured-no-label-importance-oof",
-        "components_total": 345654,
-        "development_oof_macro_ap": 0.5315527708634168,
-        "development_oof_per_category_ap": {
-          "Автотовары": 0.5036164298792474,
-          "Аптека": 0.5352936983756619,
-          "Бытовая техника": 0.6872407143884992,
-          "Бытовая химия": 0.6910049823361484,
-          "Галантерея и аксессуары": 0.37712110633497586,
-          "Детские товары": 0.7660074929730596,
-          "Дом и сад": 0.5424579107906689,
-          "Канцелярские товары": 0.5577463393400883,
-          "Красота и гигиена": 0.5809546318145311,
-          "Мебель": 0.410338363795582,
-          "Музыкальные инструменты": 0.6802530439029012,
-          "Обувь": 0.27345799598874493,
-          "Одежда": 0.28702737680330037,
-          "Продукты питания": 0.5600314237598134,
-          "Спорт и отдых": 0.46646155400595535,
-          "Строительство и ремонт": 0.5348013879822272,
-          "Товары для животных": 0.6205790307067034,
-          "Хобби и творчество": 0.7902910115043122,
-          "Электроника": 0.41174548033238034,
-          "Ювелирные изделия": 0.3546254422535335
-        },
-        "development_rows": 285210,
-        "elapsed_seconds": 509.607308363,
-        "feature_seconds": 421.848152284,
-        "fold_macro_ap": [
-          0.535137201283413,
-          0.5293875046954674,
-          0.5375146978687112,
-          0.531512424671052,
-          0.5337619678140229
-        ],
-        "fold_mean_macro_ap": 0.5334627592665332,
-        "fold_median_macro_ap": 0.5337619678140229,
-        "fold_std_macro_ap": 0.0028186164376135885,
-        "fold_worst_macro_ap": 0.5293875046954674,
-        "folds": [
-          {
-            "fit_seconds": 11.017020171000013,
-            "fold": 0,
-            "macro_average_precision": 0.535137201283413,
-            "per_category_ap": {
-              "Автотовары": 0.5123040163100625,
-              "Аптека": 0.564421265403049,
-              "Бытовая техника": 0.670769104381099,
-              "Бытовая химия": 0.6948114066883833,
-              "Галантерея и аксессуары": 0.36396059779304213,
-              "Детские товары": 0.7626496864045508,
-              "Дом и сад": 0.525476740685686,
-              "Канцелярские товары": 0.5670635779883698,
-              "Красота и гигиена": 0.5748521551238006,
-              "Мебель": 0.4245700401963915,
-              "Музыкальные инструменты": 0.6902762326050453,
-              "Обувь": 0.32603591245038793,
-              "Одежда": 0.2601141140413647,
-              "Продукты питания": 0.5876651446552206,
-              "Спорт и отдых": 0.4643452765366903,
-              "Строительство и ремонт": 0.546021617608474,
-              "Товары для животных": 0.6431463924595106,
-              "Хобби и творчество": 0.7861898565109089,
-              "Электроника": 0.39792907921024867,
-              "Ювелирные изделия": 0.3401418086159747
-            },
-            "rows": 57042,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "fit_seconds": 11.182381187000033,
-            "fold": 1,
-            "macro_average_precision": 0.5293875046954674,
-            "per_category_ap": {
-              "Автотовары": 0.5173969818472611,
-              "Аптека": 0.5594328942017991,
-              "Бытовая техника": 0.697327443132016,
-              "Бытовая химия": 0.6855506509139386,
-              "Галантерея и аксессуары": 0.3585886960917506,
-              "Детские товары": 0.7706802011350424,
-              "Дом и сад": 0.5659826359173823,
-              "Канцелярские товары": 0.5467645740312108,
-              "Красота и гигиена": 0.5819963264498009,
-              "Мебель": 0.40365369928847,
-              "Музыкальные инструменты": 0.6721988291623167,
-              "Обувь": 0.25486273869117076,
-              "Одежда": 0.2784464248796485,
-              "Продукты питания": 0.5727982557807014,
-              "Спорт и отдых": 0.44681374612730873,
-              "Строительство и ремонт": 0.5332616040195125,
-              "Товары для животных": 0.5976227035423066,
-              "Хобби и творчество": 0.7965907218159451,
-              "Электроника": 0.3709123835601293,
-              "Ювелирные изделия": 0.3768685833216353
-            },
-            "rows": 57042,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "fit_seconds": 11.085870891000013,
-            "fold": 2,
-            "macro_average_precision": 0.5375146978687112,
-            "per_category_ap": {
-              "Автотовары": 0.49459768627476075,
-              "Аптека": 0.5452887385806867,
-              "Бытовая техника": 0.7180630269074051,
-              "Бытовая химия": 0.6803394683493014,
-              "Галантерея и аксессуары": 0.4104658319488577,
-              "Детские товары": 0.7639592422046777,
-              "Дом и сад": 0.5557580462552425,
-              "Канцелярские товары": 0.5668473028087273,
-              "Красота и гигиена": 0.6032768016942189,
-              "Мебель": 0.4041485738018551,
-              "Музыкальные инструменты": 0.6760476880744744,
-              "Обувь": 0.2450990925677042,
-              "Одежда": 0.2993533532257142,
-              "Продукты питания": 0.5623181528444468,
-              "Спорт и отдых": 0.49544665937919774,
-              "Строительство и ремонт": 0.5479903184591192,
-              "Товары для животных": 0.6024789904722696,
-              "Хобби и творчество": 0.790213903265173,
-              "Электроника": 0.431873723448832,
-              "Ювелирные изделия": 0.3567273568115597
-            },
-            "rows": 57043,
-            "train_rows": 228167,
-            "valid_rows": 57043
-          },
-          {
-            "fit_seconds": 11.103765911999972,
-            "fold": 3,
-            "macro_average_precision": 0.531512424671052,
-            "per_category_ap": {
-              "Автотовары": 0.5078740950347687,
-              "Аптека": 0.5264816078546629,
-              "Бытовая техника": 0.6893269271501834,
-              "Бытовая химия": 0.6853607622121783,
-              "Галантерея и аксессуары": 0.4173848326292493,
-              "Детские товары": 0.7675551349649268,
-              "Дом и сад": 0.5454197128223774,
-              "Канцелярские товары": 0.5581322416893185,
-              "Красота и гигиена": 0.573313182875275,
-              "Мебель": 0.4195020990933971,
-              "Музыкальные инструменты": 0.6730834474979571,
-              "Обувь": 0.2770284814159758,
-              "Одежда": 0.3197000748215838,
-              "Продукты питания": 0.5476664498726587,
-              "Спорт и отдых": 0.45875017565537857,
-              "Строительство и ремонт": 0.5073126908011673,
-              "Товары для животных": 0.6084398901596211,
-              "Хобби и творчество": 0.7871879348549452,
-              "Электроника": 0.4241357027050945,
-              "Ювелирные изделия": 0.33659304931031986
-            },
-            "rows": 57042,
-            "train_rows": 228168,
-            "valid_rows": 57042
-          },
-          {
-            "fit_seconds": 11.016617476000079,
-            "fold": 4,
-            "macro_average_precision": 0.5337619678140229,
-            "per_category_ap": {
-              "Автотовары": 0.4920694282513513,
-              "Аптека": 0.49303776236114844,
-              "Бытовая техника": 0.6696827482782979,
-              "Бытовая химия": 0.7123328596116301,
-              "Галантерея и аксессуары": 0.35459630233798994,
-              "Детские товары": 0.7688460711242128,
-              "Дом и сад": 0.5266289758799094,
-              "Канцелярские товары": 0.5557243581575506,
-              "Красота и гигиена": 0.5774930453790694,
-              "Мебель": 0.40525375946143,
-              "Музыкальные инструменты": 0.6960294715526555,
-              "Обувь": 0.2949623479687285,
-              "Одежда": 0.2996646295033506,
-              "Продукты питания": 0.5326961625575435,
-              "Спорт и отдых": 0.47690545986761407,
-              "Строительство и ремонт": 0.5449713342078429,
-              "Товары для животных": 0.6529983956552168,
-              "Хобби и творчество": 0.7932948879126913,
-              "Электроника": 0.44876437876135106,
-              "Ювелирные изделия": 0.37928697745087225
-            },
-            "rows": 57041,
-            "train_rows": 228169,
-            "valid_rows": 57041
-          }
-        ],
-        "gold_metric_opened": false,
-        "gold_rows_sealed": 80444,
-        "n_folds": 5,
-        "row_coverage": 365654,
-        "rows_total": 365654,
-        "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
-        "validation_item_overlap": 0,
-        "version": "v5a-validation-audit"
-      },
-      "private_path": "experiments/v5/validation/93e439633099/v5a-audit-metrics.json",
-      "status": "available"
+    "weighted_category_specialists": {
+      "decision": "diagnostic_oof_input_only",
+      "oof_macro_ap": 0.5498696731704964,
+      "delta_vs_category_base": 0.0021916070369185636,
+      "fold_deltas": [
+        0.0021354161959221685,
+        0.004859795667646272,
+        -0.00031919882576014746,
+        -0.0009191637590409973,
+        0.004585239432923327
+      ]
     },
-    "weighted_specialists": {
-      "private_path": "experiments/v5/weighted-specialists/b249fb17fa0c/aggregate/v5b-weighted-specialist-metrics.json",
-      "status": "not_available_yet"
+    "weak_category_specialists": {
+      "decision": "keep",
+      "workflow_run_id": 31484641329,
+      "source_commit": "319993a469cfa37770d66cfaf1b2203515dc9841",
+      "oof_macro_ap": 0.5514237338676234,
+      "delta_vs_category_base": 0.00374566773404561,
+      "all_folds_improved": true,
+      "weak_input_rows": 11187780,
+      "weak_presample_rows": 250000,
+      "weak_final_rows_per_fold": 150000,
+      "held_items_forbidden": true,
+      "gold_items_forbidden": true
+    },
+    "cross_fitted_combo": {
+      "decision": "keep_intermediate",
+      "workflow_run_id": 31485240666,
+      "source_commit": "7a1c1764a2bdda8f007b9bfea7d088911623e7f0",
+      "oof_macro_ap": 0.559512531439709,
+      "delta_vs_category_base": 0.011834465306131192,
+      "fold_macro_ap": [
+        0.562580065789817,
+        0.5605549739646596,
+        0.5667063354890245,
+        0.5579194708823281,
+        0.5631351691480011
+      ],
+      "all_folds_improved": true
+    },
+    "sparse_category_specialists": {
+      "decision": "keep",
+      "workflow_run_id": 31485396599,
+      "source_commit": "634ee66890c39ad97c0fa725135b1b00e56ac126",
+      "oof_macro_ap": 0.5651306838802859,
+      "delta_vs_category_base": 0.017452617746708032,
+      "fold_macro_ap": [
+        0.5638679943688357,
+        0.5644112795204157,
+        0.5729250493264109,
+        0.5646827428419179,
+        0.5676889194024459
+      ],
+      "all_folds_improved": true,
+      "gold_metric_opened": false,
+      "gold_rows_scored": 0
+    },
+    "supervised_contrastive": {
+      "decision": "current_development_best_keep",
+      "workflow_run_id": 31483288887,
+      "source_commit": "b30821f613bf7051da51c42b64c7f79361d5619c",
+      "oof_macro_ap": 0.5662217062664492,
+      "delta_vs_category_base": 0.018543640132871353,
+      "delta_vs_audit_baseline": 0.0346689354030324,
+      "raw_semantic_cosine_macro_ap": 0.40597111640267125,
+      "fold_macro_ap": [
+        0.5692965046798911,
+        0.5683388560864314,
+        0.5694312406050667,
+        0.5632500994392833,
+        0.5684466083884651
+      ],
+      "all_folds_improved": true,
+      "gold_metric_opened": false,
+      "gold_rows_scored": 0
+    },
+    "rubert_teacher_first_run": {
+      "decision": "integration_failure_before_metrics_not_model_reject",
+      "workflow_run_id": 31485127564,
+      "source_commit": "00cc48dca806752d92496fa79f703a9ce3bcce63",
+      "failure_type": "TypeError",
+      "failure_summary": "build_reranker_examples called without required attribute_importance argument",
+      "comparable_oof_produced": false
     }
   },
-  "policy": "aggregate metrics only; no product text, IDs, labels, OOF rows, or model weights"
+  "active_experiments": {
+    "explicit_attribute_specialists": {
+      "workflow_run_id": 31485990777,
+      "source_commit": "cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57",
+      "status": "in_progress"
+    },
+    "field_aware_weak_teacher": {
+      "workflow_run_id": 31486298300,
+      "source_commit": "411a5349fe731506757fdc1a3c8857a370225fb8",
+      "status": "in_progress"
+    }
+  },
+  "current_development_best_oof_macro_ap": 0.5662217062664492,
+  "stretch_target_oof_macro_ap": 0.6,
+  "remaining_gap_to_target": 0.0337782937335508,
+  "v5_submission_retained": false,
+  "sealed_gold_evaluated": false
 }
