@@ -13,10 +13,12 @@ _METADATA = {
     "image": "odsai/ecup26-matching-baseline:1.0",
     "entry_point": "python -u run.py",
 }
-_RUNTIME_FILES = (
+_PACKAGE_MARKERS = (
     "ecup_matching/__init__.py",
     "ecup_matching/ml/__init__.py",
     "ecup_matching/submission/__init__.py",
+)
+_RUNTIME_FILES = (
     "ecup_matching/ml/data_subset.py",
     "ecup_matching/ml/textnorm.py",
     "ecup_matching/ml/features.py",
@@ -84,6 +86,15 @@ def build_submission_v5(
         _copy_tree_files(contrastive_model_dir, root / "model_v5_contrastive")
         _copy_tree_files(teacher_model_dir, root / "model_v5_teacher")
         _copy_tree_files(legacy_runtime_dir, root / "legacy_ecup")
+
+        for relative in _PACKAGE_MARKERS:
+            source = repo_root / relative
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_file():
+                shutil.copy2(source, target)
+            else:
+                target.write_text("", encoding="utf-8")
 
         for relative in _RUNTIME_FILES:
             source = repo_root / relative
