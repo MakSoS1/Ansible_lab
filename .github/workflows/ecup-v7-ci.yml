@@ -32,5 +32,12 @@ jobs:
             ecup_matching/tests/test_v5_item_text.py \
             ecup_matching/tests/test_v5_teacher2_objective.py \
             -q
+      - name: import complete v7 CUDA drivers
+        run: |
+          python - <<'PY'
+          import ecup_matching.ml.benchmark_v7_cuda
+          import ecup_matching.ml.run_v7_outer_oof
+          print('v7_gpu_driver_imports_ok')
+          PY
       - name: memory policy
         run: python scripts/memory_policy.py
