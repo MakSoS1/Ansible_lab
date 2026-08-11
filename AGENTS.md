@@ -10,20 +10,21 @@ We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product
 
 - Branch: `ecup-matching-2026`; **do not modify or merge `main`** unless the user explicitly asks.
 - Private data/artifact repo: `Maksim123321/e-cup-2026-matching-private`.
-- Dataset mirrored: `matches.parquet`, `matches_llm.parquet`, `items.parquet`, `items_human.parquet` plus official baseline ZIPs.
 - Human pairs: 365,654.
 - Leakage-resistant split: 292,523 train / 73,131 validation / **0 overlapping item IDs**.
-- v1 validation Macro AP: `0.4961654895`.
+- v1 Macro AP: `0.4961654895`.
 - v2b structured weak-curriculum Macro AP: `0.5010008995`.
-- **Current completed experiment and best offline model: v3**, a v2b structured anchor + `cointegrated/rubert-tiny2` stage-1 global blend.
-- **Retained v3 Macro AP: `0.5254642645846543`** on the unchanged item-disjoint validation.
-- v3 neural blend: structured `0.55`, neural `0.45`.
-- v3 hard-negative stage-2 was genuinely trained/evaluated and rejected because stage 1 was stronger.
-- Canonical v3 ZIP is immutable at `submissions/v3/canonical/b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660/ecup-v3-submission.zip`, SHA-256 `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`.
-- Canonical v3 exact-image offline smoke ran 10,000/10,000 pairs through the real neural path with network disabled and passed output checks.
-- Home RTX 2060 SUPER is connected only through private `MakSoS1/gpu-dispatch`; public source executes in a network-disabled/read-only isolated Docker profile.
-- **Current experiment: v4 / in progress.** Design: `ai-forever/ruBert-base` stronger cross-encoder → v4a full human → v4b high-confidence LLM weak continuation → v4c model-mined hard negatives with 50% ordinary replay. Retain only if fixed Macro AP strictly beats v3.
-- Hardened Memora memory is operational and CI-verified: pinned upstream commit `bc64ff745a9b2c0e6245e0137654f041fba0c155`, MCP `1.29.0`, TF-IDF/local SQLite only, Graph/LLM/auto-capture disabled, private checkpoint under `agent-memory/latest/` in HF.
+- v3 immutable fallback Macro AP: `0.5254642645846543`, v2b structured weight 0.55 + `cointegrated/rubert-tiny2` neural weight 0.45.
+- **Current completed experiment and best retained candidate: v4.** It preserves the v3 learned models and uses 5-fold component-cross-fitted, shrinkage-regularized per-category neural blend alphas.
+- **v4 honest cross-fitted Macro AP: `0.5276431099433088`**, absolute delta vs v3 `+0.0021788453586544243`.
+- v4 deployable full-data coefficient fit: `0.5284493942551521`; do **not** present this larger value as the unbiased headline.
+- v4 routing selection groups all validation candidate edges into 53,131 item-components and selected shrinkage prior `4000`.
+- Canonical v4 ZIP: `submissions/v4/canonical/b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849/ecup-v4-submission.zip`, SHA-256 `b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849`, 109,185,879 bytes.
+- Exact organizer-image offline v4 smoke: 1,000/1,000 real neural pairs, network disabled, valid ordered finite output, 1,000 unique scores, private canonical freeze verified.
+- Canonical v3 fallback remains immutable at SHA-256 `b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660`.
+- Home RTX 2060 SUPER is connected only through private `MakSoS1/gpu-dispatch`; public source never owns a self-hosted runner.
+- A stronger pinned `ai-forever/ruBert-base` v4a/v4b/v4c ladder is implemented but **not retained and not the source of the v4 score**. Treat it only as a future v4.1/v5 ablation.
+- Hardened Memora memory is operational and CI-verified: pinned upstream `bc64ff745a9b2c0e6245e0137654f041fba0c155`, MCP `1.29.0`, TF-IDF/local SQLite only, Graph/LLM/auto-capture disabled.
 
 ## Mandatory reading order
 
@@ -33,8 +34,13 @@ We are solving ODS E-CUP 2026 Ozon product matching. Input pairs contain product
 4. `docs/agent-memory/SECURITY.md`
 5. `docs/agent-memory/ITERATION_PROTOCOL.md`
 6. `ecup_matching/SOLUTION_RESEARCH.md`
-7. Current experiment's `PLAN.md` / `RESULTS.md` when present.
-8. `docs/superpowers/specs/2026-08-11-ecup-v4-strong-reranker-design.md` and `docs/superpowers/plans/2026-08-11-ecup-v4-strong-reranker.md` while v4 is active.
+7. `ecup_matching/experiments/v4/PLAN.md`
+8. `ecup_matching/experiments/v4/RESULTS.md`
+
+The original strong-reranker design/implementation documents remain useful historical context but do not redefine the retained v4 artifact:
+
+- `docs/superpowers/specs/2026-08-11-ecup-v4-strong-reranker-design.md`
+- `docs/superpowers/plans/2026-08-11-ecup-v4-strong-reranker.md`
 
 ## Persistent memory startup
 
@@ -52,8 +58,6 @@ To install/rebuild the exact hardened Memora runtime:
 python tools/memora_hardened/install.py --prefix .agent-memory/runtime
 ```
 
-A verified hardened wheel and runtime manifest are also preserved privately under `agent-memory/runtime/` in the HF dataset.
-
 MCP clients must start Memora only through:
 
 ```bash
@@ -64,18 +68,18 @@ Never run an arbitrary/unpinned Memora installation. Never enable Cloud Graph, C
 
 ## Mandatory iteration protocol
 
-Before v3/v4/etc. implementation:
+Before a new vN implementation:
 
 1. Update `ecup_matching/experiments/CURRENT.json` to the new version with `status: "in_progress"`.
-2. Create `ecup_matching/experiments/vN/PLAN.md` with hypothesis, exact data, split, features/model, runtime budget, expected metric movement, and abort criteria.
+2. Create `ecup_matching/experiments/vN/PLAN.md` with hypothesis, exact data, split, features/model, runtime budget, expected metric movement and abort criteria.
 3. Use item-disjoint validation unless a documented experiment explicitly studies a different split.
 4. Keep all raw data/models/submission ZIPs private; Git gets code and source-backed docs only.
 
-After every training run that is kept as an experiment:
+After every training/run result that is retained:
 
-1. Write/update `ecup_matching/experiments/vN/RESULTS.md` with exact command/workflow, commit, data counts, Macro AP, all category APs, runtime, artifact paths, failures and conclusions.
+1. Update `ecup_matching/experiments/vN/RESULTS.md` with exact run/commit/data/metrics/artifact/failure evidence.
 2. Update `docs/agent-memory/EXPERIMENT_INDEX.md`.
-3. Update `docs/agent-memory/PROJECT_STATE.md` if best model/current stage/next action changed.
+3. Update `docs/agent-memory/PROJECT_STATE.md` when best model/current stage/next action changes.
 4. Record durable architectural changes in `docs/agent-memory/DECISIONS.md`.
 5. Set `CURRENT.json` status appropriately.
 6. Run:
@@ -86,19 +90,16 @@ python scripts/memory_ingest.py
 python scripts/memory_checkpoint.py --iteration vN
 ```
 
-The dedicated memory workflow reads the current version dynamically from `CURRENT.json`, so retained iterations are checkpointed under the correct vN label.
-
-A completed iteration is **not complete** if documentation policy or the private memory checkpoint fails. Normal CI also runs `memory_policy.py`, so future agents cannot silently mark a v2+ iteration complete without its required PLAN/RESULTS/state handoff.
+A completed iteration is **not complete** if documentation policy or the private memory checkpoint fails.
 
 ## Security invariants
 
 - Never print/paste/store `HF_TOKEN`, GitHub tokens, API keys, passwords, private keys or credentials in Git, experiment docs, Memora, artifacts or logs.
 - `.agent-memory/`, `*.db`, models, submission ZIPs and competition parquet are not public artifacts.
-- Hardened Memora is pinned to upstream commit `bc64ff745a9b2c0e6245e0137654f041fba0c155`, constrained to `mcp>=1,<2`, local SQLite, TF-IDF, LLM off, graph off, auto-capture off.
-- Local memory directory must be mode `0700`; DB must be `0600`.
-- Memory checkpoint scans for secrets and fails closed.
-- Contest rules prohibit copying other participants' solutions and create publication risk. Research analogous public methods, not private/current participant code.
+- Hardened Memora stays pinned/local-only with TF-IDF, LLM off, graph off and auto-capture off.
+- Contest rules prohibit copying other participants' solutions; research analogous public methods, not private/current participant code.
 - The public repository must never be attached directly to the home self-hosted runner. GPU execution goes only through the private dispatcher and exact allowed branch SHA.
+- Canonical v3/v4 packages are immutable. A changed alpha/model/package requires a new immutable artifact and new experiment evidence.
 
 ## Where things live
 
@@ -107,10 +108,8 @@ A completed iteration is **not complete** if documentation policy or the private
 - ML implementation: `ecup_matching/ml/`
 - Submission runtime: `ecup_matching/submission/`
 - Experiments: `ecup_matching/experiments/`
-- Superpowers specs/plans: `docs/superpowers/`
 - Agent memory/state: `docs/agent-memory/`
 - Hardened Memora tooling: `tools/memora_hardened/`
-- Memory lifecycle scripts: `scripts/memory_*.py`
-- Durable private memory: HF `agent-memory/latest/` and immutable `agent-memory/checkpoints/`.
+- Durable private memory: HF `agent-memory/latest/` and `agent-memory/checkpoints/`.
 
-When uncertain, preserve reproducibility, leakage resistance, private artifacts, immutable retained runs and this memory protocol.
+When uncertain, preserve reproducibility, leakage resistance, immutable retained artifacts and this memory protocol.
