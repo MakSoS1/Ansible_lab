@@ -10,6 +10,7 @@ from ecup_matching.ml.v5_fixed_blend import (
     orthogonal_rank_candidates,
     percentile_rank,
     rank_ablation_candidates,
+    typed_explicit_rank_candidates,
 )
 
 
@@ -142,6 +143,35 @@ def test_leave_one_out_rank_candidates_are_exactly_the_five_predeclared_removals
     assert np.allclose(result["loo_drop_teacher"], expected_drop_teacher)
 
 
+def test_typed_explicit_rank_candidates_are_exactly_add_and_replace():
+    current5 = {
+        "weak": np.array([0.2, 0.8, 0.4, 0.6]),
+        "sparse": np.array([0.3, 0.7, 0.5, 0.4]),
+        "explicit": np.array([0.25, 0.75, 0.45, 0.55]),
+        "contrastive": np.array([-0.2, 0.5, 0.1, 0.4]),
+        "teacher": np.array([-1.0, 2.0, 0.0, 0.5]),
+    }
+    typed = np.array([0.15, 0.85, 0.35, 0.65])
+    result = typed_explicit_rank_candidates(current5, typed)
+    assert set(result) == {
+        "current5_plus_typed_explicit",
+        "current5_replace_explicit_with_typed",
+    }
+    for values in result.values():
+        assert values.shape == (4,)
+        assert np.isfinite(values).all()
+        assert np.all((0.0 <= values) & (values <= 1.0))
+
+    expected_replace = np.mean(
+        np.vstack(
+            [percentile_rank(current5[name]) for name in ("weak", "sparse", "contrastive", "teacher")]
+            + [percentile_rank(typed)]
+        ),
+        axis=0,
+    )
+    assert np.allclose(result["current5_replace_explicit_with_typed"], expected_replace)
+
+
 def test_fixed_blend_identical_rankings_preserve_ranking():
     common = np.array([0.05, 0.3, 0.2, 0.95, 0.7])
     sources = {name: common.copy() for name in ("category", "weak", "sparse", "explicit")}
@@ -178,6 +208,9 @@ def test_fixed_blend_rejects_missing_nonfinite_or_misaligned_inputs():
 
     with pytest.raises(ValueError, match="missing required"):
         leave_one_out_rank_candidates({"weak": good})
+
+    with pytest.raises(ValueError, match="missing required"):
+        typed_explicit_rank_candidates({"weak": good}, good)
 
 
 def test_align_oof_frame_requires_exact_rows_and_folds(tmp_path):
