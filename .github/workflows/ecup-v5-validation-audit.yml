@@ -1,0 +1,121 @@
+name: E-CUP v5 validation audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ecup-matching-2026
+    paths:
+      - ".github/workflows/ecup-v5-validation-audit.yml"
+      - "ecup_matching/ml/v5_validation.py"
+      - "ecup_matching/ml/v5_evaluation.py"
+      - "ecup_matching/ml/run_v5_validation_audit.py"
+      - "ecup_matching/tests/test_v5_validation*.py"
+      - "ecup_matching/tests/test_v5_evaluation.py"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r ecup_matching/requirements-ci.txt
+
+      - name: Run v5 unit tests first
+        run: |
+          python -m pytest \
+            ecup_matching/tests/test_v5_validation.py \
+            ecup_matching/tests/test_v5_evaluation.py \
+            ecup_matching/tests/test_v5_validation_audit.py -q
+
+      - name: Download authoritative human data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/v5-data"
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/v5-data/matches.parquet" \
+            "https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/v5-data/items_human.parquet" \
+            "https://storage.yandexcloud.net/ozon-ecup-2026/Matching/items_human.parquet"
+          test -s "${RUNNER_TEMP}/v5-data/matches.parquet"
+          test -s "${RUNNER_TEMP}/v5-data/items_human.parquet"
+
+      - name: Run sealed-gold five-fold audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/v5-audit"
+          python -m ecup_matching.ml.run_v5_validation_audit \
+            --items "${RUNNER_TEMP}/v5-data/items_human.parquet" \
+            --matches "${RUNNER_TEMP}/v5-data/matches.parquet" \
+            --output-dir "${RUNNER_TEMP}/v5-audit" \
+            --gold-fraction 0.22 \
+            --n-folds 5 \
+            --max-iter 250
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'v5-audit' / 'v5a-audit-metrics.json'
+          m = json.loads(p.read_text())
+          assert m['gold_metric_opened'] is False
+          assert m['validation_item_overlap'] == 0
+          print('split_sha256', m['split_sha256'])
+          print('development_oof_macro_ap', m['development_oof_macro_ap'])
+          print('fold_mean_macro_ap', m['fold_mean_macro_ap'])
+          print('fold_worst_macro_ap', m['fold_worst_macro_ap'])
+          print('gold_rows_sealed', m['gold_rows_sealed'])
+          PY
+
+      - name: Upload public-safe aggregate metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v5-validation-audit-metrics
+          path: ${{ runner.temp }}/v5-audit/v5a-audit-metrics.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Persist private split and OOF predictions
+        if: env.HF_TOKEN != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          source = Path(os.environ['RUNNER_TEMP']) / 'v5-audit'
+          prefix = f"experiments/v5/validation/{os.environ['GITHUB_SHA'][:12]}"
+          for name in ('split-manifest.json', 'development-oof.parquet', 'v5a-audit-metrics.json'):
+              api.upload_file(
+                  path_or_fileobj=str(source / name),
+                  path_in_repo=f"{prefix}/{name}",
+                  repo_id=os.environ['HF_REPO_ID'],
+                  repo_type='dataset',
+                  commit_message=f"Store v5 validation audit {os.environ['GITHUB_SHA'][:12]}",
+              )
+          print('private_prefix', prefix)
+          PY
+
+      - name: Clean runner competition data
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/v5-data" "${RUNNER_TEMP}/v5-audit"
