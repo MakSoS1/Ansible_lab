@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import time
 from typing import Any
@@ -39,6 +40,19 @@ def trainable_layer_indices(layer_count: int, *, last_n: int) -> list[int]:
     if last_n <= 0 or last_n > layer_count:
         raise ValueError("last_n must be between 1 and layer_count")
     return list(range(layer_count - last_n, layer_count))
+
+
+def accumulation_should_step(
+    microbatch_count: int,
+    *,
+    accumulation_steps: int,
+    is_last_microbatch: bool,
+) -> bool:
+    if accumulation_steps <= 0:
+        raise ValueError("accumulation_steps must be positive")
+    if microbatch_count <= 0:
+        raise ValueError("microbatch_count must be positive")
+    return bool(microbatch_count % accumulation_steps == 0 or is_last_microbatch)
 
 
 def _find_encoder_layers(model) -> list[Any]:
@@ -106,6 +120,7 @@ def train_fold(
     held_fold: int,
     device: str = "mps",
     batch_size: int = 96,
+    micro_batch_size: int | None = None,
     encode_batch_size: int = 256,
     max_seq_length: int = 96,
     last_n_layers: int = 4,
@@ -124,6 +139,16 @@ def train_fold(
     started = time.perf_counter()
     if max_steps <= 0:
         raise ValueError("max_steps must be positive")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if micro_batch_size is None:
+        physical_batch_size = min(batch_size, 24) if str(device).startswith("mps") else batch_size
+    else:
+        if micro_batch_size <= 0:
+            raise ValueError("micro_batch_size must be positive")
+        physical_batch_size = min(batch_size, int(micro_batch_size))
+    accumulation_steps = max(1, int(math.ceil(batch_size / physical_batch_size)))
+
     torch.manual_seed(seed + held_fold)
     np.random.seed(seed + held_fold)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -191,7 +216,6 @@ def train_fold(
     for layer_index in selected_layers:
         for parameter in layers[layer_index].parameters():
             parameter.requires_grad = True
-    # Keep final layer normalization / pooler trainable when present.
     for name, parameter in model.named_parameters():
         if "pooler" in name or name.endswith("LayerNorm.weight") or name.endswith("LayerNorm.bias"):
             parameter.requires_grad = True
@@ -214,7 +238,7 @@ def train_fold(
 
     loader = DataLoader(
         PairDataset(curriculum),
-        batch_size=batch_size,
+        batch_size=physical_batch_size,
         shuffle=True,
         num_workers=0,
         collate_fn=collate,
@@ -222,9 +246,13 @@ def train_fold(
     )
     model.train()
     losses: list[float] = []
-    step = 0
-    while step < max_steps:
-        for left, right, target in loader:
+    optimizer_steps = 0
+    optimizer.zero_grad(set_to_none=True)
+    while optimizer_steps < max_steps:
+        if len(loader) == 0:
+            raise RuntimeError("empty contrastive dataloader")
+        accumulated = 0
+        for batch_index, (left, right, target) in enumerate(loader):
             left = {k: v.to(device) for k, v in left.items()}
             right = {k: v.to(device) for k, v in right.items()}
             target = target.to(device)
@@ -233,25 +261,37 @@ def train_fold(
             cosine = torch.nn.functional.cosine_similarity(emb_left, emb_right)
             positive_loss = target * torch.square(1.0 - cosine)
             negative_loss = (1.0 - target) * torch.square(torch.relu(cosine - negative_margin))
-            loss = (positive_loss + negative_loss).mean()
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(trainable, 1.0)
-            optimizer.step()
-            losses.append(float(loss.detach().cpu()))
-            step += 1
-            if step % 100 == 0 or step == 1:
-                print(f"fold={held_fold} step={step}/{max_steps} loss={losses[-1]:.6f}", flush=True)
-            if step >= max_steps:
-                break
-        if len(loader) == 0:
-            raise RuntimeError("empty contrastive dataloader")
+            raw_loss = (positive_loss + negative_loss).mean()
+            (raw_loss / float(accumulation_steps)).backward()
+            losses.append(float(raw_loss.detach().cpu()))
+            accumulated += 1
+            is_last_microbatch = batch_index == len(loader) - 1
+            if accumulation_should_step(
+                accumulated,
+                accumulation_steps=accumulation_steps,
+                is_last_microbatch=is_last_microbatch,
+            ):
+                torch.nn.utils.clip_grad_norm_(trainable, 1.0)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                optimizer_steps += 1
+                accumulated = 0
+                if optimizer_steps % 100 == 0 or optimizer_steps == 1:
+                    print(
+                        f"fold={held_fold} step={optimizer_steps}/{max_steps} "
+                        f"loss={losses[-1]:.6f} physical_batch={physical_batch_size} "
+                        f"accumulation={accumulation_steps}",
+                        flush=True,
+                    )
+                if optimizer_steps >= max_steps:
+                    break
 
     held_item_ids = pd.unique(pd.concat([held_pairs["id1"], held_pairs["id2"]], ignore_index=True))
     held_texts = [texts[item_id] for item_id in held_item_ids]
     held_embeddings = _encode_texts(
         model, tokenizer, held_texts,
-        device=device, batch_size=encode_batch_size, max_length=max_seq_length,
+        device=device, batch_size=min(encode_batch_size, 128 if str(device).startswith("mps") else encode_batch_size),
+        max_length=max_seq_length,
     )
     held_index = {item_id: idx for idx, item_id in enumerate(held_item_ids.tolist())}
     left_index = np.fromiter((held_index[x] for x in held_pairs["id1"].tolist()), dtype=np.int64, count=len(held_pairs))
@@ -281,7 +321,10 @@ def train_fold(
         "train_negatives": int((curriculum["target"] < 0.5).sum()),
         "held_rows": int(len(held_pairs)),
         "held_items": int(len(held_item_ids)),
-        "steps": int(step),
+        "steps": int(optimizer_steps),
+        "effective_batch_size": int(batch_size),
+        "physical_batch_size": int(physical_batch_size),
+        "gradient_accumulation_steps": int(accumulation_steps),
         "last_n_layers": int(last_n_layers),
         "negative_margin": float(negative_margin),
         "mean_training_loss": float(np.mean(losses)),
@@ -308,6 +351,7 @@ def main() -> int:
     parser.add_argument("--held-fold", type=int, required=True)
     parser.add_argument("--device", default="mps")
     parser.add_argument("--batch-size", type=int, default=96)
+    parser.add_argument("--micro-batch-size", type=int)
     parser.add_argument("--encode-batch-size", type=int, default=256)
     parser.add_argument("--max-seq-length", type=int, default=96)
     parser.add_argument("--last-n-layers", type=int, default=4)
@@ -319,7 +363,8 @@ def main() -> int:
         items_path=args.items, matches_path=args.matches, manifest_path=args.manifest,
         base_oof_path=args.base_oof, model_dir=args.model_dir, output_dir=args.output_dir,
         expected_split_sha=args.expected_split_sha, held_fold=args.held_fold,
-        device=args.device, batch_size=args.batch_size, encode_batch_size=args.encode_batch_size,
+        device=args.device, batch_size=args.batch_size, micro_batch_size=args.micro_batch_size,
+        encode_batch_size=args.encode_batch_size,
         max_seq_length=args.max_seq_length, last_n_layers=args.last_n_layers,
         learning_rate=args.learning_rate, negative_margin=args.negative_margin,
         max_steps=args.max_steps,
