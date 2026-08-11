@@ -1,10 +1,11 @@
 # E-CUP Matching — Iteration v6 Runtime-Constrained Results
 
 Date: 2026-08-11
+Status: in progress
 
 ## Objective
 
-v5 exceeded the local quality target but timed out on the competition platform. v6 therefore uses a hard Pareto rule:
+v5 exceeded the local quality target but is too slow for the runtime-constrained production objective. v6 therefore uses a hard Pareto rule:
 
 1. retain only architectures with honest strict component-disjoint OOF Macro AP `>= 0.6000`;
 2. among passing architectures, minimize real end-to-end inference runtime;
@@ -24,7 +25,7 @@ Selected architecture:
 - supervised contrastive item score;
 - typed/canonicalized explicit specialist;
 - pair teacher evaluated only for the target-free top-disagreement `95%` of pairs within each official category;
-- for the remaining pairs, teacher is replaced by the unweighted mean of the five target-free percentile ranks;
+- for remaining pairs, teacher is replaced by the unweighted mean of the five target-free percentile ranks;
 - selected teacher scores are percentile-ranked only over selected teacher rows;
 - final meta layer remains a full outer-cross-fitted category-shrunk simplex plus fixed HGB, fused as `0.5 * percentile_rank(category_shrunk) + 0.5 * percentile_rank(HGB)`.
 
@@ -106,21 +107,65 @@ Implemented changes:
 - CUDA OOM fallback halves batches safely;
 - non-blocking CUDA transfers;
 - PyTorch SDPA is requested where supported, with eager fallback;
-- structured feature chunk size increased to `50,000`;
+- structured feature chunk size is `50,000`;
 - phase-level runtime telemetry is emitted for load, structured, contrastive, gate, teacher, meta and write stages;
 - no network is required at inference.
 
 ## Production equivalence safeguards
 
-Tests verify that assembling a teacher signal from only the selected teacher rows is numerically identical to the validation formula that receives a full teacher vector and then masks it. Changing unselected teacher values cannot change gated predictions.
+Tests verify that assembling a teacher signal from only selected teacher rows is numerically identical to the validation formula that receives a full teacher vector and then masks it. Changing unselected teacher values cannot change gated predictions.
 
-## Final packaging status
+The runtime gate no longer imports training-only `v5_meta_blend`; its signal order aliases the production-safe `v5_production.FINAL_SIGNAL_NAMES`. This removes the transitive training-only dependency that previously caused organizer-smoke import failure.
+
+## Latest packaging checkpoint
+
+Workflow run `31535674086`, source `4da50f66942472b8e8b70270cbeb00639930b6b5`, established the following before the repository documentation gate:
+
+- selected v6 contract tests: **passed** (`36 passed`);
+- production category/HGB refit: **passed**;
+- production refit time: approximately `92.3s` on the GitHub-hosted CPU runner;
+- peak production-refit RAM: approximately `0.736 GiB`;
+- exact verified v5 six-signal base SHA: **passed**;
+- v6 candidate ZIP creation/integrity: **passed**;
+- candidate ZIP bytes: `1,143,630,143`;
+- candidate SHA-256: `20c5f128e43c5303893301f012726381df06a4e20d027ea054acf36e0f6aae40`;
+- exact organizer-image offline/read-only 64-row smoke: **passed**;
+- output columns/order/finite/nonconstant checks: **passed**;
+- CPU smoke phase times: load `6.696s`, structured `0.913s`, contrastive `7.864s`, gate `0.002s`, teacher `8.654s`, meta `0.008s`, write `0.003s`;
+- CPU smoke total: `24.14s`;
+- full repository suite after smoke: `264 passed, 1 failed, 91 warnings`.
+
+The single full-suite failure was documentation policy only:
+
+- stale `CURRENT.status=production_verified`, outside the allowed policy enum;
+- experiment index used a bold-formatted v5 row that did not satisfy the literal policy lookup.
+
+There was no model, inference or organizer-smoke failure at that point. The pre-policy candidate is not retained as final because the workflow correctly stopped before upload/release/artifact publication.
+
+The canonical state has now been moved to v6 `in_progress`, a canonical v6 `PLAN.md` has been added, and the experiment index/handoff state have been corrected. A fresh full gate is required; no previous ZIP SHA is reused as final evidence.
+
+## Final packaging target
 
 Final archive target:
 
 `ecup-v6-fast-gate95-0.6006003615-submission.zip`
 
-Production packaging, exact organizer-image smoke, full tests, SHA-256, RTX 2060 benchmark and final artifact provenance are recorded only after those steps actually pass. No runtime figure is inferred from the OOF experiments.
+The final archive must be rebuilt from a GREEN repository. Exact organizer smoke, full tests, SHA-256/provenance, private HF upload, GitHub artifact and exact-byte RTX 2060 full runtime must all refer to the rebuilt artifact.
+
+## GPU verification contract
+
+The authoritative runtime measurement uses self-hosted `ecup-rtx2060`:
+
+- NVIDIA GeForce RTX 2060 SUPER;
+- 8 GiB VRAM;
+- exact organizer image;
+- `--gpus all`;
+- network disabled;
+- exact release ZIP SHA verified before execution;
+- benchmark samples plus a full reference `matches.parquet` run;
+- per-phase v6 timing captured as an immutable artifact.
+
+No CPU smoke duration or sample extrapolation is accepted as the final runtime figure.
 
 ## Leaderboard status
 
