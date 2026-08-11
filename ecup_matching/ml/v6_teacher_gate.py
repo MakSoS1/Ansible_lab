@@ -5,9 +5,10 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 
 from .v5_fixed_blend import percentile_rank
-from .v5_meta_blend import SIX_SIGNAL_NAMES
+from .v5_production import FINAL_SIGNAL_NAMES
 
 
+SIX_SIGNAL_NAMES = FINAL_SIGNAL_NAMES
 GATE_COVERAGES = (0.25, 0.40, 0.55, 0.70, 0.85, 0.95)
 NON_TEACHER_SIGNALS = (
     "weak",
