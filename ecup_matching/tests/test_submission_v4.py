@@ -120,6 +120,7 @@ def test_build_submission_v4_rejects_manifest_without_positive_neural_route(tmp_
         json.dumps(
             {
                 "version": "v4-strong-reranker",
+                "base_model": "ai-forever/ruBert-base",
                 "base_model_revision": "43be4261797042e172adf7476c558734f3cbb2a0",
                 "category_alphas": {"__global__": 0.0},
             }
