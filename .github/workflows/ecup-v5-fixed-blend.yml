@@ -16,6 +16,9 @@ env:
   SPARSE_PREFIX: experiments/v5/sparse-specialists/634ee66890c3
   EXPLICIT_PREFIX: experiments/v5/explicit-specialists/cb350b4e7ba6
   CONTRASTIVE_PREFIX: experiments/v5/contrastive-sprint/b30821f613bf/aggregate
+  TEACHER2_PREFIX: experiments/v5/teacher2/411a5349fe73
+  WEIGHTED_PREFIX: experiments/v5/weighted-specialists/9df24f7ee133/aggregate
+  PRETRAINED_PREFIX: experiments/v5/pretrained/d812ad8d6a00
   SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
   BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
 jobs:
@@ -38,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/sparse" "$RUNNER_TEMP/explicit" "$RUNNER_TEMP/out"
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/sparse" "$RUNNER_TEMP/explicit" "$RUNNER_TEMP/teacher2" "$RUNNER_TEMP/out"
           curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/matches.parquet" "$BASE_URL/matches.parquet"
           curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/items_human.parquet" "$BASE_URL/items_human.parquet"
           python - <<'PY'
@@ -50,14 +53,18 @@ jobs:
               (f"{os.environ['CATEGORY_PREFIX']}/v5b-category-oof.parquet", 'private'),
               (f"{os.environ['WEAK_PREFIX']}/v5e-weak-specialist-oof.parquet", 'private'),
               (f"{os.environ['CONTRASTIVE_PREFIX']}/v5d-contrastive-sprint-oof.parquet", 'private'),
+              (f"{os.environ['WEIGHTED_PREFIX']}/v5b-weighted-specialist-oof.parquet", 'private'),
+              (f"{os.environ['PRETRAINED_PREFIX']}/v5c-pretrained-oof.parquet", 'private'),
           ]
           for filename, local in fixed:
               print('download', hf_hub_download(repo_id=repo,repo_type='dataset',filename=filename,token=token,local_dir=os.path.join(root,local)))
           for fold in range(5):
               sparse=f"{os.environ['SPARSE_PREFIX']}/fold-{fold}/v5-sparse-fold-{fold}-oof.parquet"
               explicit=f"{os.environ['EXPLICIT_PREFIX']}/fold-{fold}/v5-explicit-fold-{fold}-oof.parquet"
+              teacher=f"{os.environ['TEACHER2_PREFIX']}/fold-{fold}/v5g-teacher2-fold-{fold}-oof.parquet"
               print('download', hf_hub_download(repo_id=repo,repo_type='dataset',filename=sparse,token=token,local_dir=os.path.join(root,'sparse')))
               print('download', hf_hub_download(repo_id=repo,repo_type='dataset',filename=explicit,token=token,local_dir=os.path.join(root,'explicit')))
+              print('download', hf_hub_download(repo_id=repo,repo_type='dataset',filename=teacher,token=token,local_dir=os.path.join(root,'teacher2')))
           PY
       - name: Evaluate predeclared label-free fusions
         shell: bash
@@ -72,6 +79,9 @@ jobs:
             --sparse-fold-dir "$RUNNER_TEMP/sparse" \
             --explicit-fold-dir "$RUNNER_TEMP/explicit" \
             --contrastive-oof "$RUNNER_TEMP/private/$CONTRASTIVE_PREFIX/v5d-contrastive-sprint-oof.parquet" \
+            --teacher2-fold-dir "$RUNNER_TEMP/teacher2" \
+            --weighted-oof "$RUNNER_TEMP/private/$WEIGHTED_PREFIX/v5b-weighted-specialist-oof.parquet" \
+            --pretrained-oof "$RUNNER_TEMP/private/$PRETRAINED_PREFIX/v5c-pretrained-oof.parquet" \
             --output-dir "$RUNNER_TEMP/out" \
             --expected-split-sha "$SPLIT_SHA"
           python - <<'PY'
@@ -81,13 +91,12 @@ jobs:
           assert m['gold_metric_opened'] is False and m['gold_rows_scored']==0
           assert m['target_fitted_blender'] is False
           print('sources',m['source_metrics'])
-          print('previous_best',m['previous_best_name'],m['previous_best_macro_average_precision'])
-          for name, report in m['candidates'].items():
-              print('initial',name,report['macro_average_precision'],'delta_explicit',report['delta_vs_explicit'],'eligible',report['keep_eligible'])
-          for name, report in m['rank_ablation_candidates'].items():
-              print('ablation',name,report['macro_average_precision'],'delta_previous',report['delta_vs_previous_best'],'min_fold_delta',report['min_fold_delta_vs_previous_best'],'eligible',report['keep_eligible'])
-          print('best',m['best_observed_name'],m['best_observed_macro_average_precision'],'delta_previous',m['best_observed_delta_vs_previous_best'])
-          print('ablation_eligible',m['rank_ablation_keep_eligible_candidates'])
+          print('orthogonal_sources',m['orthogonal_source_metrics'])
+          print('current_clean',m['current_clean_name'],m['current_clean_macro_average_precision'])
+          for name, report in m['orthogonal_rank_candidates'].items():
+              print('orthogonal',name,report['macro_average_precision'],'delta_current',report['delta_vs_current_clean'],'min_fold_delta',report['min_fold_delta_vs_current_clean'],'eligible',report['keep_eligible'])
+          print('best',m['best_observed_name'],m['best_observed_macro_average_precision'],'delta_current',m['best_observed_delta_vs_current_clean'])
+          print('orthogonal_eligible',m['orthogonal_keep_eligible_candidates'])
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -109,4 +118,4 @@ jobs:
           print('private_prefix',prefix)
           PY
       - if: always()
-        run: rm -rf "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/sparse" "$RUNNER_TEMP/explicit" "$RUNNER_TEMP/out"
+        run: rm -rf "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/sparse" "$RUNNER_TEMP/explicit" "$RUNNER_TEMP/teacher2" "$RUNNER_TEMP/out"
