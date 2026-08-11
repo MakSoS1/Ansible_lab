@@ -238,3 +238,46 @@ def typed_explicit_rank_candidates(
         "current5_plus_typed_explicit": add,
         "current5_replace_explicit_with_typed": replace,
     }
+
+
+def normalized_retrain_rank_candidates(
+    base5_scores: Mapping[str, object],
+    *,
+    typed_explicit_scores,
+    normalized_explicit_scores,
+    normalized_category_scores,
+) -> dict[str, np.ndarray]:
+    """Build the four target-free normalized-retrain candidates frozen before retrains finished."""
+    base5, row_count = _validated_named_sources(base5_scores, _FIVE_SIGNAL_NAMES)
+    typed = _finite_1d(typed_explicit_scores, name="typed_explicit")
+    normalized_explicit = _finite_1d(normalized_explicit_scores, name="normalized_explicit")
+    normalized_category = _finite_1d(normalized_category_scores, name="normalized_category")
+    if not (len(typed) == len(normalized_explicit) == len(normalized_category) == row_count):
+        raise ValueError("normalized retrain score sources must have equal length")
+
+    ranks = {name: percentile_rank(values) for name, values in base5.items()}
+    typed_rank = percentile_rank(typed)
+    normalized_explicit_rank = percentile_rank(normalized_explicit)
+    normalized_category_rank = percentile_rank(normalized_category)
+
+    current6_ranks = [ranks[name] for name in _FIVE_SIGNAL_NAMES] + [typed_rank]
+    add_explicit = np.mean(np.vstack(current6_ranks + [normalized_explicit_rank]), axis=0)
+    replace_typed = np.mean(
+        np.vstack([ranks[name] for name in _FIVE_SIGNAL_NAMES] + [normalized_explicit_rank]),
+        axis=0,
+    )
+    replace_old = np.mean(
+        np.vstack(
+            [ranks[name] for name in ("weak", "sparse", "contrastive", "teacher")]
+            + [normalized_explicit_rank, typed_rank]
+        ),
+        axis=0,
+    )
+    add_category = np.mean(np.vstack(current6_ranks + [normalized_category_rank]), axis=0)
+
+    return {
+        "current6_plus_normalized_explicit": add_explicit,
+        "current6_replace_typed_with_normalized_explicit": replace_typed,
+        "current6_replace_old_explicit_with_normalized_explicit": replace_old,
+        "current6_plus_normalized_category": add_category,
+    }
