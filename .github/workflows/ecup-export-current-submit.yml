@@ -1,0 +1,52 @@
+name: E-CUP export current frozen submit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-export-current-submit.yml
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  V4_PATH: submissions/v4/canonical/b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849/ecup-v4-submission.zip
+  V4_SHA: b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'huggingface_hub>=0.34,<1'
+      - name: Download immutable canonical v4 submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/out"
+          python - <<'PY'
+          import os, shutil
+          from huggingface_hub import hf_hub_download
+          src=hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+              filename=os.environ['V4_PATH'], token=os.environ['HF_TOKEN'])
+          shutil.copy2(src, os.path.join(os.environ['RUNNER_TEMP'],'out','ecup-current-best-ready-submission.zip'))
+          PY
+          echo "$V4_SHA  $RUNNER_TEMP/out/ecup-current-best-ready-submission.zip" | sha256sum -c -
+          sha256sum "$RUNNER_TEMP/out/ecup-current-best-ready-submission.zip" > "$RUNNER_TEMP/out/SHA256SUMS.txt"
+          stat -c 'bytes=%s' "$RUNNER_TEMP/out/ecup-current-best-ready-submission.zip"
+          unzip -t "$RUNNER_TEMP/out/ecup-current-best-ready-submission.zip" >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-current-best-ready-submission
+          path: |
+            ${{ runner.temp }}/out/ecup-current-best-ready-submission.zip
+            ${{ runner.temp }}/out/SHA256SUMS.txt
+          retention-days: 14
