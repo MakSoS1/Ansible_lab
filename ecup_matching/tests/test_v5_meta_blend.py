@@ -4,6 +4,7 @@ import pytest
 from ecup_matching.ml.v5_meta_blend import (
     SIX_SIGNAL_NAMES,
     crossfit_global_simplex_blend,
+    crossfit_nested_category_logistic,
     fit_simplex_weights,
 )
 
@@ -122,3 +123,53 @@ def test_crossfit_rejects_missing_signal_or_nonfinite_score():
     bad["weak"][0] = np.nan
     with pytest.raises(ValueError, match="finite"):
         crossfit_global_simplex_blend(bad, target, categories, folds)
+
+
+def test_nested_category_logistic_does_not_use_outer_fold_labels():
+    n = 160
+    scores = _toy_scores(n)
+    folds = np.arange(n, dtype=np.int16) % 5
+    categories = np.asarray(["a", "b", "c", "d"] * (n // 4))
+    base = np.asarray(scores["sparse"] + 0.35 * scores["typed_explicit"])
+    category_effect = np.choose(
+        np.arange(n) % 4,
+        [scores["explicit"], scores["contrastive"], scores["teacher"], -scores["weak"]],
+    )
+    target = (base + 0.25 * category_effect > np.median(base)).astype(np.int8)
+
+    first = crossfit_nested_category_logistic(
+        scores,
+        target,
+        categories,
+        folds,
+        c_grid=(0.1, 1.0),
+        max_iter=120,
+    )
+
+    changed = target.copy()
+    changed[folds == 0] = 1 - changed[folds == 0]
+    second = crossfit_nested_category_logistic(
+        scores,
+        changed,
+        categories,
+        folds,
+        c_grid=(0.1, 1.0),
+        max_iter=120,
+    )
+
+    held_out = folds == 0
+    assert np.allclose(first["oof_score"][held_out], second["oof_score"][held_out])
+    assert first["selected_c"][0] == second["selected_c"][0]
+    assert set(first["selected_c"]) == {0, 1, 2, 3, 4}
+    assert np.isfinite(first["oof_score"]).all()
+
+
+def test_nested_category_logistic_rejects_too_few_outer_folds():
+    n = 48
+    scores = _toy_scores(n)
+    target = (np.arange(n) % 2).astype(np.int8)
+    categories = np.asarray(["a", "b"] * (n // 2))
+    folds = np.arange(n, dtype=np.int16) % 2
+
+    with pytest.raises(ValueError, match="at least three outer folds"):
+        crossfit_nested_category_logistic(scores, target, categories, folds)
