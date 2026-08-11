@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .features import normalize_items
 from .v5_attribute_evidence import build_attribute_evidence_features, fit_attribute_evidence
 from .v5_evaluation import macro_ap_report
 from .v5_residual import clipped_logit
@@ -52,6 +53,11 @@ def crossfit_attribute_evidence_stack(
     if evidence_clip <= 0:
         raise ValueError("evidence_clip must be positive")
 
+    # Parsing hundreds of thousands of attribute JSON blobs is the expensive
+    # part. Cache normalized development items once; all fold-specific learning
+    # still uses only the corresponding train rows and therefore does not leak
+    # held-fold labels.
+    item_cache = normalize_items(items)
     scores = np.full(len(frame), np.nan, dtype=np.float64)
     evidence_scores = np.full(len(frame), np.nan, dtype=np.float64)
     fold_reports: list[dict[str, Any]] = []
@@ -66,8 +72,14 @@ def crossfit_attribute_evidence_stack(
             train,
             min_support=min_support,
             smoothing=smoothing,
+            item_cache=item_cache,
         )
-        held_features = build_attribute_evidence_features(items, valid, learned)
+        held_features = build_attribute_evidence_features(
+            items,
+            valid,
+            learned,
+            item_cache=item_cache,
+        )
         held_evidence = held_features["attr_evidence_sum"].to_numpy(dtype=np.float64)
         held_evidence = np.clip(held_evidence, -float(evidence_clip), float(evidence_clip))
         held_score = _expit(clipped_logit(base[valid_mask]) + held_evidence)
