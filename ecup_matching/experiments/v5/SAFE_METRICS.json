@@ -11,19 +11,9 @@
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
     "gold_metric_opened": false,
     "gold_rows_scored": 0,
-    "baseline_oof_macro_ap": 0.5315527708634168,
-    "baseline_fold_macro_ap": [
-      0.535137201283413,
-      0.5293875046954674,
-      0.5375146978687112,
-      0.531512424671052,
-      0.5337619678140229
-    ]
+    "baseline_oof_macro_ap": 0.5315527708634168
   },
-  "production_anchor": {
-    "version": "v2",
-    "hidden_macro_ap": 0.2583231811423486
-  },
+  "production_anchor": {"version": "v2", "hidden_macro_ap": 0.2583231811423486},
   "completed_experiments": {
     "category_specialists": {
       "decision": "keep",
@@ -35,7 +25,6 @@
       "decision": "reject",
       "oof_macro_ap": 0.523218903672764,
       "delta_vs_audit_baseline": -0.008333867190652766,
-      "all_folds_improved": false,
       "all_folds_regressed": true
     },
     "pretrained_biencoder": {
@@ -48,13 +37,7 @@
       "decision": "diagnostic_oof_input_only",
       "oof_macro_ap": 0.5498696731704964,
       "delta_vs_category_base": 0.0021916070369185636,
-      "fold_deltas": [
-        0.0021354161959221685,
-        0.004859795667646272,
-        -0.00031919882576014746,
-        -0.0009191637590409973,
-        0.004585239432923327
-      ]
+      "fold_deltas": [0.0021354161959221685, 0.004859795667646272, -0.00031919882576014746, -0.0009191637590409973, 0.004585239432923327]
     },
     "weak_category_specialists": {
       "decision": "keep",
@@ -75,13 +58,7 @@
       "source_commit": "7a1c1764a2bdda8f007b9bfea7d088911623e7f0",
       "oof_macro_ap": 0.559512531439709,
       "delta_vs_category_base": 0.011834465306131192,
-      "fold_macro_ap": [
-        0.562580065789817,
-        0.5605549739646596,
-        0.5667063354890245,
-        0.5579194708823281,
-        0.5631351691480011
-      ],
+      "fold_macro_ap": [0.562580065789817, 0.5605549739646596, 0.5667063354890245, 0.5579194708823281, 0.5631351691480011],
       "all_folds_improved": true
     },
     "sparse_category_specialists": {
@@ -90,32 +67,29 @@
       "source_commit": "634ee66890c39ad97c0fa725135b1b00e56ac126",
       "oof_macro_ap": 0.5651306838802859,
       "delta_vs_category_base": 0.017452617746708032,
-      "fold_macro_ap": [
-        0.5638679943688357,
-        0.5644112795204157,
-        0.5729250493264109,
-        0.5646827428419179,
-        0.5676889194024459
-      ],
-      "all_folds_improved": true,
-      "gold_metric_opened": false,
-      "gold_rows_scored": 0
+      "fold_macro_ap": [0.5638679943688357, 0.5644112795204157, 0.5729250493264109, 0.5646827428419179, 0.5676889194024459],
+      "all_folds_improved": true
     },
     "supervised_contrastive": {
-      "decision": "current_development_best_keep",
+      "decision": "keep",
       "workflow_run_id": 31483288887,
       "source_commit": "b30821f613bf7051da51c42b64c7f79361d5619c",
       "oof_macro_ap": 0.5662217062664492,
       "delta_vs_category_base": 0.018543640132871353,
-      "delta_vs_audit_baseline": 0.0346689354030324,
       "raw_semantic_cosine_macro_ap": 0.40597111640267125,
-      "fold_macro_ap": [
-        0.5692965046798911,
-        0.5683388560864314,
-        0.5694312406050667,
-        0.5632500994392833,
-        0.5684466083884651
-      ],
+      "fold_macro_ap": [0.5692965046798911, 0.5683388560864314, 0.5694312406050667, 0.5632500994392833, 0.5684466083884651],
+      "all_folds_improved": true
+    },
+    "explicit_attribute_specialists": {
+      "decision": "current_development_best_keep",
+      "workflow_run_id": 31485990777,
+      "source_commit": "cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57",
+      "metrics_artifact_id": 9100228112,
+      "metrics_artifact_digest": "6417c94041c3443f03acf85227dceb94e65abea668d1b33bc6dc477f41f5a8fb",
+      "oof_macro_ap": 0.5683065131240066,
+      "delta_vs_category_base": 0.02062844699042876,
+      "delta_vs_audit_baseline": 0.036753742260589806,
+      "fold_macro_ap": [0.5706378464826163, 0.5682631251392076, 0.5754313094571646, 0.5633705139683869, 0.5731185912680369],
       "all_folds_improved": true,
       "gold_metric_opened": false,
       "gold_rows_scored": 0
@@ -124,26 +98,20 @@
       "decision": "integration_failure_before_metrics_not_model_reject",
       "workflow_run_id": 31485127564,
       "source_commit": "00cc48dca806752d92496fa79f703a9ce3bcce63",
-      "failure_type": "TypeError",
       "failure_summary": "build_reranker_examples called without required attribute_importance argument",
       "comparable_oof_produced": false
     }
   },
   "active_experiments": {
-    "explicit_attribute_specialists": {
-      "workflow_run_id": 31485990777,
-      "source_commit": "cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57",
-      "status": "in_progress"
-    },
     "field_aware_weak_teacher": {
       "workflow_run_id": 31486298300,
       "source_commit": "411a5349fe731506757fdc1a3c8857a370225fb8",
       "status": "in_progress"
     }
   },
-  "current_development_best_oof_macro_ap": 0.5662217062664492,
+  "current_development_best_oof_macro_ap": 0.5683065131240066,
   "stretch_target_oof_macro_ap": 0.6,
-  "remaining_gap_to_target": 0.0337782937335508,
+  "remaining_gap_to_target": 0.0316934868759934,
   "v5_submission_retained": false,
   "sealed_gold_evaluated": false
 }
