@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .metrics import macro_average_precision
+from .metrics import OFFICIAL_CATEGORIES, macro_average_precision
 
 
 def macro_ap_report(
@@ -16,6 +16,7 @@ def macro_ap_report(
     *,
     category_col: str = "category",
     target_col: str = "target",
+    strict_official: bool = False,
 ) -> dict[str, Any]:
     if target_col not in frame.columns or category_col not in frame.columns:
         raise ValueError(f"frame must contain {target_col!r} and {category_col!r}")
@@ -26,6 +27,8 @@ def macro_ap_report(
         frame[target_col].to_numpy(),
         score,
         frame[category_col].astype(str).to_numpy(),
+        expected_categories=OFFICIAL_CATEGORIES if strict_official else None,
+        require_both_classes=bool(strict_official),
     )
     return {
         "rows": int(len(frame)),
