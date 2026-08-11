@@ -5,7 +5,6 @@ import json
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from .benchmark_v4_cuda import sample_benchmark_pairs
@@ -43,7 +42,8 @@ def benchmark_v7_cuda(
     base_model_revision: str,
     max_length: int = 256,
     max_chars: int = 900,
-    physical_batch_size: int = 2,
+    physical_batch_size: int = 8,
+    inference_batch_size: int = 64,
     benchmark_rows: int = 4096,
     warmup_rows: int = 256,
     seed: int = 2026,
@@ -53,6 +53,8 @@ def benchmark_v7_cuda(
 
     if max_length != 256:
         raise ValueError("v7 CUDA benchmark is pinned to max_length=256")
+    if physical_batch_size <= 0 or inference_batch_size <= 0:
+        raise ValueError("batch sizes must be positive")
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for the v7 benchmark")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -88,7 +90,7 @@ def benchmark_v7_cuda(
             texts=texts,
             device="cuda",
             max_length=max_length,
-            batch_size=16,
+            batch_size=inference_batch_size,
         )
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
@@ -99,7 +101,7 @@ def benchmark_v7_cuda(
         texts=texts,
         device="cuda",
         max_length=max_length,
-        batch_size=16,
+        batch_size=inference_batch_size,
     )
 
     training = train_pair_phase(
@@ -131,6 +133,7 @@ def benchmark_v7_cuda(
         "max_length": int(max_length),
         "max_chars": int(max_chars),
         "physical_batch_size": int(physical_batch_size),
+        "inference_batch_size_requested": int(inference_batch_size),
         "benchmark_rows": int(len(frame)),
         "warmup_rows": int(len(warm)),
         "examples_seen": int(len(frame)),
@@ -160,7 +163,8 @@ def main() -> int:
     parser.add_argument("--base-model-revision", default=DEFAULT_MODEL_REVISION)
     parser.add_argument("--max-length", type=int, default=256)
     parser.add_argument("--max-chars", type=int, default=900)
-    parser.add_argument("--physical-batch-size", type=int, default=2)
+    parser.add_argument("--physical-batch-size", type=int, default=8)
+    parser.add_argument("--inference-batch-size", type=int, default=64)
     parser.add_argument("--benchmark-rows", type=int, default=4096)
     parser.add_argument("--warmup-rows", type=int, default=256)
     parser.add_argument("--seed", type=int, default=2026)
@@ -174,6 +178,7 @@ def main() -> int:
         max_length=args.max_length,
         max_chars=args.max_chars,
         physical_batch_size=args.physical_batch_size,
+        inference_batch_size=args.inference_batch_size,
         benchmark_rows=args.benchmark_rows,
         warmup_rows=args.warmup_rows,
         seed=args.seed,
