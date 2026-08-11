@@ -12,6 +12,7 @@ _WS_RE = re.compile(r"\s+")
 _TOKEN_RE = re.compile(r"[\w]+", flags=re.UNICODE)
 _NUMBER_RE = re.compile(r"(?<!\w)\d+(?:[.,]\d+)?(?!\w)")
 _MODEL_RE = re.compile(r"\b(?=[a-zа-я0-9_-]*[a-zа-я])(?=[a-zа-я0-9_-]*\d)[a-zа-я0-9_-]{2,}\b", re.I)
+_MODEL_SEPARATOR_RE = re.compile(r"[-_]+")
 
 # Keep the parser intentionally conservative: every short unit below must be
 # sufficiently unambiguous when it appears immediately after a number. In
@@ -87,11 +88,7 @@ def _format_canonical_number(value: float) -> str:
 
 
 def canonical_attribute_value(value: Any) -> str:
-    """Normalize an attribute value while preserving typed quantity semantics.
-
-    This is intentionally label-free. Equivalent unit spellings receive the
-    same canonical marker while surrounding text remains part of the value.
-    """
+    """Normalize an attribute value while preserving typed quantity semantics."""
     text = clean_text(value)
     if not text:
         return ""
@@ -155,10 +152,15 @@ def extract_numbers(text: str) -> frozenset[str]:
     return frozenset(m.group(0).replace(",", ".") for m in _NUMBER_RE.finditer(text))
 
 
+def canonical_model_code(token: str) -> str:
+    """Normalize internal model/SKU separators without touching letters/digits."""
+    return _MODEL_SEPARATOR_RE.sub("", token.lower().strip("-_"))
+
+
 def extract_model_codes(text: str) -> frozenset[str]:
     result = set()
     for token in _MODEL_RE.findall(text):
-        token = token.lower().strip("-_")
+        token = canonical_model_code(token)
         if token and not re.fullmatch(r"\d+(?:gb|гб|mb|мб|tb|тб)", token):
             result.add(token)
     return frozenset(result)
