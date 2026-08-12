@@ -106,6 +106,8 @@ def category_distribution_report(
     report: dict[str, dict[str, object]] = {}
     for category, group in work.groupby("_category", sort=True):
         dist = target_distribution(group, target_col=target_col)
+        # Keep the soft-target mean semantically distinct from true binary prevalence.
+        dist["target_mean"] = dist.pop("mean")
         report[str(category)] = dist
     return report
 
