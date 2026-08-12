@@ -1,0 +1,66 @@
+name: E-CUP v8 create gate85 builder
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-create-gate85-builder.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ecup-v8-hardsku
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Generate exact gate85 specialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('ecup_matching/submission/build_submission_v8_gate70.py').read_text(encoding='utf-8')
+          s=src
+          replacements=[
+              ('EXPECTED_COVERAGE = 0.70','EXPECTED_COVERAGE = 0.85'),
+              ('EXPECTED_BASE_OOF = 0.598287140395421','EXPECTED_BASE_OOF = 0.5999300791828578'),
+              ('EXPECTED_GRAPH_OOF = 0.6000750225512788','EXPECTED_GRAPH_OOF = 0.6021573018691804'),
+              ('gate70','gate85'),
+              ('GATE70','GATE85'),
+              ("'v8-gate85-fp16-graph'","'v8-gate85-fp16-dualcache-graph'"),
+          ]
+          for old,new in replacements:
+              if old not in s:
+                  raise SystemExit(f'missing expected specialization marker: {old}')
+              s=s.replace(old,new)
+          # A final gate85 package is accepted only when the current exact
+          # dual-cache runtime is actually inside the import closure.
+          old="for marker in ('_structured_scores_streaming', 'run_structured_chunks', 'torch_autocast'):"
+          new="for marker in ('_structured_scores_streaming', 'run_structured_chunks', 'torch_autocast', 'build_dual_text_cache'):"
+          if old not in s: raise SystemExit('runtime marker tuple changed unexpectedly')
+          s=s.replace(old,new,1)
+          # Record the specific runtime optimization in immutable metadata.
+          old_meta="'teacher_batch_rtx2060': 96,\n                'closure_files': list(copied),"
+          new_meta="'teacher_batch_rtx2060': 96,\n                'dual_text_cache_exact': True,\n                'dual_text_cache_workers': 'same safe CPU worker count as structured',\n                'closure_files': list(copied),"
+          if old_meta not in s: raise SystemExit('runtime metadata block changed unexpectedly')
+          s=s.replace(old_meta,new_meta,1)
+          Path('ecup_matching/submission/build_submission_v8_gate85.py').write_text(s,encoding='utf-8')
+          PY
+          python -m compileall -q ecup_matching/submission/build_submission_v8_gate85.py
+          grep -q 'EXPECTED_COVERAGE = 0.85' ecup_matching/submission/build_submission_v8_gate85.py
+          grep -q '0.6021573018691804' ecup_matching/submission/build_submission_v8_gate85.py
+          grep -q 'build_dual_text_cache' ecup_matching/submission/build_submission_v8_gate85.py
+          git diff --check
+      - name: Commit gate85 builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ecup_matching/submission/build_submission_v8_gate85.py
+          git commit -m 'feat: add exact gate85 dual-cache submission builder'
+          git push origin HEAD:ecup-v8-hardsku
