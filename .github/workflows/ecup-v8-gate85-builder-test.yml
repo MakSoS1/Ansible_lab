@@ -25,4 +25,5 @@ jobs:
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
       - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      # Explicit post-generation gate: exact gate85 refit + graph + dual-cache runtime.
       - run: python -m pytest ecup_matching/tests/test_build_submission_v8_gate85.py -q
