@@ -1,0 +1,65 @@
+name: E-CUP v8 apply text cache optimization
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-apply-text-cache.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ecup-v8-hardsku
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Apply deterministic production patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('ecup_matching/submission/predict_v6.py')
+          s=p.read_text(encoding='utf-8')
+          replacements=[]
+          replacements.append((
+          '''from ecup_matching.submission.v6_parallel import (\n    parallel_supported,\n    resolve_worker_count,\n    run_structured_chunks,\n)\n''',
+          '''from ecup_matching.submission.v6_parallel import (\n    parallel_supported,\n    resolve_worker_count,\n    run_structured_chunks,\n)\nfrom ecup_matching.submission.v6_text_cache import build_dual_text_cache\n'''))
+          replacements.append((
+          '''    legacy_item_text,\n    norm_cache: dict[object, object] | None = None,\n) -> np.ndarray:\n    import torch\n    from transformers import AutoModel, AutoTokenizer\n\n    config = _runtime_config()\n    device = config.device\n    active_batch = int(config.contrastive_batch)\n    texts = _legacy_text_cache(\n        items, legacy_textnorm, legacy_item_text, teacher=False, norm_cache=norm_cache\n    )\n''',
+          '''    legacy_item_text,\n    norm_cache: dict[object, object] | None = None,\n    text_cache: dict[object, str] | None = None,\n) -> np.ndarray:\n    import torch\n    from transformers import AutoModel, AutoTokenizer\n\n    config = _runtime_config()\n    device = config.device\n    active_batch = int(config.contrastive_batch)\n    texts = text_cache\n    if texts is None:\n        texts = _legacy_text_cache(\n            items, legacy_textnorm, legacy_item_text, teacher=False, norm_cache=norm_cache\n        )\n'''))
+          replacements.append((
+          '''    legacy_item_text,\n    norm_cache: dict[object, object] | None = None,\n) -> np.ndarray:\n    import torch\n    from transformers import AutoModelForSequenceClassification, AutoTokenizer\n''',
+          '''    legacy_item_text,\n    norm_cache: dict[object, object] | None = None,\n    text_cache: dict[object, str] | None = None,\n) -> np.ndarray:\n    import torch\n    from transformers import AutoModelForSequenceClassification, AutoTokenizer\n'''))
+          replacements.append((
+          '''    active_batch = int(config.teacher_batch)\n    texts = _legacy_text_cache(\n        items, legacy_textnorm, legacy_item_text, teacher=True, norm_cache=norm_cache\n    )\n''',
+          '''    active_batch = int(config.teacher_batch)\n    texts = text_cache\n    if texts is None:\n        texts = _legacy_text_cache(\n            items, legacy_textnorm, legacy_item_text, teacher=True, norm_cache=norm_cache\n        )\n'''))
+          replacements.append((
+          '''    config = _runtime_config()\n    print(\n        f"[v6] device={config.device} contrastive_batch={config.contrastive_batch} "\n        f"teacher_batch={config.teacher_batch}",\n        flush=True,\n    )\n\n    item_norm_cache: dict[object, object] = {}\n    contrastive = _contrastive_scores_fast(\n        items,\n        pairs,\n        contrastive_model_dir,\n        legacy_textnorm,\n        legacy_item_text,\n        norm_cache=item_norm_cache,\n    )\n    previous = _phase("contrastive", started, previous)\n''',
+          '''    # Build both neural text views before CUDA initialization so the fork\n    # workers never inherit a CUDA context.  The dual cache normalizes each item\n    # once and emits byte-identical legacy contrastive/teacher strings.\n    contrastive_text_cache, teacher_text_cache = build_dual_text_cache(\n        items,\n        legacy_textnorm,\n        legacy_item_text,\n        workers=structured_workers,\n    )\n    previous = _phase("text_cache", started, previous)\n\n    config = _runtime_config()\n    print(\n        f"[v6] device={config.device} contrastive_batch={config.contrastive_batch} "\n        f"teacher_batch={config.teacher_batch}",\n        flush=True,\n    )\n\n    contrastive = _contrastive_scores_fast(\n        items,\n        pairs,\n        contrastive_model_dir,\n        legacy_textnorm,\n        legacy_item_text,\n        text_cache=contrastive_text_cache,\n    )\n    del contrastive_text_cache\n    gc.collect()\n    previous = _phase("contrastive", started, previous)\n'''))
+          replacements.append((
+          '''        teacher_model_dir,\n        legacy_textnorm,\n        legacy_item_text,\n        norm_cache=item_norm_cache,\n    )\n    del item_norm_cache\n    gc.collect()\n''',
+          '''        teacher_model_dir,\n        legacy_textnorm,\n        legacy_item_text,\n        text_cache=teacher_text_cache,\n    )\n    del teacher_text_cache\n    gc.collect()\n'''))
+          for i,(old,new) in enumerate(replacements,1):
+              count=s.count(old)
+              if count != 1:
+                  raise SystemExit(f'replacement {i} expected exactly once, found {count}')
+              s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          python -m compileall -q ecup_matching/submission/predict_v6.py ecup_matching/submission/v6_text_cache.py
+          git diff --check
+          git diff -- ecup_matching/submission/predict_v6.py ecup_matching/submission/v6_text_cache.py
+      - name: Commit runtime patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ecup_matching/submission/predict_v6.py ecup_matching/submission/v6_text_cache.py
+          git commit -m 'perf: parallelize exact neural text preprocessing'
+          git push origin HEAD:ecup-v8-hardsku
