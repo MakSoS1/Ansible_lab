@@ -1,0 +1,58 @@
+name: E-CUP v7 submission contract CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-v7-submission, ecup-v7-neural]
+    paths:
+      - .github/workflows/ecup-v7-submission-ci.yml
+      - ecup_matching/ci/runtime_closure_v7.py
+      - ecup_matching/ml/v7_item_text.py
+      - ecup_matching/ml/v7_neural.py
+      - ecup_matching/submission/predict_v7.py
+      - ecup_matching/submission/run_v7.py
+      - ecup_matching/tests/test_v7_submission_contract.py
+      - ecup_matching/tests/test_v7_package_closure.py
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CI dependencies plus a CPU torch
+        run: |
+          python -m pip install -r ecup_matching/requirements-ci.txt
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.2,<3"
+          python -m pip install "transformers>=4.40,<5"
+      - name: Report the installed runtime versions
+        run: |
+          python - <<'PY'
+          import torch, transformers, sklearn, pandas, pyarrow
+          print(f"torch={torch.__version__} transformers={transformers.__version__}")
+          print(f"sklearn={sklearn.__version__} pandas={pandas.__version__} pyarrow={pyarrow.__version__}")
+          PY
+      - name: v7 submission contract tests
+        # -p no:randomly and -W error::pytest.PytestUnraisableExceptionWarning are
+        # deliberately omitted; what matters is that nothing is silently skipped.
+        run: |
+          python -m pytest -q -rs \
+            ecup_matching/tests/test_v7_submission_contract.py \
+            ecup_matching/tests/test_v7_package_closure.py
+      - name: Fail if any contract test was skipped
+        run: |
+          python -m pytest -q -rs ecup_matching/tests/test_v7_submission_contract.py 2>&1 | tee /tmp/v7.txt
+          if grep -qE "^SKIPPED|[0-9]+ skipped" /tmp/v7.txt; then
+            echo "::error::v7 contract tests must not skip; torch/transformers must be importable"
+            exit 1
+          fi
+      - name: Full repository suite
+        run: python -m pytest -q ecup_matching/tests
+      - name: Memory and documentation policy
+        run: python scripts/memory_policy.py

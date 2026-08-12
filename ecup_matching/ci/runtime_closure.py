@@ -16,6 +16,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = "ecup_matching"
 ENTRYPOINTS: tuple[str, ...] = ("ecup_matching.submission.run_v6",)
+V7_ENTRYPOINTS: tuple[str, ...] = ("ecup_matching.submission.run_v7",)
 
 # Resolved at runtime from the pinned ``legacy_ecup`` tree that the verified v5
 # base archive ships at its own top level, not through ``ecup_matching``.
@@ -69,10 +70,10 @@ def _first_party_imports(path: Path, module: str) -> set[str]:
     return found
 
 
-def runtime_modules() -> list[str]:
+def runtime_modules(entrypoints: tuple[str, ...] = ENTRYPOINTS) -> list[str]:
     """Dotted names of every first-party module reachable from the entrypoints."""
     seen: set[str] = set()
-    queue = list(ENTRYPOINTS)
+    queue = list(entrypoints)
     while queue:
         module = queue.pop()
         if module in seen or module_path(module) is None:
@@ -82,10 +83,12 @@ def runtime_modules() -> list[str]:
     return sorted(seen)
 
 
-def runtime_import_closure() -> list[str]:
+def runtime_import_closure(
+    entrypoints: tuple[str, ...] = ENTRYPOINTS,
+) -> list[str]:
     """Archive-relative source paths that the submission must contain."""
     paths: set[str] = set(PACKAGE_MARKERS)
-    for module in runtime_modules():
+    for module in runtime_modules(entrypoints):
         path = module_path(module)
         assert path is not None
         paths.add(str(path.relative_to(REPO_ROOT)))
@@ -97,12 +100,15 @@ def runtime_import_closure() -> list[str]:
     return sorted(paths)
 
 
-def copy_runtime_closure(destination: Path) -> list[str]:
+def copy_runtime_closure(
+    destination: Path,
+    entrypoints: tuple[str, ...] = ENTRYPOINTS,
+) -> list[str]:
     """Copy every runtime module into an extracted submission tree."""
     import shutil
 
     copied: list[str] = []
-    for relative in runtime_import_closure():
+    for relative in runtime_import_closure(entrypoints):
         source = REPO_ROOT / relative
         target = Path(destination) / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -116,9 +122,12 @@ def copy_runtime_closure(destination: Path) -> list[str]:
     return copied
 
 
-def missing_from(destination: Path) -> list[str]:
+def missing_from(
+    destination: Path,
+    entrypoints: tuple[str, ...] = ENTRYPOINTS,
+) -> list[str]:
     root = Path(destination)
-    return [rel for rel in runtime_import_closure() if not (root / rel).is_file()]
+    return [rel for rel in runtime_import_closure(entrypoints) if not (root / rel).is_file()]
 
 
 if __name__ == "__main__":  # pragma: no cover - CI entrypoint
@@ -127,12 +136,17 @@ if __name__ == "__main__":  # pragma: no cover - CI entrypoint
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--copy-into", type=Path)
     parser.add_argument("--verify", type=Path)
+    parser.add_argument("--iteration", choices=("v6", "v7"), default="v6")
     args = parser.parse_args()
+    entrypoints = V7_ENTRYPOINTS if args.iteration == "v7" else ENTRYPOINTS
     if args.copy_into is not None:
-        for name in copy_runtime_closure(args.copy_into):
+        for name in copy_runtime_closure(args.copy_into, entrypoints):
             print(f"packaged {name}")
     if args.verify is not None:
-        gaps = missing_from(args.verify)
+        gaps = missing_from(args.verify, entrypoints)
         if gaps:
             raise SystemExit(f"submission archive is missing runtime modules: {gaps}")
-        print(f"runtime import closure verified: {len(runtime_import_closure())} modules")
+        print(
+            f"runtime import closure verified for {args.iteration}: "
+            f"{len(runtime_import_closure(entrypoints))} modules"
+        )
