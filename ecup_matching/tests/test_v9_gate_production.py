@@ -6,6 +6,9 @@ from pathlib import Path
 import pytest
 
 
+SPLIT_SHA = "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b"
+
+
 def test_gate40_refit_accepts_frozen_v9_metrics_and_preserves_sealed_gold(tmp_path, monkeypatch):
     from ecup_matching.ml import run_v9_gate_production as module
 
@@ -39,7 +42,7 @@ def test_gate40_refit_accepts_frozen_v9_metrics_and_preserves_sealed_gold(tmp_pa
         category_output_path=tmp_path / "category.json",
         hgb_output_path=tmp_path / "hgb.joblib",
         metadata_output_path=meta,
-        expected_split_sha="a" * 64,
+        expected_split_sha=SPLIT_SHA,
     )
 
     assert captured["coverage"] == pytest.approx(0.40)
@@ -73,5 +76,5 @@ def test_v9_gate40_rejects_metric_drift_before_touching_data(tmp_path):
             category_output_path=tmp_path / "category.json",
             hgb_output_path=tmp_path / "hgb.joblib",
             metadata_output_path=tmp_path / "meta.json",
-            expected_split_sha="a" * 64,
+            expected_split_sha=SPLIT_SHA,
         )
