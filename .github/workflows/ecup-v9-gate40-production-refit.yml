@@ -3,7 +3,10 @@ name: E-CUP v9 gate40 production refit
 on:
   push:
     branches: [ecup-v9-leaderboard-adapt]
-    paths: [.github/workflows/ecup-v9-gate40-production-refit.yml]
+    paths:
+      - .github/workflows/ecup-v9-gate40-production-refit.yml
+      - ecup_matching/ml/run_v9_gate_production.py
+      - ecup_matching/tests/test_v9_gate_production.py
   workflow_dispatch:
 
 permissions:
