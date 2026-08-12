@@ -1,0 +1,44 @@
+name: E-CUP v7 inspect private OOF evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-v7-neural]
+    paths:
+      - ".github/workflows/ecup-v7-private-index.yml"
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install "huggingface_hub>=0.34,<1"
+      - name: List only safe v5/v6 metric and OOF paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          paths = api.list_repo_files(repo_id=os.environ['HF_REPO_ID'], repo_type='dataset')
+          keys = ('teacher2', 'teacher', 'oof', 'meta', '0.6018115534', 'six-signal', 'category-hgb')
+          safe_ext = ('.json', '.parquet', '.npz', '.npy', '.csv')
+          selected = [p for p in paths if p.lower().endswith(safe_ext) and any(k in p.lower() for k in keys)]
+          print('selected_path_count', len(selected))
+          for path in selected[:500]:
+              print(path)
+          PY
