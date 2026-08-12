@@ -1,0 +1,99 @@
+{
+  "version": "v9",
+  "status": "in_progress",
+  "validation": {
+    "human_rows": 365654,
+    "development_rows": 285210,
+    "sealed_gold_rows": 80444,
+    "development_folds": 5,
+    "cross_split_item_overlap": 0,
+    "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "metric": "unweighted mean of sklearn average_precision_score over exactly 20 official categories",
+    "sealed_gold_opened": false,
+    "gold_rows_scored": 0
+  },
+  "leaderboard": {
+    "v7_score_observed_by_owner": 0.36,
+    "v7_anchor_used_for_fitting": false,
+    "v9_target_region": 0.5,
+    "v9_target_is_claimed_score": false,
+    "v9_measured_score": null
+  },
+  "target_stress": {
+    "prevalence_ratio": 0.566880890615799,
+    "diagnostic_only": true
+  },
+  "graph_config": {
+    "reciprocal_best_bonus": 0.0,
+    "reciprocal_top3_bonus": 0.0,
+    "endpoint_rank_weight": 0.02,
+    "ambiguity_penalty": 0.01
+  },
+  "gate25": {
+    "teacher_fraction": 0.25002279022474666,
+    "strict_oof_macro_average_precision": 0.5947115591000889,
+    "fold_local_graph_macro_average_precision": 0.5961903713277379,
+    "graph_delta": 0.0014788122276490068,
+    "all_graph_folds_positive": true,
+    "target_stress_mean": 0.45077792061326727,
+    "target_stress_std": 0.0016871298833520015,
+    "target_stress_p05": 0.44817877452510557,
+    "target_stress_p95": 0.4534007374014067,
+    "production_refit_run_id": 31640425364,
+    "production_artifact_id": 9158679674,
+    "role": "predeclared fallback"
+  },
+  "gate40": {
+    "teacher_fraction_oof": 0.400024543318958,
+    "strict_oof_macro_average_precision": 0.595505427416499,
+    "fold_local_graph_macro_average_precision": 0.597005931143384,
+    "graph_delta": 0.0015005037268849275,
+    "all_graph_folds_positive": true,
+    "target_stress_mean": 0.4515676235464289,
+    "target_stress_std": 0.0017001454087140482,
+    "target_stress_p05": 0.44892286713353785,
+    "target_stress_p95": 0.45420540803140086,
+    "selected_before_final_runtime": true,
+    "production_refit_run_id": 31639692541,
+    "production_artifact_id": 9158411928,
+    "production_teacher_fraction": 0.400025,
+    "production_elapsed_seconds": 74.4,
+    "production_peak_ram_gib": 0.736,
+    "production_refit_is_validation": false,
+    "private_hf_prefix": "experiments/v9/production/gate40/853a3925ac2b"
+  },
+  "candidate_package": {
+    "name": "ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip",
+    "build_run_id": 31640050373,
+    "release_tag": "ecup-v9-gate40-final-eb2bcf18d53e",
+    "bytes": 1251659961,
+    "sha256": "925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782",
+    "runtime_policy": {
+      "structured_worker_cap": 8,
+      "cuda_autocast": "float16",
+      "contrastive_batch_rtx2060": 256,
+      "teacher_batch_rtx2060": 96,
+      "outer_wall_acceptance_seconds": 700.0,
+      "watchdog_seconds": 720.0
+    }
+  },
+  "runtime_gate": {
+    "private_run_id": 31640233511,
+    "device": "NVIDIA GeForce RTX 2060 SUPER",
+    "organizer_image": true,
+    "rows": 275000,
+    "outer_wall_authoritative": true,
+    "acceptance_seconds": 700.0,
+    "watchdog_seconds": 720.0,
+    "return_code": null,
+    "output_valid": null,
+    "wall_seconds": null,
+    "headroom_seconds": null,
+    "passed": null
+  },
+  "v8_runtime_failure_reference": {
+    "inner_run_seconds": 731.22,
+    "outer_wall_seconds": 820.784,
+    "old_workflow_pass_marker_was_invalid": true
+  }
+}
