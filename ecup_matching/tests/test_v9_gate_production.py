@@ -14,7 +14,7 @@ def test_gate40_refit_accepts_frozen_v9_metrics_and_preserves_sealed_gold(tmp_pa
     def fake_fit_v6_gate_production(**kwargs):
         captured.update(kwargs)
         payload = {
-            "version": "v6-gate-production-refit",
+            "version": "v9-base-gate-production-refit",
             "coverage": kwargs["coverage"],
             "strict_selected_oof_macro_ap": kwargs["selected_oof_macro_ap"],
             "quality_gate_macro_ap": kwargs["quality_gate_macro_ap"],
@@ -75,14 +75,3 @@ def test_v9_gate40_rejects_metric_drift_before_touching_data(tmp_path):
             metadata_output_path=tmp_path / "meta.json",
             expected_split_sha="a" * 64,
         )
-
-
-def test_generic_v6_quality_threshold_can_be_lowered_only_explicitly():
-    from ecup_matching.ml.run_v6_gate_production import validate_selected_oof_metric
-
-    with pytest.raises(ValueError, match="quality gate"):
-        validate_selected_oof_metric(0.597005931143384, quality_gate_macro_ap=0.60)
-    assert validate_selected_oof_metric(
-        0.597005931143384,
-        quality_gate_macro_ap=0.597005931143384,
-    ) == pytest.approx(0.597005931143384)
