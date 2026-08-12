@@ -38,6 +38,7 @@ jobs:
           import ecup_matching.ml.benchmark_v7_cuda
           import ecup_matching.ml.run_v7_outer_oof
           import ecup_matching.ml.run_v7_outer_oof_fast
+          import ecup_matching.ml.run_v7_fold0_probe
           print('v7_gpu_driver_imports_ok')
           PY
       - name: memory policy
