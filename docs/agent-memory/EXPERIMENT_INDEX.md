@@ -14,7 +14,7 @@ Canonical short registry. Detailed rationale and immutable evidence live under `
 | v6 | runtime reference | strict OOF `0.6006003615` | selective-teacher/runtime engineering family |
 | v7 | platform-scored historical candidate | owner reports leaderboard `~0.36`; strict 5-fold OOF was not completed | high fold-0 diagnostic did not transfer |
 | v8 | rejected runtime failure | exact gate70 outer wall `820.784 s` | old workflow runtime pass marker was invalid; platform timed out |
-| v9 | in progress | gate40 graph strict OOF `0.5970059311`; target-stress `0.4515676235`; exact package built | leaderboard-adapted + corrected outer-wall runtime gate |
+| v9 | completed, awaiting platform score | graph strict OOF `0.5970059311`; target-stress `0.4515676235`; public/private runtime GREEN | exact gate40 keeper frozen |
 
 Local OOF, target-stress diagnostics and platform leaderboard scores are separate evidence axes. Sealed gold remains unopened.
 
@@ -55,13 +55,13 @@ The owner reports v7 leaderboard `~0.36`. v7 also had fold-0 diagnostics around 
 
 ## v8 rejection and retained lessons
 
-v8 established a retrieval/human positive-prevalence ratio `0.566880890615799` and a small consistently positive target-free graph rescore. It is rejected as a submission because exact gate70 evidence showed inner `run.py` around `731.22 s` but true outside-container wall `820.784 s`; the old workflow nevertheless declared a pass. The platform then timed out again.
+v8 established retrieval/human positive-prevalence ratio `0.566880890615799` and a small consistently positive target-free graph rescore. It is rejected because exact gate70 evidence showed inner `run.py` around `731.22 s` but true outside-container wall `820.784 s`; the old workflow nevertheless declared a pass. The platform then timed out again.
 
 Binding consequence: outside-container wall is authoritative for timeout safety.
 
 ## v9 validation v2
 
-Source run: `31639183423`.
+Source run `31639183423`.
 
 Frozen graph config: reciprocal-best `0`, reciprocal-top3 `0`, endpoint-rank `0.02`, ambiguity penalty `0.01`.
 
@@ -70,7 +70,7 @@ Frozen graph config: reciprocal-best `0`, reciprocal-top3 `0`, endpoint-rank `0.
 | gate25 | `0.2500227902` | `0.5947115591` | `0.5961903713` | `+0.0014788122` | `0.4507779206` |
 | gate40 | `0.4000245433` | `0.5955054274` | `0.5970059311` | `+0.0015005037` | `0.4515676235` |
 
-All five folds have positive graph delta for both candidates. Gate40 was selected before final runtime because it dominates gate25 on strict OOF, graph OOF and target stress. Gate25 is the predeclared fallback.
+All five folds have positive graph delta for both candidates. Gate40 was selected before final runtime because it dominates gate25 on strict OOF, graph OOF and target stress. Gate25 was the predeclared fallback but was not activated.
 
 Two zero/negligible-runtime meta experiments were rejected after held-out evaluation:
 
@@ -91,7 +91,7 @@ Gate40 production refit run `31639692541`:
 - private HF `experiments/v9/production/gate40/853a3925ac2b`;
 - sealed gold untouched.
 
-Exact candidate package from run `31640050373`:
+Exact keeper package from run `31640050373`:
 
 - `ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip`;
 - `1,251,659,961` bytes;
@@ -99,23 +99,22 @@ Exact candidate package from run `31640050373`:
 - release tag `ecup-v9-gate40-final-eb2bcf18d53e`;
 - optimized complete runtime closure, FP16, cap8 and frozen graph metadata verified.
 
-Gate25 fallback refit is prebuilt in run `31640425364`, artifact `9158679674`.
+## v9 exact runtime evidence
 
-## v9 runtime evidence
+First corrected exact 275k run `MakSoS1/gpu-dispatch#31640233511` measured outside wall `637.82083456 s`, return code `0`, and produced all 275,000 rows. Its workflow red status came only from an artificial `[0,1]` probability-range validator. Diagnostic run `31641425359` proved exact schema, ID order, finite and nonconstant scores; no clipping was added because clipping would change ranking through ties.
 
-First corrected exact 275k gate40 run `MakSoS1/gpu-dispatch#31640233511` measured:
+Final independent dual run `MakSoS1/gpu-dispatch#31641656589`, exact keeper SHA and organizer image:
 
-- exact package SHA above;
-- organizer image;
-- RTX 2060 SUPER;
-- return code `0`;
-- inner `run.py` total `567.23 s`;
-- outside-container wall `637.82083456 s`;
-- 275,000 output rows.
+| Gate | Rows | Acceptance | Outer wall | Headroom | Result |
+|---|---:|---:|---:|---:|---|
+| public-size | `115,000` | `330 s` | `281.821475323 s` | `48.178524677 s` | PASS |
+| private-size | `275,000` | `700 s` | `634.766220868 s` | `65.233779132 s` | PASS |
 
-Its red workflow conclusion came only from an over-strict validator that required graph-rescored predictions to lie in `[0,1]`. A separate 1000-row diagnostic run `31641425359` proved exact columns, row count, ID order, finite predictions and nonconstant scores; the only failed predicate was the artificial `[0,1]` range check. No clipping was added because the official submission contract requires a continuous numeric score and clipping would introduce ties/change the validated ranking.
+Both returned code `0`, preserved pair order and produced valid finite nonconstant scores. Evidence artifact `9159596648`.
 
-Final dual public/private exact-package gate is `MakSoS1/gpu-dispatch#31641656589`: the 115k public-size stage is already GREEN and the 275k private-size repeat is the final pending runtime verdict.
+## Repository verification
+
+Final canonical verification run `31642803187` recorded **423 passed, 5 skipped**, with `scripts/memory_policy.py` **OK**. Subsequent documentation-only canonical-state changes are also covered by the hardened Memora workflow's full test and policy gate before checkpointing.
 
 ## Binding lessons
 
@@ -126,10 +125,11 @@ Final dual public/private exact-package gate is `MakSoS1/gpu-dispatch#3164165658
 - sealed gold is never used to recover runtime/leaderboard gaps;
 - high single-fold diagnostics cannot substitute for strict OOF;
 - outside-container wall is authoritative for timeout safety;
+- continuous ranking scores do not need clipping to `[0,1]` unless the contract explicitly requires probabilities;
 - submission runtime closure is derived from imports, never hand-maintained;
 - mixed precision must be validated before retention;
 - do not weaken a gate to publish an archive.
 
-## Next gate
+## Next external measurement
 
-Finish dual run `31641656589`. If both public and private stages pass, freeze the exact gate40 ZIP as v9. Then update final result/state files, run the full repository test suite plus memory policy, execute hardened Memora ingest/checkpoint for iteration v9, and hand off only the byte-verified keeper archive.
+The technical v9 cycle is complete. Submit the exact keeper ZIP. After platform scoring, record the measured v9 leaderboard score separately without rewriting strict OOF or target-stress history.
