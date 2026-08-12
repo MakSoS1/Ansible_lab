@@ -272,3 +272,44 @@ def test_metadata_rejects_an_opened_sealed_gold():
                 "gold_rows_scored": 10,
             }
         )
+
+
+def test_scoring_is_deterministic_and_batch_size_only_moves_float_noise(tmp_path, tiny_model):
+    """The tokenizer prefetch must not perturb scores."""
+    torch = pytest.importorskip("torch")
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    from ecup_matching.ml.v7_runtime import predict_pairs
+
+    items = _items(40)
+    pairs = _pairs(items, 37)
+    texts = {}
+    for row in items.itertuples(index=False):
+        from ecup_matching.ml.textnorm import normalize_item
+        from ecup_matching.ml.v7_item_text import serialize_item_v7
+
+        norm = normalize_item(row.id, row.name, row.attributes, row.category)
+        texts[row.id] = f"[CAT] {norm.category}\n{serialize_item_v7(norm, max_chars=900)}"
+
+    tokenizer = AutoTokenizer.from_pretrained(str(tiny_model), local_files_only=True)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        str(tiny_model), local_files_only=True
+    )
+    model.eval()
+
+    first, _ = predict_pairs(
+        model=model, tokenizer=tokenizer, frame=pairs, texts=texts,
+        device="cpu", max_length=256, batch_size=8,
+    )
+    again, _ = predict_pairs(
+        model=model, tokenizer=tokenizer, frame=pairs, texts=texts,
+        device="cpu", max_length=256, batch_size=8,
+    )
+    assert np.array_equal(first, again), "prefetched scoring is not deterministic"
+
+    single, _ = predict_pairs(
+        model=model, tokenizer=tokenizer, frame=pairs, texts=texts,
+        device="cpu", max_length=256, batch_size=64,
+    )
+    assert len(single) == len(pairs)
+    assert np.abs(first - single).max() < 1e-4, "batch size moved scores beyond float noise"
