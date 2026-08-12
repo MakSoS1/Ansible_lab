@@ -2,6 +2,9 @@ name: E-CUP v8 publish immutable test-like fixture
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-publish-testlike-fixture.yml]
 
 permissions:
   actions: read
