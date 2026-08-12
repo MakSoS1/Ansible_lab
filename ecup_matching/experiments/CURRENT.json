@@ -1,6 +1,6 @@
 {
   "version": "v9",
-  "status": "in_progress",
+  "status": "completed",
   "model": "v9-gate40-fp16-graph",
   "plan": "ecup_matching/experiments/v9/PLAN.md",
   "results": "ecup_matching/experiments/v9/RESULTS.md",
@@ -28,28 +28,14 @@
   "validation_v2": {
     "source_run_id": 31639183423,
     "retrieval_prevalence_ratio": 0.566880890615799,
-    "graph_config": {
-      "rb": 0.0,
-      "rt": 0.0,
-      "ep": 0.02,
-      "ap": 0.01
-    },
-    "gate25": {
-      "teacher_fraction": 0.25002279022474666,
-      "strict_oof_macro_average_precision": 0.5947115591000889,
-      "fold_local_graph_macro_average_precision": 0.5961903713277379,
-      "target_stress_mean": 0.45077792061326727,
-      "all_graph_folds_positive": true
-    },
-    "gate40": {
-      "teacher_fraction": 0.400024543318958,
-      "strict_oof_macro_average_precision": 0.595505427416499,
-      "fold_local_graph_macro_average_precision": 0.597005931143384,
-      "target_stress_mean": 0.4515676235464289,
-      "all_graph_folds_positive": true
-    },
-    "selected_before_final_runtime": "gate40",
-    "fallback_if_runtime_veto_fires": "gate25"
+    "gate25_graph_oof": 0.5961903713277379,
+    "gate25_target_stress_mean": 0.45077792061326727,
+    "gate40_strict_oof": 0.595505427416499,
+    "gate40_graph_oof": 0.597005931143384,
+    "gate40_target_stress_mean": 0.4515676235464289,
+    "selected": "gate40",
+    "selection_made_before_final_runtime": true,
+    "leaderboard_anchor_used_for_fitting": false
   },
   "production_refit": {
     "run_id": 31639692541,
@@ -63,32 +49,53 @@
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
-  "candidate_package": {
+  "keeper_package": {
     "name": "ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip",
     "build_run_id": 31640050373,
     "release_tag": "ecup-v9-gate40-final-eb2bcf18d53e",
     "bytes": 1251659961,
     "sha256": "925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782",
-    "runtime": {
-      "structured_worker_cap": 8,
-      "cuda_autocast": "float16",
-      "contrastive_batch_rtx2060": 256,
-      "teacher_batch_rtx2060": 96,
-      "outer_wall_acceptance_seconds": 700.0,
-      "watchdog_seconds": 720.0
-    }
+    "structured_worker_cap": 8,
+    "cuda_autocast": "float16",
+    "contrastive_batch_rtx2060": 256,
+    "teacher_batch_rtx2060": 96
   },
   "runtime_gate": {
-    "private_repo_run_id": 31640233511,
-    "exact_275k_organizer_image": true,
+    "run_id": 31641656589,
+    "artifact_id": 9159596648,
     "device": "NVIDIA GeForce RTX 2060 SUPER",
+    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
     "outer_wall_is_authoritative": true,
-    "acceptance_seconds": 700.0,
-    "watchdog_seconds": 720.0,
-    "status": "running",
-    "wall_seconds": null,
-    "passed": null
+    "public": {
+      "rows": 115000,
+      "acceptance_seconds": 330.0,
+      "wall_seconds": 281.821475323,
+      "headroom_seconds": 48.178524677,
+      "return_code": 0,
+      "output_valid": true,
+      "passed": true
+    },
+    "private": {
+      "rows": 275000,
+      "acceptance_seconds": 700.0,
+      "wall_seconds": 634.766220868,
+      "headroom_seconds": 65.233779132,
+      "return_code": 0,
+      "output_valid": true,
+      "passed": true
+    },
+    "both_passed": true
   },
+  "verification": {
+    "run_id": 31642803187,
+    "tests_passed": 423,
+    "tests_skipped": 5,
+    "memory_policy": "OK"
+  },
+  "rejected_v9_meta_candidates": [
+    "fixed prevalence-weighted HGB: worse strict OOF, graph OOF and target-stress",
+    "cross-fitted category-specific category/HGB fusion: worse strict OOF, graph OOF and target-stress"
+  ],
   "sealed_gold_evaluated": false,
-  "next_action": "Finish corrected exact 275k outer-wall gate for the immutable gate40 ZIP. If wall_seconds > 700 or output is invalid, do not relax the gate: activate the already-predeclared gate25 fallback. After the keeper is fixed, finalize v9 RESULTS/SAFE_METRICS, run full tests, memory policy, hardened Memora ingest/checkpoint, and only then hand off the exact ZIP."
+  "next_action": "Submit the exact keeper ZIP to the platform and record the measured v9 leaderboard score as a separate external evidence axis. Do not infer or claim the score before the platform finishes scoring."
 }
