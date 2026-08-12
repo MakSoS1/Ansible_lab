@@ -33,8 +33,14 @@ def _make_v6_zip(path: Path) -> None:
         zf.writestr('ecup_matching/__init__.py', '')
         zf.writestr('ecup_matching/ml/__init__.py', '')
         zf.writestr('ecup_matching/submission/__init__.py', '')
-        # Deliberately stale runtime: models/metadata are valid but streaming code is absent.
+        # Deliberately stale runtime: no streaming v6 and no norm_cache in v5 helper.
         zf.writestr('ecup_matching/submission/predict_v6.py', 'def predict_to_csv_v6(**kwargs): return None\n')
+        zf.writestr(
+            'ecup_matching/submission/predict_v5.py',
+            'def _legacy_text_cache(items, legacy_textnorm, legacy_item_text, *, teacher): return {}\n'
+            'def _load_legacy_modules(root): return ()\n'
+            'def _mean_pool(*args): return None\n',
+        )
         zf.writestr('model_v5_structured.joblib', b'model')
         zf.writestr('model_v5_contrastive/config.json', '{}')
         zf.writestr('model_v5_teacher/config.json', '{}')
@@ -44,21 +50,30 @@ def _make_v6_zip(path: Path) -> None:
 
 
 def _runtime_sources(tmp_path: Path) -> dict[str, Path]:
-    predict = tmp_path/'predict_v6.py'
+    predict5 = tmp_path/'predict_v5.py'
+    predict6 = tmp_path/'predict_v6.py'
     parallel = tmp_path/'v6_parallel.py'
     fast = tmp_path/'v6_fast.py'
     gate = tmp_path/'v6_teacher_gate.py'
-    predict.write_text(
+    predict5.write_text(
+        'def _legacy_text_cache(items, legacy_textnorm, legacy_item_text, *, teacher, norm_cache=None): return {}\n'
+        'def _load_legacy_modules(root): return ()\n'
+        'def _mean_pool(*args): return None\n',
+        encoding='utf-8',
+    )
+    predict6.write_text(
         'def _structured_scores_streaming(): pass\n'
         'def predict_to_csv_v6(**kwargs): return None\n'
-        'from .v6_parallel import run_structured_chunks\n',
+        'from .v6_parallel import run_structured_chunks\n'
+        'from .predict_v5 import _legacy_text_cache\n',
         encoding='utf-8',
     )
     parallel.write_text('def run_structured_chunks(**kwargs): return {}\n', encoding='utf-8')
     fast.write_text('def collect_chunked_scores(**kwargs): return {}\n', encoding='utf-8')
     gate.write_text('def disagreement_gate_mask(*args, **kwargs): return None\n', encoding='utf-8')
     return {
-        'predict_v6_source': predict,
+        'predict_v5_source': predict5,
+        'predict_v6_source': predict6,
         'v6_parallel_source': parallel,
         'v6_fast_source': fast,
         'v6_teacher_gate_source': gate,
@@ -161,7 +176,7 @@ def test_v8_fast_builder_uses_v6_runtime_not_v5_runtime(tmp_path):
         assert meta['sealed_gold_opened'] is False
 
 
-def test_v8_fast_builder_overlays_streaming_runtime_over_stale_v6_zip(tmp_path):
+def test_v8_fast_builder_overlays_complete_compatible_runtime_over_stale_v6_zip(tmp_path):
     from ecup_matching.submission.build_submission_v8_v6graph import build_v8_from_v6_zip
 
     source = tmp_path/'v6-stale.zip'; _make_v6_zip(source)
@@ -179,10 +194,12 @@ def test_v8_fast_builder_overlays_streaming_runtime_over_stale_v6_zip(tmp_path):
         **_runtime_sources(tmp_path),
     )
     with zipfile.ZipFile(out) as zf:
-        predictor = zf.read('ecup_matching/submission/predict_v6.py').decode('utf-8')
+        predictor6 = zf.read('ecup_matching/submission/predict_v6.py').decode('utf-8')
+        predictor5 = zf.read('ecup_matching/submission/predict_v5.py').decode('utf-8')
         parallel = zf.read('ecup_matching/submission/v6_parallel.py').decode('utf-8')
-        assert '_structured_scores_streaming' in predictor
-        assert 'run_structured_chunks' in predictor
+        assert '_structured_scores_streaming' in predictor6
+        assert 'run_structured_chunks' in predictor6
+        assert 'norm_cache' in predictor5
         assert 'run_structured_chunks' in parallel
         assert zf.read('ecup_matching/submission/v6_fast.py')
         assert zf.read('ecup_matching/ml/v6_teacher_gate.py')
