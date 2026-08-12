@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import zipfile
 
+from ecup_matching.ci.runtime_closure import copy_runtime_closure, runtime_import_closure
 from .build_submission_v8_graph import GRAPH_CONFIG, safe_extract_zip
 
 
@@ -100,10 +101,6 @@ def _sha256(path: Path) -> str:
 
 
 def _validate_source_v6(root: Path, expected_metric: float) -> dict[str, object]:
-    # The archived Python runtime is intentionally NOT trusted as optimized.
-    # The original gate95 bundle accidentally shipped a stale predict_v6.py;
-    # model and metadata bytes remain useful and are validated here, while the
-    # executable runtime closure is overlaid from an independently verified SHA.
     required = [
         'model_v5_structured.joblib',
         'model_v6_category_shrunk.json',
@@ -129,12 +126,14 @@ def _validate_source_v6(root: Path, expected_metric: float) -> dict[str, object]
 
 def _validated_runtime_sources(
     *,
+    predict_v5_source: Path,
     predict_v6_source: Path,
     v6_parallel_source: Path,
     v6_fast_source: Path,
     v6_teacher_gate_source: Path,
 ) -> dict[str, Path]:
     sources = {
+        'predict_v5.py': Path(predict_v5_source),
         'predict_v6.py': Path(predict_v6_source),
         'v6_parallel.py': Path(v6_parallel_source),
         'v6_fast.py': Path(v6_fast_source),
@@ -143,9 +142,13 @@ def _validated_runtime_sources(
     for name, path in sources.items():
         if not path.is_file() or path.is_symlink():
             raise ValueError(f'optimized runtime source must be a regular file: {name}: {path}')
-    predictor = sources['predict_v6.py'].read_text(encoding='utf-8')
+    predictor5 = sources['predict_v5.py'].read_text(encoding='utf-8')
+    for marker in ('_legacy_text_cache', 'norm_cache', '_load_legacy_modules', '_mean_pool'):
+        if marker not in predictor5:
+            raise ValueError(f'optimized predict_v5.py missing required marker: {marker}')
+    predictor6 = sources['predict_v6.py'].read_text(encoding='utf-8')
     for marker in ('predict_to_csv_v6', '_structured_scores_streaming', 'run_structured_chunks'):
-        if marker not in predictor:
+        if marker not in predictor6:
             raise ValueError(f'optimized predict_v6.py missing required marker: {marker}')
     parallel = sources['v6_parallel.py'].read_text(encoding='utf-8')
     if 'run_structured_chunks' not in parallel:
@@ -176,6 +179,7 @@ def build_v8_from_v6_zip(
     *,
     v8_graph_source: Path,
     v8_submission_graph_source: Path,
+    predict_v5_source: Path,
     predict_v6_source: Path,
     v6_parallel_source: Path,
     v6_fast_source: Path,
@@ -192,6 +196,7 @@ def build_v8_from_v6_zip(
         if not path.is_file() or path.is_symlink():
             raise ValueError(f'graph runtime source must be a regular file: {path}')
     runtime_sources = _validated_runtime_sources(
+        predict_v5_source=predict_v5_source,
         predict_v6_source=predict_v6_source,
         v6_parallel_source=v6_parallel_source,
         v6_fast_source=v6_fast_source,
@@ -203,18 +208,21 @@ def build_v8_from_v6_zip(
         safe_extract_zip(source_v6_zip, root)
         source_meta = _validate_source_v6(root, source_v6_metric)
 
+        # The model bundle is trusted for weights/meta only. Replace every
+        # first-party module reachable from the real v6 entrypoint so stale
+        # source files inside an older ZIP cannot be mixed with a newer fast
+        # predictor. This is the same closure mechanism used by the corrected
+        # v6 final-submit workflow.
+        copied_closure = copy_runtime_closure(root)
         submission_dir = root / 'ecup_matching/submission'
         ml = root / 'ecup_matching/ml'
         submission_dir.mkdir(parents=True, exist_ok=True)
         ml.mkdir(parents=True, exist_ok=True)
-        for package_dir in (submission_dir, ml):
-            init = package_dir / '__init__.py'
-            if not init.exists():
-                init.write_text('', encoding='utf-8')
 
-        # Replace the stale archived runtime closure with the independently
-        # verified source revision. Models and refit metadata remain byte-for-byte
-        # from the exact v6 package.
+        # Explicitly verified hot-path files are copied again after the closure;
+        # this lets the builder pin a tested source set while the closure still
+        # supplies every transitive dependency such as data_subset.py.
+        shutil.copyfile(runtime_sources['predict_v5.py'], submission_dir / 'predict_v5.py')
         shutil.copyfile(runtime_sources['predict_v6.py'], submission_dir / 'predict_v6.py')
         shutil.copyfile(runtime_sources['v6_parallel.py'], submission_dir / 'v6_parallel.py')
         shutil.copyfile(runtime_sources['v6_fast.py'], submission_dir / 'v6_fast.py')
@@ -222,6 +230,15 @@ def build_v8_from_v6_zip(
         shutil.copyfile(v8_graph_source, ml / 'v8_graph.py')
         shutil.copyfile(v8_submission_graph_source, ml / 'v8_submission_graph.py')
         (root / 'run.py').write_text(RUN_PY, encoding='utf-8')
+
+        gaps = [relative for relative in runtime_import_closure() if not (root / relative).is_file()]
+        if gaps:
+            raise RuntimeError(f'v8 runtime import closure incomplete after overlay: {gaps}')
+        closure_hashes = {
+            relative: _sha256(root / relative)
+            for relative in runtime_import_closure()
+            if (root / relative).is_file()
+        }
 
         metadata = {
             'version': 'v8-v6-fast-gate95-plus-graph',
@@ -234,8 +251,12 @@ def build_v8_from_v6_zip(
                 'runtime_path': 'predict_to_csv_v6',
                 'runtime_overlay_verified': True,
             },
-            'runtime_sources': {
-                name: _sha256(path) for name, path in runtime_sources.items()
+            'runtime_overlay': {
+                'closure_files': copied_closure,
+                'closure_sha256': closure_hashes,
+                'explicit_hot_path_sha256': {
+                    name: _sha256(path) for name, path in runtime_sources.items()
+                },
             },
             'graph': {
                 'config': dict(GRAPH_CONFIG),
@@ -245,7 +266,7 @@ def build_v8_from_v6_zip(
             'sealed_gold_opened': False,
             'gold_rows_scored': 0,
             'true_test_prevalence_claimed': False,
-            'notes': 'Exact v6 model bundle plus independently verified optimized runtime overlay; graph is target-free.',
+            'notes': 'Exact v6 model bundle plus complete verified first-party runtime import closure; graph is target-free.',
         }
         (root / 'v8_metadata.json').write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
