@@ -25,14 +25,16 @@ def test_crossfit_category_fusion_never_uses_held_fold_labels(monkeypatch):
         assert train.isdisjoint(set(np.flatnonzero(folds==fold).tolist()))
 
 
-def test_category_fusion_returns_convex_scores_and_complete_weights():
+def test_category_fusion_returns_convex_rank_scores_and_complete_weights():
+    from ecup_matching.ml.v5_fixed_blend import percentile_rank
     from ecup_matching.ml.v9_category_fusion import crossfit_category_fusion
 
     rng=np.random.default_rng(23); n=200
     a=rng.random(n); b=rng.random(n); y=rng.integers(0,2,n,dtype=np.int8)
     cats=np.asarray(['a' if i%2 else 'b' for i in range(n)]); folds=np.asarray([i%5 for i in range(n)])
     result=crossfit_category_fusion(a,b,y,cats,folds,weight_grid=(0.0,0.5,1.0))
-    lo=np.minimum(a,b); hi=np.maximum(a,b)
+    rank_a=percentile_rank(a); rank_b=percentile_rank(b)
+    lo=np.minimum(rank_a,rank_b); hi=np.maximum(rank_a,rank_b)
     assert np.all(result['oof_score']>=lo-1e-12)
     assert np.all(result['oof_score']<=hi+1e-12)
     assert set(result['fold_weights'])==set(range(5))
