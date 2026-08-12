@@ -1,0 +1,38 @@
+name: E-CUP v8 prior component evidence
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-component-evidence.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+    steps:
+      - name: Read selected prior experiment metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          paths=(
+            'experiments/v5/model-code-consistency/c3ed7224aaba/v5-model-code-consistency-metrics.json'
+            'experiments/v5/typed-consistency/340c84027e0f/v5-typed-consistency-metrics.json'
+            'experiments/v5/typed-consistency/780390c35af7/v5-typed-consistency-metrics.json'
+            'experiments/v5/category-hgb-fusion/79de99434912/v5-category-hgb-fusion-metrics.json'
+            'experiments/v6/fast-ablation/structured_only/6a1e61a2d068/v6-fast-structured_only-metrics.json'
+            'experiments/v6/fast-ablation/no_teacher/6a1e61a2d068/v6-fast-no_teacher-metrics.json'
+            'experiments/v6/fast-ablation/no_contrastive/6a1e61a2d068/v6-fast-no_contrastive-metrics.json'
+          )
+          for p in "${paths[@]}"; do
+            echo "V8_COMPONENT_PATH=$p"
+            curl -fsSL -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${p}?download=true" \
+              | python -c 'import json,sys; d=json.load(sys.stdin); keys=[k for k in d if any(x in k.lower() for x in ("macro","average_precision","score","delta","version","runtime","seconds"))]; print(json.dumps({k:d[k] for k in keys},ensure_ascii=False,sort_keys=True))'
+          done
