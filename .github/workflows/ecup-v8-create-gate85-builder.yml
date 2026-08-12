@@ -30,20 +30,16 @@ jobs:
               ('EXPECTED_BASE_OOF = 0.598287140395421','EXPECTED_BASE_OOF = 0.5999300791828578'),
               ('EXPECTED_GRAPH_OOF = 0.6000750225512788','EXPECTED_GRAPH_OOF = 0.6021573018691804'),
               ('gate70','gate85'),
-              ('GATE70','GATE85'),
               ("'v8-gate85-fp16-graph'","'v8-gate85-fp16-dualcache-graph'"),
           ]
           for old,new in replacements:
               if old not in s:
                   raise SystemExit(f'missing expected specialization marker: {old}')
               s=s.replace(old,new)
-          # A final gate85 package is accepted only when the current exact
-          # dual-cache runtime is actually inside the import closure.
           old="for marker in ('_structured_scores_streaming', 'run_structured_chunks', 'torch_autocast'):"
           new="for marker in ('_structured_scores_streaming', 'run_structured_chunks', 'torch_autocast', 'build_dual_text_cache'):"
           if old not in s: raise SystemExit('runtime marker tuple changed unexpectedly')
           s=s.replace(old,new,1)
-          # Record the specific runtime optimization in immutable metadata.
           old_meta="'teacher_batch_rtx2060': 96,\n                'closure_files': list(copied),"
           new_meta="'teacher_batch_rtx2060': 96,\n                'dual_text_cache_exact': True,\n                'dual_text_cache_workers': 'same safe CPU worker count as structured',\n                'closure_files': list(copied),"
           if old_meta not in s: raise SystemExit('runtime metadata block changed unexpectedly')
