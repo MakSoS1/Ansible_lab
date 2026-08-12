@@ -36,6 +36,7 @@ def _gate70_files(tmp_path: Path) -> tuple[Path,Path,Path]:
         'fold_local_graph_strict_oof_macro_ap':0.6000750225512788,
         'strict_selected_oof_macro_ap':0.6000750225512788,
         'split_sha256':'aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b',
+        'graph_config':{'rb':0.0,'rt':0.0,'ep':0.02,'ap':0.01},
         'selection_gold_metric_opened':False,
         'selection_gold_rows_scored':0,
     }),encoding='utf-8')
@@ -70,6 +71,7 @@ def test_final_gate70_builder_replaces_meta_and_stale_runtime(tmp_path,monkeypat
         assert zf.read('model_v6_hgb_meta.joblib')==b'gate70-hgb'
         saved=json.loads(zf.read('model_v6_gate_metadata.json'))
         assert saved['coverage']==pytest.approx(.70)
+        assert saved['graph_config']=={'rb':0.0,'rt':0.0,'ep':0.02,'ap':0.01}
         run=zf.read('run.py').decode()
         assert 'predict_to_csv_v6' in run and 'apply_graph_to_prediction' in run
         assert 'STALE=True' not in zf.read('ecup_matching/submission/predict_v6.py').decode()
