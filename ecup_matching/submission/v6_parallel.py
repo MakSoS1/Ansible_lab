@@ -29,6 +29,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 
 import numpy as np
+from threadpoolctl import threadpool_limits
 
 from .v6_fast import batch_index_ranges, collect_chunked_scores
 
@@ -157,7 +158,11 @@ def _worker_entry(bounds: tuple[int, int]) -> dict[str, np.ndarray]:
     start, end = bounds
     if _WORKER_SCORE_CHUNK is None:
         raise RuntimeError("worker was not initialized with a score_chunk callable")
-    with shared_fuzzy_ratios():
+    # Environment variables set after fork cannot reliably resize BLAS/OpenMP
+    # runtimes that were already loaded by NumPy/sklearn in the parent. Apply
+    # an active runtime limit as well so N worker processes do not each spawn
+    # their own N-thread native pools and oversubscribe the container.
+    with threadpool_limits(limits=1), shared_fuzzy_ratios():
         payload = _WORKER_SCORE_CHUNK(start, end)
     expected = end - start
     if isinstance(payload, Mapping):
@@ -200,7 +205,7 @@ def run_structured_chunks(
         return {name: np.empty(0, dtype=np.float64) for name in names}
 
     def serial() -> dict[str, np.ndarray]:
-        with shared_fuzzy_ratios():
+        with threadpool_limits(limits=1), shared_fuzzy_ratios():
             return collect_chunked_scores(
                 row_count=int(row_count),
                 chunk_size=int(chunk_size),
