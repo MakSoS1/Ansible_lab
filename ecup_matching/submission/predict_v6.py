@@ -35,6 +35,7 @@ from ecup_matching.submission.v6_parallel import (
     resolve_worker_count,
     run_structured_chunks,
 )
+from ecup_matching.submission.v6_text_cache import build_dual_text_cache
 
 
 STRUCTURED_CHUNK_SIZE = 10_000
@@ -250,6 +251,7 @@ def _contrastive_scores_fast(
     legacy_textnorm,
     legacy_item_text,
     norm_cache: dict[object, object] | None = None,
+    text_cache: dict[object, str] | None = None,
 ) -> np.ndarray:
     import torch
     from transformers import AutoModel, AutoTokenizer
@@ -257,9 +259,11 @@ def _contrastive_scores_fast(
     config = _runtime_config()
     device = config.device
     active_batch = int(config.contrastive_batch)
-    texts = _legacy_text_cache(
-        items, legacy_textnorm, legacy_item_text, teacher=False, norm_cache=norm_cache
-    )
+    texts = text_cache
+    if texts is None:
+        texts = _legacy_text_cache(
+            items, legacy_textnorm, legacy_item_text, teacher=False, norm_cache=norm_cache
+        )
     unique_ids = pd.unique(pd.concat([pairs["id1"], pairs["id2"]], ignore_index=True)).tolist()
     ordered_ids = sorted(unique_ids, key=lambda item_id: (len(texts[item_id]), str(item_id)))
     tokenizer = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True)
@@ -323,6 +327,7 @@ def _teacher_selected_scores_fast(
     legacy_textnorm,
     legacy_item_text,
     norm_cache: dict[object, object] | None = None,
+    text_cache: dict[object, str] | None = None,
 ) -> np.ndarray:
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -336,9 +341,11 @@ def _teacher_selected_scores_fast(
     config = _runtime_config()
     device = config.device
     active_batch = int(config.teacher_batch)
-    texts = _legacy_text_cache(
-        items, legacy_textnorm, legacy_item_text, teacher=True, norm_cache=norm_cache
-    )
+    texts = text_cache
+    if texts is None:
+        texts = _legacy_text_cache(
+            items, legacy_textnorm, legacy_item_text, teacher=True, norm_cache=norm_cache
+        )
     left_all = pairs["id1"].to_numpy()
     right_all = pairs["id2"].to_numpy()
     selected_left = left_all[selected_indices]
@@ -460,6 +467,17 @@ def predict_to_csv_v6(
     gc.collect()
     previous = _phase("structured", started, previous)
 
+    # Build both neural text views before CUDA initialization so the fork
+    # workers never inherit a CUDA context.  The dual cache normalizes each item
+    # once and emits byte-identical legacy contrastive/teacher strings.
+    contrastive_text_cache, teacher_text_cache = build_dual_text_cache(
+        items,
+        legacy_textnorm,
+        legacy_item_text,
+        workers=structured_workers,
+    )
+    previous = _phase("text_cache", started, previous)
+
     config = _runtime_config()
     print(
         f"[v6] device={config.device} contrastive_batch={config.contrastive_batch} "
@@ -467,15 +485,16 @@ def predict_to_csv_v6(
         flush=True,
     )
 
-    item_norm_cache: dict[object, object] = {}
     contrastive = _contrastive_scores_fast(
         items,
         pairs,
         contrastive_model_dir,
         legacy_textnorm,
         legacy_item_text,
-        norm_cache=item_norm_cache,
+        text_cache=contrastive_text_cache,
     )
+    del contrastive_text_cache
+    gc.collect()
     previous = _phase("contrastive", started, previous)
 
     non_teacher = {
@@ -502,9 +521,9 @@ def predict_to_csv_v6(
         teacher_model_dir,
         legacy_textnorm,
         legacy_item_text,
-        norm_cache=item_norm_cache,
+        text_cache=teacher_text_cache,
     )
-    del item_norm_cache
+    del teacher_text_cache
     gc.collect()
     teacher_signal, verified_mask = assemble_partial_teacher_signal(
         non_teacher,
