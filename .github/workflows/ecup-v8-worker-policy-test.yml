@@ -25,4 +25,5 @@ jobs:
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
       - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      # The full RTX sweep measured eight processes as the production optimum.
       - run: python -m pytest ecup_matching/tests/test_v8_measured_worker_policy.py -q
