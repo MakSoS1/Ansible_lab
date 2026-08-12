@@ -1,10 +1,10 @@
 {
-  "version": "v7",
+  "version": "v9",
   "status": "in_progress",
-  "model": "v7-identity-first-full-context-teacher",
-  "plan": "ecup_matching/experiments/v7/PLAN.md",
-  "results": "ecup_matching/experiments/v7/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v7/SAFE_METRICS.json",
+  "model": "v9-gate40-fp16-graph",
+  "plan": "ecup_matching/experiments/v9/PLAN.md",
+  "results": "ecup_matching/experiments/v9/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v9/SAFE_METRICS.json",
   "validation_protocol": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -17,66 +17,78 @@
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
-  "quality_best_reference": {
-    "version": "v5",
-    "name": "v5-category-shrunk-hgb-equal-rank-fusion",
-    "strict_oof_macro_average_precision": 0.6018115534135564,
-    "competition_zip": "ecup-v5-category-hgb-fusion-0.6018115534-submission.zip",
-    "competition_zip_sha256": "442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5",
-    "private_hf_prefix": "submissions/v5/0.6018115534",
-    "organizer_image_smoke_passed": true
+  "external_leaderboard_anchor": {
+    "version": "v7",
+    "score_observed_by_owner": 0.36,
+    "used_for_fitting": false,
+    "v9_target_region": 0.5,
+    "v9_target_is_claimed_score": false,
+    "v9_measured_leaderboard_score": null
   },
-  "runtime_best_reference": {
-    "version": "v6",
-    "name": "v6-fast-gate95-category-shrunk-hgb",
-    "strict_selection_oof_macro_average_precision": 0.6006003614522999,
-    "quality_gate_macro_average_precision": 0.6,
-    "quality_gate_passed": true,
-    "teacher_coverage_requested": 0.95,
-    "structured_us_per_pair_after": 487.0,
-    "structured_speedup": 4.54,
-    "bitwise_identical_runtime_optimization": true,
-    "exact_full_gpu_runtime_verified": false
+  "validation_v2": {
+    "source_run_id": 31639183423,
+    "retrieval_prevalence_ratio": 0.566880890615799,
+    "graph_config": {
+      "rb": 0.0,
+      "rt": 0.0,
+      "ep": 0.02,
+      "ap": 0.01
+    },
+    "gate25": {
+      "teacher_fraction": 0.25002279022474666,
+      "strict_oof_macro_average_precision": 0.5947115591000889,
+      "fold_local_graph_macro_average_precision": 0.5961903713277379,
+      "target_stress_mean": 0.45077792061326727,
+      "all_graph_folds_positive": true
+    },
+    "gate40": {
+      "teacher_fraction": 0.400024543318958,
+      "strict_oof_macro_average_precision": 0.595505427416499,
+      "fold_local_graph_macro_average_precision": 0.597005931143384,
+      "target_stress_mean": 0.4515676235464289,
+      "all_graph_folds_positive": true
+    },
+    "selected_before_final_runtime": "gate40",
+    "fallback_if_runtime_veto_fires": "gate25"
   },
-  "candidate": {
-    "name": "v7-identity-first-full-context-teacher",
-    "base_model": "ai-forever/ruBert-base",
-    "base_model_revision": "43be4261797042e172adf7476c558734f3cbb2a0",
-    "max_length": 256,
-    "serialization": "identity-first canonical typed attributes; identity-v2 also surfaces material/composition, gender, season, hallmark/karat and stone/insert before the numeric tail",
-    "training": "immutable five outer folds; 600k leakage-safe weak pairs at 0.10 epoch; macro-balanced human fine-tune at 1.00 epoch; physical/effective batch 32; last 8 layers; ranking weight 0.25",
-    "target_strict_oof_macro_average_precision": 0.7,
-    "keep_threshold_strict_oof_macro_average_precision": 0.6018115534135564,
-    "fully_outer_cross_fitted": true,
-    "post_result_weight_tuning": false
-  },
-  "research_gate": {
-    "fold": 0,
-    "diagnostic_only": true,
-    "pre_identity_v2_one_epoch_macro_average_precision": 0.7023556010133556,
-    "target_0_70_crossed": true,
-    "source_sha": "0a2dabca4908767ab62a63190b7f2cff69bbef44",
-    "gpu_dispatch_run_id": 31573080203,
+  "production_refit": {
+    "run_id": 31639692541,
+    "artifact_id": 9158411928,
+    "teacher_coverage": 0.4,
+    "teacher_fraction": 0.400025,
+    "development_rows": 285210,
+    "elapsed_seconds": 74.4,
+    "peak_ram_gib": 0.736,
+    "private_hf_prefix": "experiments/v9/production/gate40/853a3925ac2b",
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
+  "candidate_package": {
+    "name": "ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip",
+    "build_run_id": 31640050373,
+    "release_tag": "ecup-v9-gate40-final-eb2bcf18d53e",
+    "bytes": 1251659961,
+    "sha256": "925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782",
+    "runtime": {
+      "structured_worker_cap": 8,
+      "cuda_autocast": "float16",
+      "contrastive_batch_rtx2060": 256,
+      "teacher_batch_rtx2060": 96,
+      "outer_wall_acceptance_seconds": 700.0,
+      "watchdog_seconds": 720.0
+    }
+  },
+  "runtime_gate": {
+    "private_repo_run_id": 31640233511,
+    "exact_275k_organizer_image": true,
+    "device": "NVIDIA GeForce RTX 2060 SUPER",
+    "outer_wall_is_authoritative": true,
+    "acceptance_seconds": 700.0,
+    "watchdog_seconds": 720.0,
+    "status": "running",
+    "wall_seconds": null,
+    "passed": null
+  },
   "sealed_gold_evaluated": false,
-  "leaderboard_result_known": false,
-  "next_action": "Wait for ecup-rtx2060 to finish the in-flight fold0 probe, let the queued v7 production refit train, package and organizer-smoke on the runner, then retain the ZIP SHA. Separately run the five-fold outer OOF, which has never executed: until it does, v7 has no honest strict OOF and the archive correctly carries a null in that field. Keep sealed gold unopened.",
-  "v7_submission_path": {
-    "inference_entrypoint": "ecup_matching/submission/run_v7.py",
-    "packaging": "ecup_matching/build_submission_v7.py",
-    "production_training": "ecup_matching/ml/run_v7_production.py",
-    "runtime_closure_modules": 8,
-    "training_only_modules_in_closure": 0,
-    "contract_ci_run_id": 31579152729,
-    "contract_tests_passed": 12,
-    "fold0_diagnostic_macro_average_precision": 0.7023556010133556,
-    "fold0_diagnostic_is_out_of_fold": false,
-    "strict_oof_macro_average_precision": null,
-    "five_fold_oof_ever_executed": false,
-    "probe_persisted_weights": false,
-    "gpu_dispatch_has_secrets": false,
-    "archive_built_on_runner": true
-  }
+  "next_action": "Finish corrected exact 275k outer-wall gate for the immutable gate40 ZIP. If wall_seconds > 700 or output is invalid, do not relax the gate: activate the already-predeclared gate25 fallback. After the keeper is fixed, finalize v9 RESULTS/SAFE_METRICS, run full tests, memory policy, hardened Memora ingest/checkpoint, and only then hand off the exact ZIP."
 }
