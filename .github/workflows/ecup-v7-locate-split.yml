@@ -8,10 +8,13 @@ on:
       - ".github/workflows/ecup-v7-locate-split.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  SOURCE_PATH: experiments/v5/validation/93e439633099/split-manifest.json
+  DEST_PATH: ecup_matching/validation/v5_immutable_split_manifest.json
+  EXPECTED_MANIFEST_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
 
 jobs:
   locate:
@@ -20,11 +23,15 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ecup-v7-neural
+          fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: python -m pip install "huggingface_hub>=0.34,<1"
-      - name: Locate and verify split-manifest candidates
+      - name: Download and verify frozen manifest
         shell: bash
         run: |
           set -euo pipefail
@@ -32,28 +39,57 @@ jobs:
           python - <<'PY'
           import hashlib, json, os
           from pathlib import Path
-          from huggingface_hub import HfApi, hf_hub_download
+          from huggingface_hub import hf_hub_download
 
-          repo = os.environ['HF_REPO_ID']
-          token = os.environ['HF_TOKEN']
-          api = HfApi(token=token)
-          paths = api.list_repo_files(repo_id=repo, repo_type='dataset')
-          candidates = [p for p in paths if 'split' in p.lower() and p.lower().endswith('.json')]
-          print('split_candidate_count', len(candidates))
-          for path in candidates[:200]:
-              try:
-                  local = Path(hf_hub_download(repo_id=repo, repo_type='dataset', filename=path, token=token))
-                  raw = local.read_bytes()
-                  payload = json.loads(raw)
-                  summary = {'path': path, 'file_sha256': hashlib.sha256(raw).hexdigest()}
-                  if isinstance(payload, dict):
-                      for key in ('development_rows', 'gold_rows', 'folds', 'split_sha256', 'manifest_sha256'):
-                          value = payload.get(key)
-                          if isinstance(value, list):
-                              summary[key + '_len'] = len(value)
-                          elif value is not None and not isinstance(value, (dict, list)):
-                              summary[key] = value
-                  print(json.dumps(summary, sort_keys=True))
-              except Exception as exc:
-                  print(json.dumps({'path': path, 'error': type(exc).__name__}, sort_keys=True))
+          local = Path(hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'],
+              repo_type='dataset',
+              filename=os.environ['SOURCE_PATH'],
+              token=os.environ['HF_TOKEN'],
+          ))
+          payload = json.loads(local.read_text(encoding='utf-8'))
+          canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+          actual = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+          expected = os.environ['EXPECTED_MANIFEST_SHA']
+          if actual != expected:
+              raise SystemExit(f'manifest sha mismatch: expected={expected} actual={actual}')
+          if payload.get('row_count') != 365654:
+              raise SystemExit(f"unexpected row_count={payload.get('row_count')}")
+          if payload.get('n_folds') != 5:
+              raise SystemExit(f"unexpected n_folds={payload.get('n_folds')}")
+          gold = payload.get('gold_rows')
+          folds = payload.get('fold_rows')
+          if not isinstance(gold, list) or len(gold) != 80444:
+              raise SystemExit('unexpected gold row count')
+          if not isinstance(folds, list) or len(folds) != 5:
+              raise SystemExit('unexpected fold structure')
+          if sum(len(rows) for rows in folds) != 285210:
+              raise SystemExit('unexpected development row count')
+          flat = [*gold, *(row for rows in folds for row in rows)]
+          if len(flat) != 365654 or len(set(flat)) != 365654:
+              raise SystemExit('manifest row coverage/uniqueness failure')
+          destination = Path(os.environ['DEST_PATH'])
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          destination.write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          print('verified_manifest_sha', actual)
+          print('gold_rows', len(gold))
+          print('development_rows', sum(len(rows) for rows in folds))
           PY
+      - name: Commit verified row-index manifest only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- "$DEST_PATH" && git ls-files --error-unmatch "$DEST_PATH" >/dev/null 2>&1; then
+            echo "immutable manifest already materialized"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$DEST_PATH"
+          git diff --cached --name-only | grep -Fx "$DEST_PATH"
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          git commit -m "data: pin verified immutable v5 validation split"
+          git push origin HEAD:ecup-v7-neural
