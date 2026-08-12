@@ -18,6 +18,49 @@ Evidence before implementation:
 
 Implemented after RED:
 - isolated `v7_item_text.py` identity-first serializer; v5/v6 serializer unchanged;
-- isolated `v7_teacher_contract.py` with 256-token minimum, full requested curriculum exposure contract, and explicit forbidden-item weak-pair filtering.
+- isolated `v7_teacher_contract.py` with 256-token minimum, full requested curriculum exposure contract, and explicit forbidden-item weak-pair filtering;
+- macro-balanced pair batches: equal training exposure per official category and mixed positive/negative examples inside each category batch;
+- five-fold driver reconstructs and verifies immutable split SHA `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`, zero overlap, `285210` development rows and `80444` unopened gold rows;
+- shared weak pretraining excludes the complete human item universe before any fold-specific fine-tuning.
 
-No metric has been claimed yet. Candidate A must complete five strict held-fold predictions before any OOF quality number is recorded.
+## 2026-08-12 — RTX 2060 CUDA gate
+
+All measurements below used the exact pinned `ai-forever/ruBert-base` revision `43be4261797042e172adf7476c558734f3cbb2a0`, `max_length=256`, CUDA fp16 and real E-CUP human pairs on `NVIDIA GeForce RTX 2060 SUPER`.
+
+| Run | Inference batch | Train physical/effective batch | Inference pairs/s | Train examples/s | Peak training allocated VRAM |
+|---|---:|---:|---:|---:|---:|
+| `31547153312` | 16 | 2 / 32 | `371.9400` | `26.1084` | `~1.65 GB` |
+| `31547513168` | 64 | 8 / 32 | **`400.4413`** | `70.8311` | `~1.70 GB` |
+| `31547717440` | 256 | 32 / 32 | `394.6975` | **`84.0242`** | `~1.96 GB` |
+
+Decisions from measured evidence:
+- **KEEP training physical batch 32 / effective batch 32.** It is `3.22x` faster than the original physical batch 2 benchmark and still uses far below the 8 GiB card limit.
+- **KEEP inference batch 64** among the measured choices; batch 256 is slightly slower, so larger batches are not assumed better.
+- The RTX 2060 batch-64 neural-only projection is about `287 s` for 115k pairs and `687 s` for 275k pairs. These are local-GPU projections only; they are not H100 measurements and do not by themselves prove the organizer runtime gate.
+- Because batch 32 still had large VRAM headroom, a final bounded benchmark without gradient checkpointing was opened on source `b4bea6922c79ef5bf93ed2aead5de6e2144f59f2`. Production OOF will use that mode only if the measured speed/VRAM result is better and safe.
+
+Dispatcher TDD/security evidence:
+- initial v7 dispatcher RED `31546512720`, GREEN `31546790051`;
+- batch 8/64 RED `31547407943`, GREEN `31547458575`;
+- maximum batch probe RED `31547614100`, GREEN `31547656554`;
+- retained train-batch-32 contract RED `31547793230`, GREEN `31547909317`;
+- the v7 dispatcher accepts only exact SHAs reachable from `ecup-v7-neural` and fixed `v7-benchmark`/`v7-train` profiles inside the existing offline/read-only container contract.
+
+## 2026-08-12 — weak attribute bug found before final OOF
+
+During a preflight review of the expensive driver, the first implementation was found to call `select_items_by_ids(..., include_attributes=False)` and then serialize those rows. That helper deliberately substitutes `"{}"` for attributes, so the 600k weak curriculum would have seen names/categories but **none of the canonical typed attributes that v7 was designed to exploit**.
+
+This was not a crash; it was a silent quality bug. It was fixed before accepting any v7 OOF result:
+- intermediate weak sampling still uses a lightweight category-only scan where attributes are not needed;
+- after the final 600k weak pairs are selected, `build_v7_text_cache_from_parquet` performs a streaming scan of the full item parquet for only the selected IDs, keeps the real attributes, canonicalizes them and stores only the serialized strings/category map;
+- the driver checks that category identity is unchanged between the lightweight and full-attribute scans and that no human item survived the leakage filter.
+
+TDD evidence:
+- RED `31548047542` required real canonical weak attributes in the streamed cache;
+- GREEN `31548225849` on source `6e12faa62b20626371b7ea265b2ec13cfbac553b`, including full v7 driver imports and `memory_policy.py`.
+
+Runs started before this fix are not quality evidence. In particular, the older name-only weak OOF run `31547962566` was cancelled as superseded. The first full-attribute run `31548340838` was also cancelled only to perform the bounded no-gradient-checkpointing speed probe before restarting the same canonical five-fold experiment.
+
+## Quality status
+
+No v7 strict OOF metric has been claimed yet. Candidate A must complete all five immutable held-fold predictions before any quality number is recorded. The target `0.70` remains a stretch target, not an inferred score.
