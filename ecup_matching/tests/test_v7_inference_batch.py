@@ -1,17 +1,26 @@
-import inspect
-
-from ecup_matching.ml import run_v7_outer_oof as outer
+from ecup_matching.ml import run_v7_outer_oof_frozen_fastinfer as fast
 
 
-def test_outer_oof_exposes_inference_batch_size_and_passes_it_to_predictor():
-    signature = inspect.signature(outer.run_v7_outer_oof)
-    assert "inference_batch_size" in signature.parameters
-    assert signature.parameters["inference_batch_size"].default == 16
-    source = inspect.getsource(outer.run_v7_outer_oof)
-    assert "batch_size=inference_batch_size" in source
+def test_fastinfer_wrapper_pins_batch_64_without_touching_training_driver():
+    assert fast.INFERENCE_BATCH_SIZE == 64
 
 
-def test_outer_oof_cli_exposes_inference_batch_size_flag():
-    source = inspect.getsource(outer.main)
-    assert '"--inference-batch-size"' in source
-    assert "inference_batch_size=args.inference_batch_size" in source
+def test_fastinfer_predictor_forces_batch_64_and_preserves_other_arguments():
+    calls = []
+
+    def fake_predict(*args, **kwargs):
+        calls.append((args, kwargs))
+        return "score", "timing"
+
+    original = fast._BASE_PREDICT_PAIRS
+    try:
+        fast._BASE_PREDICT_PAIRS = fake_predict
+        got = fast.predict_pairs_batch64("model", tokenizer="tok", frame="frame", texts="texts", device="cuda", max_length=256, batch_size=16)
+    finally:
+        fast._BASE_PREDICT_PAIRS = original
+
+    assert got == ("score", "timing")
+    assert calls[0][0] == ("model",)
+    assert calls[0][1]["batch_size"] == 64
+    assert calls[0][1]["max_length"] == 256
+    assert calls[0][1]["device"] == "cuda"
