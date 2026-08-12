@@ -31,6 +31,7 @@ jobs:
             ecup_matching/tests/test_v8_graph.py \
             ecup_matching/tests/test_v8_testlike.py \
             ecup_matching/tests/test_v8_hardneg.py \
+            ecup_matching/tests/test_v8_hardneg_probe_wrapper.py \
             -q
       - name: retained v7 regression tests
         run: |
