@@ -15,9 +15,10 @@ def _make_v5_zip(path: Path) -> None:
     with zipfile.ZipFile(path, 'w') as zf:
         zf.writestr('run.py', 'OLD_V5_RUN = True\n')
         zf.writestr('ecup_matching/__init__.py', '')
+        zf.writestr('ecup_matching/ml/__init__.py', '')
         zf.writestr('ecup_matching/submission/__init__.py', '')
-        zf.writestr('ecup_matching/submission/predict_v5.py', 'def run_prediction(**kwargs): return None\n')
-        zf.writestr('artifacts/model.bin', b'model')
+        zf.writestr('ecup_matching/submission/predict_v5.py', 'def predict_to_csv_v5(**kwargs): return None\n')
+        zf.writestr('model_v5_structured.joblib', b'model')
 
 
 def test_safe_extract_rejects_traversal_and_symlink(tmp_path):
@@ -56,13 +57,14 @@ def test_builder_reuses_v5_payload_and_adds_only_graph_runtime(tmp_path):
     assert result['archive_bytes'] == out.stat().st_size
     with zipfile.ZipFile(out) as zf:
         names=set(zf.namelist())
-        assert 'artifacts/model.bin' in names
+        assert 'model_v5_structured.joblib' in names
         assert 'ecup_matching/ml/v8_graph.py' in names
         assert 'ecup_matching/ml/v8_submission_graph.py' in names
         assert 'ecup_matching/ml/__init__.py' in names
         run=zf.read('run.py').decode()
-        assert 'predict_v5.run_prediction' in run
+        assert 'predict_to_csv_v5' in run
         assert 'apply_graph_to_prediction' in run
+        assert '--output_path' in run and '--items_path' in run and '--matches_path' in run
         assert "'rb': 0.0" in run and "'ep': 0.02" in run and "'ap': 0.01" in run
         meta=json.loads(zf.read('v8_metadata.json'))
         assert meta['version']=='v8-v5-best-plus-graph'
