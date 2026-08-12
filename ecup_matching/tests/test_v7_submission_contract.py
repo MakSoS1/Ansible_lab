@@ -282,7 +282,7 @@ def test_scoring_is_deterministic_and_batch_size_only_moves_float_noise(tmp_path
     from ecup_matching.ml.v7_runtime import predict_pairs
 
     items = _items(40)
-    pairs = _pairs(items, 37)
+    pairs = _pairs(len(items), 37)
     texts = {}
     for row in items.itertuples(index=False):
         from ecup_matching.ml.textnorm import normalize_item
