@@ -16,7 +16,7 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
-      V6_OOF: experiments/v6/fast-ablation/no_teacher/6a1e61a2d068/v6-fast-no_teacher-oof.parquet
+      V6_OOF: experiments/v6/teacher-gate/95/0202787447cc/v6-teacher-gate-95-oof.parquet
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -53,7 +53,7 @@ jobs:
           root=Path(os.environ['RUNNER_TEMP'])/'v8-v6diag'
           matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target'])
           items=pd.read_parquet(root/'items_human.parquet',columns=['id','category']).drop_duplicates('id')
-          oof=pd.read_parquet(root/'v6-fast-no_teacher-oof.parquet')
+          oof=pd.read_parquet(root/'v6-teacher-gate-95-oof.parquet')
           manifest=load_frozen_split_manifest(); dev,folds=development_rows_and_folds(manifest,total_rows=len(matches))
           dev=np.asarray(dev,int); folds=np.asarray(folds,int); row_to_fold=dict(zip(dev.tolist(),folds.tolist()))
           rows=oof['row_index'].to_numpy(int) if 'row_index' in oof else dev
