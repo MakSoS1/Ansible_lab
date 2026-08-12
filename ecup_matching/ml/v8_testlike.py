@@ -30,6 +30,12 @@ def build_testlike_slice(
     max_rows: int,
     seed: int = 2026,
 ) -> pd.DataFrame:
+    """Build a deterministic retrieval-like diagnostic slice.
+
+    Sampling is performed at the retrieval-anchor level (``id1``), never at
+    the individual-pair level.  This preserves complete candidate lists for
+    every selected anchor, which is required for graph/rank diagnostics.
+    """
     required = {"id1", "id2", "target"}
     missing = required - set(llm_pairs.columns)
     if missing:
@@ -42,14 +48,37 @@ def build_testlike_slice(
     ].copy()
     if len(eligible) < max_rows:
         raise ValueError(f"available test-like rows {len(eligible)} < requested {max_rows}")
+
+    group_sizes = eligible.groupby("id1", sort=False).size()
+    anchors = group_sizes.index.to_numpy(copy=True)
     rng = np.random.default_rng(int(seed))
-    chosen = np.sort(rng.choice(len(eligible), size=int(max_rows), replace=False))
-    out = eligible.iloc[chosen].reset_index(drop=True)
+    rng.shuffle(anchors)
+    selected: set[object] = set()
+    used = 0
+    for anchor in anchors.tolist():
+        size = int(group_sizes.loc[anchor])
+        if size > max_rows:
+            continue
+        if used + size <= max_rows:
+            selected.add(anchor)
+            used += size
+            if used == max_rows:
+                break
+    if not selected:
+        raise ValueError("no complete retrieval group fits requested max_rows")
+
+    # Boolean filtering preserves original pair order inside every anchor group.
+    out = eligible.loc[eligible["id1"].isin(selected)].reset_index(drop=True)
+    if len(out) > max_rows:
+        raise RuntimeError("complete-group sampler exceeded max_rows")
     if (set(out["id1"].tolist()) | set(out["id2"].tolist())) & human_item_ids:
         raise RuntimeError("human item leaked into test-like slice")
     out.attrs["diagnostic_only"] = True
     out.attrs["selection_seed"] = int(seed)
     out.attrs["source"] = "human-item-excluded-llm-candidates"
+    out.attrs["grouping_key"] = "id1"
+    out.attrs["complete_groups"] = True
+    out.attrs["requested_max_rows"] = int(max_rows)
     return out
 
 
