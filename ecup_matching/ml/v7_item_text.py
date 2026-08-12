@@ -136,11 +136,10 @@ def serialize_item_v7(
 ) -> str:
     """Serialize an item for the v7 cross-encoder with identity evidence first.
 
-    The retained v5 teacher placed a potentially long generic numeric section before
-    attributes. v7 intentionally keeps name/brand/model and canonical identity
-    attributes at the front, then spends remaining context on numeric/residual data.
-    `attribute_importance` is optional and only affects the residual tie-break; the
-    identity packet itself stays deterministic and schema-driven.
+    v7 gives the shared cross-encoder an explicit category condition before the
+    item-specific identity packet, then keeps canonical identity attributes ahead
+    of generic numeric/residual material. The category is target-free metadata and
+    is identical to the category already used by the macro-balanced sampler.
     """
     if max_chars < 64:
         raise ValueError("max_chars must be at least 64")
@@ -148,6 +147,10 @@ def serialize_item_v7(
     lines: list[str] = []
     name_budget = min(140, max(1, max_chars - len("[NAME] ")))
     _append_line(lines, f"[NAME] {item.name[:name_budget]}", max_chars)
+
+    category = clean_text(item.category)
+    if category:
+        _append_line(lines, f"[CATEGORY] {category}", max_chars)
 
     brand = _brand(item)
     if brand:
