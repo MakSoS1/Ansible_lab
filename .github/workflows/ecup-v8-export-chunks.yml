@@ -1,0 +1,87 @@
+name: E-CUP v8 export final chunks
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-export-chunks.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  HF_ZIP_PATH: submissions/v8/v5graph/31612800199/ecup-v8-v5graph-submission.zip
+  EXPECTED_SHA256: d08bfd695ea8163ba012235a9d96cf288cfe0bef86f4073dc11c4560dffea931
+  EXPECTED_BYTES: '1251581473'
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - name: Download exact final v8 and verify before split
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          mkdir -p "$RUNNER_TEMP/v8-chunks"
+          curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+            "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${HF_ZIP_PATH}?download=true" \
+            -o "$RUNNER_TEMP/v8-chunks/final.zip"
+          test "$(stat -c %s "$RUNNER_TEMP/v8-chunks/final.zip")" = "$EXPECTED_BYTES"
+          echo "$EXPECTED_SHA256  $RUNNER_TEMP/v8-chunks/final.zip" | sha256sum -c -
+      - name: Split into connector-sized byte chunks and emit manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/v8-chunks"
+          split -b 300000000 -d -a 2 final.zip part-
+          count="$(find . -maxdepth 1 -name 'part-*' -type f | wc -l)"
+          test "$count" = 5
+          sha256sum part-* > chunks.sha256
+          stat -c '%n %s' part-* > chunks.sizes
+          {
+            echo "final_sha256=$EXPECTED_SHA256"
+            echo "final_bytes=$EXPECTED_BYTES"
+            cat chunks.sha256
+            cat chunks.sizes
+          } > manifest.txt
+          cat manifest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v8-chunk-00
+          path: ${{ runner.temp }}/v8-chunks/part-00
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v8-chunk-01
+          path: ${{ runner.temp }}/v8-chunks/part-01
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v8-chunk-02
+          path: ${{ runner.temp }}/v8-chunks/part-02
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v8-chunk-03
+          path: ${{ runner.temp }}/v8-chunks/part-03
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v8-chunk-04
+          path: ${{ runner.temp }}/v8-chunks/part-04
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v8-chunk-manifest
+          path: ${{ runner.temp }}/v8-chunks/manifest.txt
+          retention-days: 14
