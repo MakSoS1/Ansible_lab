@@ -33,6 +33,7 @@ def _make_v6_zip(path: Path) -> None:
         zf.writestr('ecup_matching/__init__.py', '')
         zf.writestr('ecup_matching/ml/__init__.py', '')
         zf.writestr('ecup_matching/submission/__init__.py', '')
+        # Deliberately stale runtime: models/metadata are valid but streaming code is absent.
         zf.writestr('ecup_matching/submission/predict_v6.py', 'def predict_to_csv_v6(**kwargs): return None\n')
         zf.writestr('model_v5_structured.joblib', b'model')
         zf.writestr('model_v5_contrastive/config.json', '{}')
@@ -40,6 +41,28 @@ def _make_v6_zip(path: Path) -> None:
         zf.writestr('model_v6_category_shrunk.json', '{}')
         zf.writestr('model_v6_hgb_meta.joblib', b'model')
         zf.writestr('model_v6_gate_metadata.json', json.dumps(metadata))
+
+
+def _runtime_sources(tmp_path: Path) -> dict[str, Path]:
+    predict = tmp_path/'predict_v6.py'
+    parallel = tmp_path/'v6_parallel.py'
+    fast = tmp_path/'v6_fast.py'
+    gate = tmp_path/'v6_teacher_gate.py'
+    predict.write_text(
+        'def _structured_scores_streaming(): pass\n'
+        'def predict_to_csv_v6(**kwargs): return None\n'
+        'from .v6_parallel import run_structured_chunks\n',
+        encoding='utf-8',
+    )
+    parallel.write_text('def run_structured_chunks(**kwargs): return {}\n', encoding='utf-8')
+    fast.write_text('def collect_chunked_scores(**kwargs): return {}\n', encoding='utf-8')
+    gate.write_text('def disagreement_gate_mask(*args, **kwargs): return None\n', encoding='utf-8')
+    return {
+        'predict_v6_source': predict,
+        'v6_parallel_source': parallel,
+        'v6_fast_source': fast,
+        'v6_teacher_gate_source': gate,
+    }
 
 
 def test_safe_extract_rejects_traversal_and_symlink(tmp_path):
@@ -122,6 +145,7 @@ def test_v8_fast_builder_uses_v6_runtime_not_v5_runtime(tmp_path):
         source_v6_metric=0.6006003614522999,
         graph_oof_delta=0.000442083907,
         source_commit='b'*40,
+        **_runtime_sources(tmp_path),
     )
     assert result['archive_bytes'] == out.stat().st_size
     with zipfile.ZipFile(out) as zf:
@@ -135,3 +159,30 @@ def test_v8_fast_builder_uses_v6_runtime_not_v5_runtime(tmp_path):
         assert meta['base']['strict_oof_macro_ap']==pytest.approx(0.6006003614522999)
         assert meta['base']['teacher_coverage']==pytest.approx(0.95)
         assert meta['sealed_gold_opened'] is False
+
+
+def test_v8_fast_builder_overlays_streaming_runtime_over_stale_v6_zip(tmp_path):
+    from ecup_matching.submission.build_submission_v8_v6graph import build_v8_from_v6_zip
+
+    source = tmp_path/'v6-stale.zip'; _make_v6_zip(source)
+    graph = tmp_path/'v8_graph.py'; graph.write_text('GRAPH = True\n', encoding='utf-8')
+    post = tmp_path/'v8_submission_graph.py'; post.write_text('POST = True\n', encoding='utf-8')
+    out = tmp_path/'v8-fast.zip'
+    build_v8_from_v6_zip(
+        source,
+        out,
+        v8_graph_source=graph,
+        v8_submission_graph_source=post,
+        source_v6_metric=0.6006003614522999,
+        graph_oof_delta=0.000442083907,
+        source_commit='c'*40,
+        **_runtime_sources(tmp_path),
+    )
+    with zipfile.ZipFile(out) as zf:
+        predictor = zf.read('ecup_matching/submission/predict_v6.py').decode('utf-8')
+        parallel = zf.read('ecup_matching/submission/v6_parallel.py').decode('utf-8')
+        assert '_structured_scores_streaming' in predictor
+        assert 'run_structured_chunks' in predictor
+        assert 'run_structured_chunks' in parallel
+        assert zf.read('ecup_matching/submission/v6_fast.py')
+        assert zf.read('ecup_matching/ml/v6_teacher_gate.py')
