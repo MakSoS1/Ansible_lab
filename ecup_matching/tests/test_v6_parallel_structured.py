@@ -93,7 +93,7 @@ def test_divergent_implementations_do_not_share_cache_entries():
     """A future legacy pin that changes _ratio must not read the typed value."""
     module = type(sys)("legacy_ecup.ml.features")
 
-    def _ratio(a, b):  # noqa: D401 - deliberately different bytecode and result
+    def _ratio(a, b):
         return 0.125
 
     def _partial_ratio(a, b):
@@ -191,10 +191,13 @@ def test_empty_input_returns_empty_signals():
     assert out["a"].shape == (0,)
 
 
-def test_worker_count_never_exceeds_cap_and_stays_positive():
+def test_worker_count_never_exceeds_measured_default_cap_and_stays_positive():
     assert resolve_worker_count(0) == 1
+    # Explicit callers can opt into a different cap for diagnostics.
     assert resolve_worker_count(1000, max_workers_cap=20) == 20
-    assert resolve_worker_count(None, cpu_count=20) == 19
+    # Production default is pinned to the measured RTX/Linux optimum: 8 workers.
+    assert resolve_worker_count(None, cpu_count=20) == 8
+    assert resolve_worker_count(None, cpu_count=64) == 8
     assert resolve_worker_count(None, cpu_count=1) == 1
     assert resolve_worker_count(None, cpu_count=2) == 1
 
