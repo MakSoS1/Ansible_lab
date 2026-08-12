@@ -205,3 +205,31 @@
 **Decision:** `ecup_matching/ci/runtime_closure.py` computes the first-party import closure of the v6 entrypoint; the final-submit workflow copies and then verifies that closure instead of a hand-maintained `cp` list.
 
 **Evidence:** the manual list in `ecup-v6-final-submit.yml` did not include the new `v6_parallel.py`, and also did not overwrite `data_subset.py` or `predict_v5.py`, both of which the v5 base archive ships and both of which this iteration changed. The first failure mode is a `ModuleNotFoundError` on the platform; the second is worse, because the archive would silently run stale v5 code and produce different predictions than the ones validated. Tests assert the closure is complete, that the workflow uses the derived list, and that no training-only module is reachable from the runtime entrypoint.
+
+## D038 — A diagnostic driver must persist its model or the result is unusable
+
+**Decision:** Any GPU driver whose result can select an architecture must call `save_pretrained` before exiting.
+
+**Evidence:** `run_v7_fold0_probe.py` writes only `v7-fold0-probe-oof.parquet` and `metrics.json`; it contains no `save_pretrained`, `torch.save` or `state_dict`. The checkpoints that scored `0.6791967999009738` and later `0.7023556010133556` on fold 0 existed only in VRAM and are gone. Building any v7 archive therefore required a full retrain first, at roughly an hour of RTX 2060 time per attempt.
+
+**Consequence:** `run_v7_production.py` saves weights and asserts a `.safetensors` file exists before writing its report. A test compares the two drivers so the probe cannot silently start saving without the comment explaining why the refit was needed being updated.
+
+## D039 — The v7 archive imports inference code through `v7_runtime`, never `v7_neural`
+
+**Decision:** `predict_v7` imports `build_v7_text_cache_from_parquet` and `predict_pairs` from `ecup_matching.ml.v7_runtime`. Both training and inference import that one module, so serialization and scoring cannot drift.
+
+**Evidence:** `v7_neural` imports `train_v5_teacher_fold` and `v5_teacher2_objective`, which transitively reach `split`, `metrics`, `v5_evaluation`, `v5_validation`, `train_v1`, `reranker_data`, `v5_contrastive_data` and more. The v7 runtime closure was `26` modules with those training-only files inside it; after the split it is `8` with none. An earlier iteration already lost an organizer smoke to exactly this class of training-only import.
+
+## D040 — A production refit may never be labeled with a fold diagnostic
+
+**Decision:** `model_v7_metadata.json` records `diagnostic_fold0_macro_average_precision` and `diagnostic_fold0_is_not_out_of_fold: true`, and leaves `strict_oof_macro_average_precision` null until the five-fold outer OOF driver produces one. `build_model_metadata` raises if both fields are set to the same value, and `validate_v7_metadata` repeats the check at container start.
+
+**Reason:** the fold-0 number scores a model trained on folds 1-4 and evaluated on fold 0. The production model is refit on all `285,210` development rows, so no fold can score it. Writing the diagnostic into the strict field would state a validated quality the archive does not have.
+
+**Status:** neither `ecup-v7-full-oof-1ep.yml` nor `ecup-v7-full-oof-fastinfer.yml` has ever executed, so v7 still has no honest out-of-fold number.
+
+## D041 — gpu-dispatch has no secrets, so the archive is built on the runner
+
+**Decision:** `ecup-v7-production.yml` trains, packages and organizer-smokes on `ecup-rtx2060`, then uploads the finished ZIP as a dispatch artifact.
+
+**Evidence:** `repos/MakSoS1/gpu-dispatch/actions/secrets` is empty, and run `31530503704` failed with `HF_TOKEN secret missing in gpu-dispatch`. Without a token there is no way to move roughly `700 MB` of weights into the packaging repository, and no cross-repository PAT exists for Actions artifacts either. Building in place removes the dependency entirely; the HF upload step stays but is skipped while the secret is absent.

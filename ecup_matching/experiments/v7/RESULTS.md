@@ -107,3 +107,69 @@ This is a real context-allocation defect, not a synthetic-only example. `identit
 ## Quality status
 
 Best measured v7 quality evidence is currently **fold-0 diagnostic `0.6791967999009738`**. No v7 strict five-fold OOF metric has been claimed yet. The target `0.70` is close enough to pursue directly, but it will only be called reached for the requested local validation after a frozen candidate completes the strict outer-OOF gate.
+## 2026-08-12 — submission path
+
+The architecture had no way to become a submission: the fold-0 probe never
+persisted a model, and no v7 inference, packaging or entrypoint code existed.
+All of it now does.
+
+### Archive shape
+
+v7 scores every pair with one cross-encoder forward pass, so the archive carries
+no structured bundle, no TF-IDF vectorizer and no meta stack. That removes the
+pure-Python structured phase entirely — the phase that consumed roughly `78%`
+of the private budget in v6 before it was parallelized.
+
+| | runtime import closure |
+|---|---:|
+| importing through `v7_neural` | `26` modules, training graph included |
+| importing through `v7_runtime` | `8` modules, none training-only |
+
+`v7_neural` reaches `train_v5_teacher_fold` and `v5_teacher2_objective`, and
+through them the split, metric, validation and curriculum modules. Both halves
+now import the shared inference functions from `v7_runtime`, so the serialized
+text and the scoring loop stay identical between training and production.
+
+### Verified
+
+CI run `31579152729` on GitHub-hosted Linux with `torch 2.13.0+cpu` and
+`transformers 4.57.6`:
+
+- v7 submission contract tests: `12 passed`, and a separate step fails the job
+  if any of them skip, so a missing torch cannot hide the coverage;
+- full repository suite and `scripts/memory_policy.py`: passed.
+
+Local suite after packaging was added: `332 passed, 4 skipped`.
+
+### Production refit
+
+`run_v7_production.py` retrains the selected one-epoch candidate on all
+`285,210` development rows and saves the weights. It reports no quality metric,
+and tests assert it never calls `macro_ap_report` or `average_precision_score`
+and never mentions `held_fold`: a model that saw every fold cannot be scored by
+one of them.
+
+### Metric labeling
+
+The archive records:
+
+```
+diagnostic_fold0_macro_average_precision  0.7023556010133556
+diagnostic_fold0_is_not_out_of_fold       true
+strict_oof_macro_average_precision        null
+```
+
+`build_model_metadata` raises when both numbers are set equal, and
+`validate_v7_metadata` repeats the check when the container starts. The fold-0
+value scores a model trained without fold 0; the packaged model is a different
+model trained on all five folds.
+
+### Still open
+
+- Neither `ecup-v7-full-oof-1ep.yml` nor `ecup-v7-full-oof-fastinfer.yml` has
+  ever run, so v7 has no honest out-of-fold number.
+- The neural-only projection on the RTX 2060 is `687s` for `275,000` pairs
+  against a `780s` budget. At `400.4` pairs/s the card is doing about
+  `18.4` effective TFLOPS, roughly `65%` of its fp16 peak, so the work is
+  GPU-bound and should scale on an H100 — but no H100 measurement exists, and
+  tokenization plus item serialization are CPU-side and will not scale with it.

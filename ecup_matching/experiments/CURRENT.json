@@ -62,5 +62,21 @@
   },
   "sealed_gold_evaluated": false,
   "leaderboard_result_known": false,
-  "next_action": "Finish the already-running identity-v2 one-epoch immutable fold-0 comparison. Freeze the better of identity-v2 and the 0.7023556010 pre-identity baseline without any further post-result tuning, then run the exact matching five-fold frozen OOF gate. Claim the 0.70 local-validation target only if that full strict OOF is >= 0.70. After quality selection, run the exact runtime/package gate and checkpoint the complete state to Memora/private HF."
+  "next_action": "Wait for ecup-rtx2060 to finish the in-flight fold0 probe, let the queued v7 production refit train, package and organizer-smoke on the runner, then retain the ZIP SHA. Separately run the five-fold outer OOF, which has never executed: until it does, v7 has no honest strict OOF and the archive correctly carries a null in that field. Keep sealed gold unopened.",
+  "v7_submission_path": {
+    "inference_entrypoint": "ecup_matching/submission/run_v7.py",
+    "packaging": "ecup_matching/build_submission_v7.py",
+    "production_training": "ecup_matching/ml/run_v7_production.py",
+    "runtime_closure_modules": 8,
+    "training_only_modules_in_closure": 0,
+    "contract_ci_run_id": 31579152729,
+    "contract_tests_passed": 12,
+    "fold0_diagnostic_macro_average_precision": 0.7023556010133556,
+    "fold0_diagnostic_is_out_of_fold": false,
+    "strict_oof_macro_average_precision": null,
+    "five_fold_oof_ever_executed": false,
+    "probe_persisted_weights": false,
+    "gpu_dispatch_has_secrets": false,
+    "archive_built_on_runner": true
+  }
 }
