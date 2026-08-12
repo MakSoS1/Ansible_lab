@@ -50,12 +50,10 @@ jobs:
           from pathlib import Path
           import numpy as np
           import pandas as pd
-          from sklearn.metrics import average_precision_score
           from ecup_matching.ml.v5_evaluation import macro_ap_report
-          from ecup_matching.ml.v7_frozen_split import load_frozen_manifest
+          from ecup_matching.ml.v7_frozen_split import load_frozen_split_manifest
           from ecup_matching.ml.run_v5_pretrained_biencoder import development_rows_and_folds
           from ecup_matching.ml.v8_graph import graph_features, graph_rescore
-          from ecup_matching.ml.metrics import OFFICIAL_CATEGORIES
 
           root=Path(os.environ['RUNNER_TEMP'])/'v8-graph'
           matches=pd.read_parquet(root/'matches.parquet', columns=['id1','id2','target'])
@@ -63,11 +61,9 @@ jobs:
           oof=pd.read_parquet(root/'v5-category-hgb-fusion-oof.parquet')
           print('V8_GRAPH_OOF_SCHEMA='+json.dumps({c:str(oof[c].dtype) for c in oof.columns},ensure_ascii=False,sort_keys=True))
 
-          manifest=load_frozen_manifest(Path('ecup_matching/validation/v5_immutable_split_manifest.json'))
+          manifest=load_frozen_split_manifest(Path('ecup_matching/validation/v5_immutable_split_manifest.json'))
           dev_rows, fold_ids=development_rows_and_folds(manifest, total_rows=len(matches))
           dev_rows=np.asarray(dev_rows,dtype=np.int64); fold_ids=np.asarray(fold_ids,dtype=np.int64)
-
-          # Resolve exact score and row alignment conservatively.
           score_candidates=[c for c in oof.columns if c.lower() not in {'row_index','fold','target','id1','id2','category'} and pd.api.types.is_numeric_dtype(oof[c])]
           if len(score_candidates)!=1:
               named=[c for c in score_candidates if 'score' in c.lower() or 'predict' in c.lower()]
@@ -83,7 +79,7 @@ jobs:
               expected_fold=fold_ids[order]
               work=matches.iloc[oof['row_index'].astype(int).to_numpy()].reset_index(drop=True)
           elif len(oof)==len(dev_rows):
-              order=np.arange(len(dev_rows),dtype=np.int64); expected_fold=fold_ids
+              expected_fold=fold_ids
               work=matches.iloc[dev_rows].reset_index(drop=True)
           else:
               raise RuntimeError('cannot align OOF rows')
@@ -105,54 +101,34 @@ jobs:
 
           started=time.perf_counter(); features=graph_features(work[['id1','id2','category']],score); feature_sec=time.perf_counter()-started
           print('V8_GRAPH_FEATURE_TIMING='+json.dumps({'rows':len(work),'seconds':feature_sec,'rows_per_second':len(work)/feature_sec},sort_keys=True))
-
-          configs=[]
-          for rb in [0.0,0.005,0.01,0.02,0.03,0.05]:
-            for rt in [0.0,0.005,0.01]:
-              for ep in [0.0,0.005,0.01,0.02]:
-                for ap in [0.0,0.002,0.005,0.01]:
-                  configs.append((rb,rt,ep,ap))
+          configs=[(rb,rt,ep,ap) for rb in [0.0,0.005,0.01,0.02,0.03,0.05] for rt in [0.0,0.005,0.01] for ep in [0.0,0.005,0.01,0.02] for ap in [0.0,0.002,0.005,0.01]]
 
           def macro_on(mask,s):
-              rep=macro_ap_report(work.loc[mask].reset_index(drop=True),np.asarray(s)[mask],strict_official=False)
-              return float(rep['macro_average_precision'])
+              return float(macro_ap_report(work.loc[mask].reset_index(drop=True),np.asarray(s)[mask],strict_official=False)['macro_average_precision'])
 
-          tune_mask=work['fold'].isin([0,1]).to_numpy()
-          confirm_mask=work['fold'].isin([2,3,4]).to_numpy()
-          rows=[]
-          started=time.perf_counter()
-          for cfg in configs:
-              rb,rt,ep,ap=cfg
+          tune_mask=work['fold'].isin([0,1]).to_numpy(); confirm_mask=work['fold'].isin([2,3,4]).to_numpy()
+          rows=[]; started=time.perf_counter()
+          for rb,rt,ep,ap in configs:
               s=graph_rescore(score,features,reciprocal_best_bonus=rb,reciprocal_top3_bonus=rt,endpoint_rank_weight=ep,ambiguity_penalty=ap)
               rows.append({'rb':rb,'rt':rt,'ep':ep,'ap':ap,'tune':macro_on(tune_mask,s)})
           sweep_sec=time.perf_counter()-started
           rows.sort(key=lambda x:(-x['tune'],x['rb'],x['rt'],x['ep'],x['ap']))
-          # Only best config chosen on folds 0-1 is evaluated on untouched 2-4.
           best=rows[0]
           selected=graph_rescore(score,features,reciprocal_best_bonus=best['rb'],reciprocal_top3_bonus=best['rt'],endpoint_rank_weight=best['ep'],ambiguity_penalty=best['ap'])
           selected_full=macro_ap_report(work,selected,strict_official=True)
-          base_tune=macro_on(tune_mask,score); base_confirm=macro_on(confirm_mask,score)
-          selected_confirm=macro_on(confirm_mask,selected)
+          base_tune=macro_on(tune_mask,score); base_confirm=macro_on(confirm_mask,score); selected_confirm=macro_on(confirm_mask,selected)
           per_fold=[]
           for fold in range(5):
-              m=(work['fold'].to_numpy()==fold)
-              per_fold.append({'fold':fold,'base':macro_on(m,score),'graph':macro_on(m,selected),'delta':macro_on(m,selected)-macro_on(m,score)})
+              m=(work['fold'].to_numpy()==fold); b=macro_on(m,score); g=macro_on(m,selected)
+              per_fold.append({'fold':fold,'base':b,'graph':g,'delta':g-b})
           payload={
-            'diagnostic_only':True,
-            'selection_folds':[0,1], 'confirmatory_folds':[2,3,4],
-            'base_full_macro_ap':float(base['macro_average_precision']),
-            'base_tune_macro_ap':base_tune,'base_confirm_macro_ap':base_confirm,
-            'selected_config':best,
-            'selected_confirm_macro_ap':selected_confirm,
-            'confirm_delta':selected_confirm-base_confirm,
-            'selected_full_macro_ap':float(selected_full['macro_average_precision']),
-            'full_delta':float(selected_full['macro_average_precision']-base['macro_average_precision']),
-            'per_fold':per_fold,
-            'graph_feature_seconds':feature_sec,'sweep_seconds':sweep_sec,
-            'reciprocal_best_fraction':float(features['reciprocal_best'].mean()),
-            'degree_gt1_fraction':float((features['max_endpoint_degree']>1).mean()),
-            'top10_tune_configs':rows[:10],
-            'sealed_gold_opened':False,
+            'diagnostic_only':True,'selection_folds':[0,1],'confirmatory_folds':[2,3,4],
+            'base_full_macro_ap':float(base['macro_average_precision']),'base_tune_macro_ap':base_tune,'base_confirm_macro_ap':base_confirm,
+            'selected_config':best,'selected_confirm_macro_ap':selected_confirm,'confirm_delta':selected_confirm-base_confirm,
+            'selected_full_macro_ap':float(selected_full['macro_average_precision']),'full_delta':float(selected_full['macro_average_precision']-base['macro_average_precision']),
+            'per_fold':per_fold,'graph_feature_seconds':feature_sec,'sweep_seconds':sweep_sec,
+            'reciprocal_best_fraction':float(features['reciprocal_best'].mean()),'degree_gt1_fraction':float((features['max_endpoint_degree']>1).mean()),
+            'top10_tune_configs':rows[:10],'sealed_gold_opened':False,
           }
           print('V8_GRAPH_V5_RESULT='+json.dumps(payload,ensure_ascii=False,sort_keys=True))
           (root/'v8-graph-v5-result.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2,sort_keys=True),encoding='utf-8')
