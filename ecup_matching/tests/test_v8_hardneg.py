@@ -2,10 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ecup_matching.ml import v7_neural
 from ecup_matching.ml.v8_hardneg import (
     HardNegativeMacroPairBatchSamplerV8,
     attach_v8_hardness,
     pair_hardness_v8,
+    train_pair_phase_v8_hardneg,
 )
 
 
@@ -69,3 +71,30 @@ def test_sampler_is_deterministic_for_fixed_seed_and_epoch():
     a=HardNegativeMacroPairBatchSamplerV8(frame,4,123,epoch=2)
     b=HardNegativeMacroPairBatchSamplerV8(frame,4,123,epoch=2)
     assert list(a)==list(b)
+
+
+def test_training_wrapper_leaves_weak_phase_unchanged_and_restores_sampler(monkeypatch):
+    calls=[]
+    original_sampler=v7_neural.MacroPairBatchSampler
+
+    def fake_train_pair_phase(*, weak, frame, texts, **kwargs):
+        calls.append((weak, v7_neural.MacroPairBatchSampler, frame.copy()))
+        return 'ok'
+
+    monkeypatch.setattr(v7_neural,'train_pair_phase',fake_train_pair_phase)
+    frame=pd.DataFrame({
+        'id1':[1,1,2,3], 'id2':[2,3,3,4],
+        'target':[1,0,0,1], 'category':['A']*4,
+        'weak_weight':[1.0]*4,
+    })
+    texts={1:'alpha x1',2:'alpha x2',3:'alpha x3',4:'beta'}
+
+    assert train_pair_phase_v8_hardneg(weak=True,frame=frame,texts=texts)== 'ok'
+    assert calls[-1][1] is original_sampler
+    assert 'negative_hardness' not in calls[-1][2]
+
+    assert train_pair_phase_v8_hardneg(weak=False,frame=frame.drop(columns='weak_weight'),texts=texts)== 'ok'
+    assert calls[-1][1] is not original_sampler
+    assert issubclass(calls[-1][1],HardNegativeMacroPairBatchSamplerV8)
+    assert 'negative_hardness' in calls[-1][2]
+    assert v7_neural.MacroPairBatchSampler is original_sampler
