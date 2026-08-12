@@ -43,14 +43,24 @@
     "base_model": "ai-forever/ruBert-base",
     "base_model_revision": "43be4261797042e172adf7476c558734f3cbb2a0",
     "max_length": 256,
-    "serialization": "identity-first canonical typed attributes before residual numeric and attribute tails",
-    "training": "five outer folds; authoritative human plus leakage-safe confidence-weighted weak curriculum; more exposure than retained 800-step teacher2",
+    "serialization": "identity-first canonical typed attributes; identity-v2 also surfaces material/composition, gender, season, hallmark/karat and stone/insert before the numeric tail",
+    "training": "immutable five outer folds; 600k leakage-safe weak pairs at 0.10 epoch; macro-balanced human fine-tune at 1.00 epoch; physical/effective batch 32; last 8 layers; ranking weight 0.25",
     "target_strict_oof_macro_average_precision": 0.7,
     "keep_threshold_strict_oof_macro_average_precision": 0.6018115534135564,
     "fully_outer_cross_fitted": true,
     "post_result_weight_tuning": false
   },
+  "research_gate": {
+    "fold": 0,
+    "diagnostic_only": true,
+    "pre_identity_v2_one_epoch_macro_average_precision": 0.7023556010133556,
+    "target_0_70_crossed": true,
+    "source_sha": "0a2dabca4908767ab62a63190b7f2cff69bbef44",
+    "gpu_dispatch_run_id": 31573080203,
+    "gold_metric_opened": false,
+    "gold_rows_scored": 0
+  },
   "sealed_gold_evaluated": false,
   "leaderboard_result_known": false,
-  "next_action": "Write and run failing v7 tests for identity-first canonical serialization, weak-item leakage exclusion, and the 256-token/non-800-step training contract. Then implement only enough code to turn those tests green before launching any training. Preserve sealed gold and v6 runtime optimizations."
+  "next_action": "Finish the already-running identity-v2 one-epoch immutable fold-0 comparison. Freeze the better of identity-v2 and the 0.7023556010 pre-identity baseline without any further post-result tuning, then run the exact matching five-fold frozen OOF gate. Claim the 0.70 local-validation target only if that full strict OOF is >= 0.70. After quality selection, run the exact runtime/package gate and checkpoint the complete state to Memora/private HF."
 }

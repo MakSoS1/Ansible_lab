@@ -61,6 +61,49 @@ TDD evidence:
 
 Runs started before this fix are not quality evidence. In particular, the older name-only weak OOF run `31547962566` was cancelled as superseded. The first full-attribute run `31548340838` was also cancelled only to perform the bounded no-gradient-checkpointing speed probe before restarting the same canonical five-fold experiment.
 
+## 2026-08-12 — first immutable fold-0 quality gate
+
+The first completed leakage-safe v7 research gate is private GPU run `31550137850`, job `93970869826`, exact source `bf8d6c79105d8454b60857a951f9fe08288c0c1f`.
+
+Configuration: `ai-forever/ruBert-base`, `max_length=256`, full real attributes, 600k leakage-safe weak curriculum, weak `0.10` epoch, human `0.50` epoch, last 8 encoder layers trainable, macro-balanced batches, batch `32`, ranking weight `0.25`.
+
+Result:
+- immutable fold-0 standalone Macro AP: **`0.6791967999009738`**;
+- exact retained teacher2 fold-0 reference: `0.4330985437448661`;
+- delta vs teacher2: **`+0.2460982561561077`**;
+- held rows: `57042`;
+- sealed gold opened: **no**;
+- gold rows scored: **0**;
+- cross-split item overlap: **0**.
+
+This number is intentionally labelled **diagnostic only**, not strict five-fold OOF. Fold 0 is now a research-selection gate; any configuration retained from it must still complete all five outer folds, and folds 1–4 should be reported separately as confirmatory evidence because fold 0 has been used for model selection.
+
+The weakest v7 fold-0 categories are `Одежда 0.4143`, `Ювелирные изделия 0.4656`, `Обувь 0.4781`, `Мебель 0.5357`, `Галантерея и аксессуары 0.5699`. Most other categories are already roughly `0.64–0.88`, so the remaining gap is concentrated rather than uniform.
+
+## 2026-08-12 — identity-v2 context repair
+
+A composed-path review found that v7 already prepends category as `[CAT]`; therefore a proposed duplicate category token was rejected before GPU use. The useful remaining context defect was category-specific identity evidence: material/composition, gender, season, jewelry hallmark/karat and stone/insert were still residual attributes behind the numeric section.
+
+`identity-v2` promotes those keys into the front identity packet. TDD evidence: RED `31573302453`, targeted GREEN `31573405437`, full repository suite + memory policy GREEN `31574407135`. The production change is now on canonical `ecup-v7-neural`; canonical v7 CI `31575399464` is GREEN.
+
+Exact ruBERT tokenizer visibility on real immutable fold-0 pairs (`max_length=256`, deterministic <=2500 pairs/category, no label-based sampling) changed as follows:
+
+| Category | old critical-attribute token visibility | identity-v2 |
+|---|---:|---:|
+| Одежда | `72.1%` | **`97.3%`** |
+| Обувь | `73.9%` | **`90.5%`** |
+| Ювелирные изделия | `53.9%` | **`89.9%`** |
+| Галантерея и аксессуары | `61.0%` | **`85.0%`** |
+| Мебель | `18.2%` | **`37.5%`** |
+
+This is a real context-allocation defect, not a synthetic-only example. `identity-v2` is therefore the next neural candidate if the already-running one-epoch baseline does not give sufficient margin.
+
+## 2026-08-12 — next controlled gates
+
+- one-epoch baseline probe is running as private run `31573080203`; it differs from the `0.6791968` run only by human epochs `0.50 -> 1.00` and remains pinned to the pre-identity-v2 source for causal comparison;
+- fixed v7/v5 equal-rank fusion evaluator exists with strict row/fold/gold alignment checks; the first GitHub-hosted CPU attempt failed before evaluation because `gpu-dispatch` hosted jobs do not receive `HF_TOKEN`, so that run is infrastructure evidence only;
+- target-free hard-negative human sampling was opened because the retained human sampler chooses negatives uniformly. RED `31576201464`; implementation is isolated from the retained sampler and uses only serialized outer-train text similarity. It is not yet a quality result.
+
 ## Quality status
 
-No v7 strict OOF metric has been claimed yet. Candidate A must complete all five immutable held-fold predictions before any quality number is recorded. The target `0.70` remains a stretch target, not an inferred score.
+Best measured v7 quality evidence is currently **fold-0 diagnostic `0.6791967999009738`**. No v7 strict five-fold OOF metric has been claimed yet. The target `0.70` is close enough to pursue directly, but it will only be called reached for the requested local validation after a frozen candidate completes the strict outer-OOF gate.
