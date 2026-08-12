@@ -33,6 +33,24 @@ def test_testlike_slice_excludes_human_items_and_is_deterministic():
     assert a.attrs['selection_seed']==2026
 
 
+def test_testlike_slice_preserves_complete_anchor_candidate_lists():
+    llm=pd.DataFrame({
+        'id1':[10,10,10,20,20,30,30,30,30,40],
+        'id2':[101,102,103,201,202,301,302,303,304,401],
+        'target':[0.01,0.2,0.99,0.02,0.98,0.1,0.3,0.8,0.97,0.5],
+    })
+    out=build_testlike_slice(llm,set(),max_rows=6,seed=17)
+    assert len(out)<=6
+    selected=set(out.id1)
+    assert selected
+    for anchor in selected:
+        expected=llm.loc[llm.id1==anchor,['id1','id2','target']].reset_index(drop=True)
+        actual=out.loc[out.id1==anchor,['id1','id2','target']].reset_index(drop=True)
+        pd.testing.assert_frame_equal(actual,expected)
+    assert out.attrs['grouping_key']=='id1'
+    assert out.attrs['complete_groups'] is True
+
+
 def test_testlike_slice_refuses_too_small_available_pool():
     llm=pd.DataFrame({'id1':[1,2],'id2':[3,4],'target':[0.0,1.0]})
     with pytest.raises(ValueError,match='available'):
