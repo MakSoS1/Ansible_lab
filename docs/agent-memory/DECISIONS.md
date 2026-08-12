@@ -233,3 +233,19 @@
 **Decision:** `ecup-v7-production.yml` trains, packages and organizer-smokes on `ecup-rtx2060`, then uploads the finished ZIP as a dispatch artifact.
 
 **Evidence:** `repos/MakSoS1/gpu-dispatch/actions/secrets` is empty, and run `31530503704` failed with `HF_TOKEN secret missing in gpu-dispatch`. Without a token there is no way to move roughly `700 MB` of weights into the packaging repository, and no cross-repository PAT exists for Actions artifacts either. Building in place removes the dependency entirely; the HF upload step stays but is skipped while the secret is absent.
+
+## D042 — Progress must be bounded in wall-clock time, not only in units
+
+**Decision:** Every phase iterating over competition-scale data uses `ecup_matching.ml.progress.ProgressReporter` with a positive `every_seconds`. Ticks carry phase, done/total, percent, elapsed, rolling and recent throughput, ETA, RSS/peak RSS and CUDA memory.
+
+**Evidence:** v7 production run `31582038455` printed `{"phase": "split-features", "rows": 365654}` and then nothing for minutes while `build_features_v2_chunked` ran single-threaded. From outside it was indistinguishable from a hung job, and the GPU showed no load because there genuinely was no GPU work yet. A count-only interval cannot prevent this: `_stream_text_cache` reported every `100,000` items, so a slow phase could stay silent indefinitely.
+
+**Enforcement:** `test_progress_is_mandatory.py` asserts the listed modules reference `ProgressReporter` and that every construction passes `every_seconds`. ETA is computed from recent throughput rather than the lifetime average so it reacts when a phase speeds up or stalls.
+
+## D043 — Every GPU driver is dispatched through its frozen-split wrapper
+
+**Decision:** `run_v7_production`, `run_v7_outer_oof` and `run_v7_fold0_probe` are only ever dispatched through their `_frozen` wrappers, which replace `_build_immutable_manifest` with the loader for the committed split artifact.
+
+**Evidence:** the first production attempt inherited the recomputing manifest builder and died with `immutable split SHA mismatch: expected=aae58fb4..., actual=d1b31023...`. That guard is the reason a production model was not silently trained against a different fold assignment than every v7 diagnostic used.
+
+**Bonus:** loading the frozen manifest also removes a rebuild of pair features over all `365,654` human rows, which is several minutes of single-threaded work with no GPU activity.

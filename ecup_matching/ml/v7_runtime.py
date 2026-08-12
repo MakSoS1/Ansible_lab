@@ -26,6 +26,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from .progress import ProgressReporter
 from .textnorm import normalize_item
 from .v7_item_text import serialize_item_v7
 
@@ -169,6 +170,12 @@ def build_v7_text_cache_from_parquet(
         )
         try:
             context = multiprocessing.get_context("fork")
+            progress = ProgressReporter(
+                "serialize-items-parallel",
+                len(requested),
+                every_units=25_000,
+                every_seconds=30.0,
+            )
             with context.Pool(processes=min(worker_count, len(shards))) as pool:
                 for records in pool.imap(_serialize_row_groups, shards):
                     for item_id, text, category in records:
@@ -176,6 +183,8 @@ def build_v7_text_cache_from_parquet(
                             continue
                         texts[item_id] = text
                         categories[item_id] = category
+                    progress.update(len(texts), workers=worker_count)
+            progress.finish(len(texts), workers=worker_count)
         except OSError as error:
             print(
                 f"[v7] serialization pool unavailable ({error}); falling back to serial",
@@ -188,6 +197,9 @@ def build_v7_text_cache_from_parquet(
             _WORKER_STATE.clear()
 
     if not use_parallel:
+        progress = ProgressReporter(
+            "serialize-items", len(requested), every_units=25_000, every_seconds=30.0
+        )
         for batch in parquet.iter_batches(batch_size=batch_size, columns=list(columns)):
             id_column = batch.column(batch.schema.get_field_index("id"))
             selected = batch.filter(pc.is_in(id_column, value_set=value_set))
@@ -210,8 +222,10 @@ def build_v7_text_cache_from_parquet(
                         attribute_importance=attribute_importance,
                     )
             del id_column, selected, batch
+            progress.update(len(texts))
             if len(texts) == len(requested):
                 break
+        progress.finish(len(texts))
     missing_ids = requested - set(texts)
     if missing_ids:
         first = min(missing_ids, key=lambda value: (type(value).__name__, repr(value)))
@@ -325,6 +339,9 @@ def predict_pairs(
     # so a plain thread really does overlap with the forward pass. Batches stay
     # in the same order with the same contents, so scores are unchanged.
     prefetch = _BatchPrefetcher(tokenize, len(frame), current_batch)
+    progress = ProgressReporter(
+        "score-pairs", len(frame), every_units=20_000, every_seconds=30.0
+    )
     with torch.inference_mode():
         while row < len(frame):
             stop = min(len(frame), row + current_batch)
@@ -342,6 +359,7 @@ def predict_pairs(
                     logits = model(**tokens).logits.squeeze(-1)
                 predictions.append(torch.sigmoid(logits).float().cpu().numpy())
                 row = stop
+                progress.update(row, batch_size=current_batch)
             except torch.cuda.OutOfMemoryError:
                 if not on_cuda or current_batch <= 1:
                     prefetch.close()
@@ -357,6 +375,7 @@ def predict_pairs(
                     flush=True,
                 )
     prefetch.close()
+    progress.finish(len(frame), batch_size=current_batch)
     if on_cuda:
         torch.cuda.synchronize()
     elapsed = time.perf_counter() - started

@@ -20,6 +20,7 @@ from .train_v2_structured import prefilter_weak_candidates_parquet
 from .train_v4_reranker import DEFAULT_MODEL_REVISION, _verify_model_revision
 from .v5_evaluation import macro_ap_report
 from .v5_validation import build_v5_split_manifest, manifest_sha256, validate_manifest_no_overlap
+from .progress import ProgressReporter
 from .v7_item_text import serialize_item_v7
 from .v7_neural import (
     build_v7_text_cache_from_parquet,
@@ -46,23 +47,17 @@ def _stream_text_cache(items: pd.DataFrame, *, max_chars: int) -> dict[object, s
         raise ValueError(f"items missing v7 text columns: {sorted(missing)}")
     out: dict[object, str] = {}
     total = len(items)
-    started = time.perf_counter()
+    # Bounded silence: whichever of 25k items or 30 seconds comes first, so a
+    # slow phase can never look like a hung job.
+    progress = ProgressReporter("serialize-items", total, every_units=25_000, every_seconds=30.0)
     for index, (item_id, name, attributes, category) in enumerate(
         items[["id", "name", "attributes", "category"]].itertuples(index=False, name=None),
         start=1,
     ):
         norm = normalize_item(item_id, name, attributes, category)
         out[item_id] = f"[CAT] {norm.category}\n{serialize_item_v7(norm, max_chars=max_chars)}"
-        if index == 1 or index % 100_000 == 0 or index == total:
-            elapsed = time.perf_counter() - started
-            _phase(
-                "serialize-items",
-                done=index,
-                total=total,
-                percent=round(100.0 * index / max(total, 1), 2),
-                elapsed_seconds=round(elapsed, 2),
-                items_per_second=round(index / max(elapsed, 1e-9), 2),
-            )
+        progress.update(index)
+    progress.finish(total)
     return out
 
 
