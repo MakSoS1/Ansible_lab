@@ -116,7 +116,7 @@ def resolve_worker_count(
     requested: int | None = None,
     *,
     cpu_count: int | None = None,
-    max_workers_cap: int = 32,
+    max_workers_cap: int = 8,
 ) -> int:
     """Pick a worker count from the environment, honouring an explicit override."""
     if requested is not None:
@@ -128,7 +128,9 @@ def resolve_worker_count(
         except ValueError:
             pass
     detected = cpu_count if cpu_count is not None else (os.cpu_count() or 1)
-    # Leave one core for the parent process and the allocator.
+    # Benchmarked on the Linux container: scaling saturates at eight workers;
+    # higher counts only add contention/memory pressure. Leave one core when
+    # fewer than nine are available, otherwise pin the measured production cap.
     return max(1, min(int(detected) - 1, max_workers_cap)) if detected > 2 else 1
 
 
