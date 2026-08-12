@@ -1,6 +1,6 @@
 {
   "version": "v9",
-  "status": "in_progress",
+  "status": "completed",
   "validation": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -33,15 +33,8 @@
     "teacher_fraction": 0.25002279022474666,
     "strict_oof_macro_average_precision": 0.5947115591000889,
     "fold_local_graph_macro_average_precision": 0.5961903713277379,
-    "graph_delta": 0.0014788122276490068,
-    "all_graph_folds_positive": true,
     "target_stress_mean": 0.45077792061326727,
-    "target_stress_std": 0.0016871298833520015,
-    "target_stress_p05": 0.44817877452510557,
-    "target_stress_p95": 0.4534007374014067,
-    "production_refit_run_id": 31640425364,
-    "production_artifact_id": 9158679674,
-    "role": "predeclared fallback"
+    "role": "predeclared fallback not activated"
   },
   "gate40": {
     "teacher_fraction_oof": 0.400024543318958,
@@ -62,7 +55,7 @@
     "production_refit_is_validation": false,
     "private_hf_prefix": "experiments/v9/production/gate40/853a3925ac2b"
   },
-  "candidate_package": {
+  "keeper_package": {
     "name": "ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip",
     "build_run_id": 31640050373,
     "release_tag": "ecup-v9-gate40-final-eb2bcf18d53e",
@@ -72,24 +65,55 @@
       "structured_worker_cap": 8,
       "cuda_autocast": "float16",
       "contrastive_batch_rtx2060": 256,
-      "teacher_batch_rtx2060": 96,
-      "outer_wall_acceptance_seconds": 700.0,
-      "watchdog_seconds": 720.0
+      "teacher_batch_rtx2060": 96
     }
   },
   "runtime_gate": {
-    "private_run_id": 31640233511,
+    "run_id": 31641656589,
+    "artifact_id": 9159596648,
     "device": "NVIDIA GeForce RTX 2060 SUPER",
-    "organizer_image": true,
-    "rows": 275000,
+    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
     "outer_wall_authoritative": true,
-    "acceptance_seconds": 700.0,
-    "watchdog_seconds": 720.0,
-    "return_code": null,
-    "output_valid": null,
-    "wall_seconds": null,
-    "headroom_seconds": null,
-    "passed": null
+    "public": {
+      "rows": 115000,
+      "acceptance_seconds": 330.0,
+      "wall_seconds": 281.821475323,
+      "headroom_seconds": 48.178524677,
+      "return_code": 0,
+      "output_valid": true,
+      "unique_scores": 108272,
+      "passed": true
+    },
+    "private": {
+      "rows": 275000,
+      "acceptance_seconds": 700.0,
+      "wall_seconds": 634.766220868,
+      "headroom_seconds": 65.233779132,
+      "return_code": 0,
+      "output_valid": true,
+      "unique_scores": 271386,
+      "passed": true
+    },
+    "both_passed": true,
+    "independent_previous_private_wall_seconds": 637.82083456
+  },
+  "verification": {
+    "run_id": 31642803187,
+    "tests_passed": 423,
+    "tests_skipped": 5,
+    "memory_policy": "OK"
+  },
+  "rejected_experiments": {
+    "fixed_prevalence_weighted_hgb": {
+      "strict_delta": -0.00006587537913905984,
+      "graph_delta": -0.00006047802956310022,
+      "target_stress_delta": -0.00007796115858560881
+    },
+    "crossfitted_category_fusion": {
+      "strict_delta": -0.0005091711267831691,
+      "graph_delta": -0.0002712629651683285,
+      "target_stress_delta": -0.00028261913973903763
+    }
   },
   "v8_runtime_failure_reference": {
     "inner_run_seconds": 731.22,
