@@ -3,7 +3,11 @@ name: E-CUP v8 final v5+graph submission
 on:
   push:
     branches: [ecup-v8-hardsku]
-    paths: [.github/workflows/ecup-v8-build-final.yml]
+    paths:
+      - .github/workflows/ecup-v8-build-final.yml
+      - ecup_matching/ml/v8_graph.py
+      - ecup_matching/ml/v8_submission_graph.py
+      - ecup_matching/submission/build_submission_v8_graph.py
   workflow_dispatch:
 
 permissions:
@@ -85,8 +89,11 @@ jobs:
                   mode=(info.external_attr>>16)&0xFFFF
                   if stat.S_IFMT(mode)==stat.S_IFLNK: raise RuntimeError(f'symlink member {info.filename}')
               run=f.read('run.py').decode('utf-8')
-              for token in ('--output_path','--items_path','--matches_path','predict_to_csv_v5','apply_graph_to_prediction'):
+              for token in ('--output_path','--items_path','--matches_path','predict_to_csv_v5','apply_graph_to_prediction','dtype=np.float64'):
                   if token not in run: raise RuntimeError(f'run.py missing {token}')
+              post=f.read('ecup_matching/ml/v8_submission_graph.py').decode('utf-8')
+              if 'astype(np.float64' not in post or 'astype(np.float32' in post:
+                  raise RuntimeError('v8 graph runtime does not preserve float64 precision')
               meta=json.loads(f.read('v8_metadata.json'))
               if meta['version']!='v8-v5-best-plus-graph' or meta['sealed_gold_opened'] is not False or meta['gold_rows_scored']!=0:
                   raise RuntimeError('v8 metadata contract failed')
@@ -95,7 +102,7 @@ jobs:
           h=hashlib.sha256()
           with z.open('rb') as fh:
               for chunk in iter(lambda:fh.read(1024*1024),b''): h.update(chunk)
-          payload={'bytes':size,'sha256':h.hexdigest(),'members':len(infos)}
+          payload={'bytes':size,'sha256':h.hexdigest(),'members':len(infos),'predict_dtype':'float64'}
           (root/'archive-verification.json').write_text(json.dumps(payload,indent=2,sort_keys=True)+'\n')
           print('V8_ARCHIVE_VERIFIED='+json.dumps(payload,sort_keys=True))
           PY
@@ -119,7 +126,7 @@ jobs:
           api=HfApi(token=os.environ['HF_TOKEN'])
           path=f"submissions/v8/v5graph/{os.environ['GITHUB_RUN_ID']}"
           for name in (os.environ['FINAL_NAME'],'build-result.json','archive-verification.json'):
-              api.upload_file(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',path_or_fileobj=str(root/name),path_in_repo=f'{path}/{name}',commit_message='v8: publish verified v5+graph submission')
+              api.upload_file(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',path_or_fileobj=str(root/name),path_in_repo=f'{path}/{name}',commit_message='v8: publish verified float64 v5+graph submission')
           print('V8_PRIVATE_HF_PATH='+path)
           PY
       - uses: actions/upload-artifact@v4
