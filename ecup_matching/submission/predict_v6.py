@@ -440,7 +440,7 @@ def predict_to_csv_v6(
     # The CUDA probe is deliberately deferred until after the structured phase.
     # Initializing a CUDA context before forking the structured worker pool
     # leaves each child holding an inherited context it must never touch.
-    structured_workers = resolve_worker_count()
+    structured_workers = resolve_worker_count(8)
     print(
         f"[v6] pairs={len(pairs):,} items={len(items):,} coverage={coverage:.2f} "
         f"structured_chunk={STRUCTURED_CHUNK_SIZE} structured_workers={structured_workers} "
