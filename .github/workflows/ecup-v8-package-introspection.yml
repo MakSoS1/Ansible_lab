@@ -1,0 +1,40 @@
+name: E-CUP v8 reusable package introspection
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-package-introspection.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+    steps:
+      - name: Download and inspect exact reusable submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+          declare -A paths
+          paths[v5]='submissions/v5/0.6018115534/ecup-v5-category-hgb-fusion-0.6018115534-submission.zip'
+          paths[v6]='submissions/v6/fast-gate95-0.6006003615/ecup-v6-fast-gate95-0.6006003615-submission.zip'
+          for name in v5 v6; do
+            p="${paths[$name]}"
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${p}?download=true" -o "$tmp/$name.zip"
+            mkdir "$tmp/$name"; unzip -q "$tmp/$name.zip" -d "$tmp/$name"
+            echo "V8_PACKAGE=$name size=$(stat -c %s "$tmp/$name.zip")"
+            echo "V8_PACKAGE_TREE_BEGIN=$name"
+            find "$tmp/$name" -maxdepth 3 -type f -printf '%P\n' | sort | head -200
+            echo "V8_PACKAGE_TREE_END=$name"
+            echo "V8_RUNPY_BEGIN=$name"
+            sed -n '1,260p' "$tmp/$name/run.py"
+            echo "V8_RUNPY_END=$name"
+          done
