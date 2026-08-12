@@ -6,6 +6,7 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
+from . import v7_neural as base
 from .v7_neural import MacroPairBatchSampler
 
 _TOKEN_RE = re.compile(r"[0-9a-zа-яё]+", flags=re.IGNORECASE)
@@ -163,8 +164,40 @@ class HardNegativeMacroPairBatchSamplerV8(MacroPairBatchSampler):
         return iter(batches)
 
 
+def train_pair_phase_v8_hardneg(*, weak: bool, frame: pd.DataFrame, texts, **kwargs):
+    """Use v7 unchanged for weak pretraining; harden only the labelled human phase."""
+    if weak:
+        return base.train_pair_phase(weak=True, frame=frame, texts=texts, **kwargs)
+
+    hardened = attach_v8_hardness(frame, texts)
+    original_sampler = base.MacroPairBatchSampler
+
+    class _ConfiguredV8HardSampler(HardNegativeMacroPairBatchSamplerV8):
+        def __init__(self, sampler_frame, batch_size, seed, *, epoch=0):
+            super().__init__(
+                sampler_frame,
+                batch_size,
+                seed,
+                epoch=epoch,
+                hard_negative_fraction=0.75,
+                hard_pool_fraction=0.25,
+            )
+
+    try:
+        base.MacroPairBatchSampler = _ConfiguredV8HardSampler
+        return base.train_pair_phase(
+            weak=False,
+            frame=hardened,
+            texts=texts,
+            **kwargs,
+        )
+    finally:
+        base.MacroPairBatchSampler = original_sampler
+
+
 __all__ = [
     "HardNegativeMacroPairBatchSamplerV8",
     "attach_v8_hardness",
     "pair_hardness_v8",
+    "train_pair_phase_v8_hardneg",
 ]
