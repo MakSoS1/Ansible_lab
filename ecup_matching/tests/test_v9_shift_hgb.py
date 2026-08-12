@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from ecup_matching.ml.v5_meta_blend import SIX_SIGNAL_NAMES
+
 
 def test_shift_weights_apply_only_frozen_positive_prior_ratio():
     from ecup_matching.ml.v9_shift_hgb import shifted_category_balanced_sample_weight
@@ -25,7 +27,7 @@ def test_shift_hgb_requires_binary_target_and_positive_finite_weight():
 def test_crossfit_shift_hgb_scores_every_row_without_using_held_labels(monkeypatch):
     import ecup_matching.ml.v9_shift_hgb as module
 
-    scores={f's{i}':np.linspace(0,1,20)+(i*.01) for i in range(6)}
+    scores={name:np.linspace(0,1,20)+(i*.01) for i,name in enumerate(SIX_SIGNAL_NAMES)}
     y=np.asarray(([0,1]*10),dtype=np.int8)
     cat=np.asarray(['a']*10+['b']*10)
     folds=np.asarray([0,1,2,3,4]*4)
