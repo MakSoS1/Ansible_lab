@@ -1,0 +1,108 @@
+name: E-CUP v7 real context visibility audit
+
+on:
+  push:
+    branches: [ecup-v7-neural, ecup-v7-identity2]
+    paths:
+      - ".github/workflows/ecup-v7-context-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  MODEL_ID: ai-forever/ruBert-base
+  MODEL_REVISION: 43be4261797042e172adf7476c558734f3cbb2a0
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install -r ecup_matching/requirements-ci.txt
+          python -m pip install "transformers==4.55.4" "tokenizers==0.21.4"
+      - name: Download private human development inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          mkdir -p "$RUNNER_TEMP/v7-audit"
+          for f in items_human.parquet matches.parquet; do
+            curl -fL --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" \
+              -o "$RUNNER_TEMP/v7-audit/$f"
+          done
+      - name: Measure fold0 token visibility for identity attributes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from collections import defaultdict
+          from pathlib import Path
+          import pandas as pd
+          from transformers import AutoTokenizer
+          from ecup_matching.ml.textnorm import normalize_item, canonical_attribute_value, clean_text
+          from ecup_matching.ml.v7_item_text import serialize_item_v7
+          from ecup_matching.ml.v7_frozen_split import load_frozen_split_manifest
+
+          root=Path(os.environ['RUNNER_TEMP'])/'v7-audit'
+          items=pd.read_parquet(root/'items_human.parquet',columns=['id','name','attributes','category'])
+          matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target'])
+          manifest=load_frozen_split_manifest()
+          rows=manifest['fold_rows'][0]
+          held=matches.iloc[rows].copy().reset_index(drop=True)
+          by_id=items.drop_duplicates('id').set_index('id')
+          held['category']=held['id1'].map(by_id['category']).astype(str)
+          focus=['Одежда','Обувь','Ювелирные изделия','Мебель','Галантерея и аксессуары']
+          held=held[held['category'].isin(focus)].groupby('category',group_keys=False).head(2500).reset_index(drop=True)
+          ids=set(held.id1)|set(held.id2)
+          subset=items[items.id.isin(ids)].copy()
+          norm={r.id: normalize_item(r.id,r.name,r.attributes,r.category) for r in subset.itertuples(index=False)}
+          texts={i: f"[CAT] {n.category}\n{serialize_item_v7(n,max_chars=900)}" for i,n in norm.items()}
+          tok=AutoTokenizer.from_pretrained(os.environ['MODEL_ID'],revision=os.environ['MODEL_REVISION'],use_fast=True)
+          needles=('материал','material','состав','fabric','ткан','пол','gender','sex','сезон','season','проба','hallmark','карат','вставк','камень','stone','gem')
+          def critical_entries(n):
+              out=[]
+              for k,v in sorted(n.attrs.items()):
+                  key=clean_text(k)
+                  if not any(x in key for x in needles): continue
+                  val=canonical_attribute_value(v)
+                  if val: out.append((key,f"{key}={val}"))
+              return out
+          stats=defaultdict(lambda: {'pairs':0,'attrs_total':0,'attrs_serialized':0,'attrs_token_visible':0,'items_with_attrs':0,'items_with_invisible_attr':0})
+          for row in held.itertuples(index=False):
+              a,b=texts[row.id1],texts[row.id2]
+              enc=tok(a,b,truncation=True,max_length=256,return_offsets_mapping=True)
+              seq=enc.sequence_ids(); offsets=enc['offset_mapping']
+              cat=str(row.category); s=stats[cat]; s['pairs']+=1
+              for side,item_id,text in ((0,row.id1,a),(1,row.id2,b)):
+                  entries=critical_entries(norm[item_id])
+                  if not entries: continue
+                  s['items_with_attrs']+=1; item_invisible=False
+                  for _,entry in entries:
+                      s['attrs_total']+=1; start=text.find(entry)
+                      if start < 0: item_invisible=True; continue
+                      s['attrs_serialized']+=1; end=start+len(entry)
+                      visible=any(seq[i]==side and offsets[i][1]>start and offsets[i][0]<end for i in range(len(offsets)))
+                      if visible: s['attrs_token_visible']+=1
+                      else: item_invisible=True
+                  if item_invisible: s['items_with_invisible_attr']+=1
+          payload={}
+          for cat,s in sorted(stats.items()):
+              x=dict(s)
+              x['serialized_fraction']=x['attrs_serialized']/max(x['attrs_total'],1)
+              x['token_visible_fraction']=x['attrs_token_visible']/max(x['attrs_total'],1)
+              x['invisible_item_fraction']=x['items_with_invisible_attr']/max(x['items_with_attrs'],1)
+              payload[cat]=x
+          print('CONTEXT_AUDIT',json.dumps(payload,ensure_ascii=False,sort_keys=True))
+          PY
