@@ -1,0 +1,54 @@
+name: E-CUP v9 export exact submission parts
+
+on:
+  push:
+    branches: [ecup-v9-leaderboard-adapt]
+    paths: [.github/workflows/ecup-v9-export-parts.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FINAL_NAME: ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip
+  FINAL_URL: https://github.com/MakSoS1/Ansible_lab/releases/download/ecup-v9-gate40-final-eb2bcf18d53e/ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip
+  EXPECTED_SHA: 925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Download exact release asset and split without recompression
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v9-export"; mkdir -p "$root/parts"
+          curl -fL --retry 20 --retry-delay 5 --retry-all-errors "$FINAL_URL" -o "$root/$FINAL_NAME"
+          test "$(sha256sum "$root/$FINAL_NAME" | awk '{print $1}')" = "$EXPECTED_SHA"
+          split -b 240M -d -a 2 "$root/$FINAL_NAME" "$root/parts/part-"
+          test "$(find "$root/parts" -type f | wc -l)" -eq 5
+          python - "$root" <<'PY'
+          import hashlib,json,sys
+          from pathlib import Path
+          root=Path(sys.argv[1]); parts=[]
+          for p in sorted((root/'parts').glob('part-*')):
+              h=hashlib.sha256(p.read_bytes()).hexdigest()
+              parts.append({'name':p.name,'bytes':p.stat().st_size,'sha256':h})
+          manifest={'final_name':'ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip','final_bytes':(root/'ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip').stat().st_size,'final_sha256':'925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782','parts':parts}
+          (root/'parts/MANIFEST.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(manifest,sort_keys=True))
+          PY
+          echo "export_root=$root" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: ecup-v9-part-00, path: '${{ env.export_root }}/parts/part-00', compression-level: 0, retention-days: 14}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: ecup-v9-part-01, path: '${{ env.export_root }}/parts/part-01', compression-level: 0, retention-days: 14}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: ecup-v9-part-02, path: '${{ env.export_root }}/parts/part-02', compression-level: 0, retention-days: 14}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: ecup-v9-part-03, path: '${{ env.export_root }}/parts/part-03', compression-level: 0, retention-days: 14}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: ecup-v9-part-04, path: '${{ env.export_root }}/parts/part-04', compression-level: 0, retention-days: 14}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: ecup-v9-parts-manifest, path: '${{ env.export_root }}/parts/MANIFEST.json', retention-days: 14}
