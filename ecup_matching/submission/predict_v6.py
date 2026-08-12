@@ -28,6 +28,7 @@ from ecup_matching.submission.v6_fast import (
     batch_index_ranges,
     collect_chunked_scores,
     select_runtime_config,
+    torch_autocast,
 )
 from ecup_matching.submission.v6_parallel import (
     parallel_supported,
@@ -282,8 +283,9 @@ def _contrastive_scores_fast(
                     key: value.to(device, non_blocking=(device == "cuda"))
                     for key, value in tokens.items()
                 }
-                hidden = model(**tokens).last_hidden_state
-                emb = _mean_pool(hidden, tokens["attention_mask"])
+                with torch_autocast(torch, config):
+                    hidden = model(**tokens).last_hidden_state
+                    emb = _mean_pool(hidden, tokens["attention_mask"])
                 array = emb.detach().cpu().numpy().astype(np.float32, copy=False)
             except torch.OutOfMemoryError:
                 if device != "cuda" or active_batch <= 16:
@@ -374,7 +376,8 @@ def _teacher_selected_scores_fast(
                     key: value.to(device, non_blocking=(device == "cuda"))
                     for key, value in tokens.items()
                 }
-                values = torch.sigmoid(model(**tokens).logits.squeeze(-1))
+                with torch_autocast(torch, config):
+                    values = torch.sigmoid(model(**tokens).logits.squeeze(-1))
                 array = values.detach().cpu().numpy().astype(np.float64, copy=False)
             except torch.OutOfMemoryError:
                 if device != "cuda" or active_batch <= 8:
