@@ -17,6 +17,7 @@ on:
       - ecup_matching/ml/v8_submission_graph.py
       - ecup_matching/tests/test_build_submission_v8_gate85.py
       - ecup_matching/tests/test_v6_parallel_text_cache.py
+      - ecup_matching/tests/test_v8_measured_worker_policy.py
   workflow_dispatch:
 
 permissions:
@@ -43,11 +44,12 @@ jobs:
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
       - run: python -m pip install -r ecup_matching/requirements-ci.txt
-      - name: Exact builder and dual-cache regressions
+      - name: Exact builder, dual-cache and measured-worker regressions
         run: |
           python -m pytest \
             ecup_matching/tests/test_build_submission_v8_gate85.py \
-            ecup_matching/tests/test_v6_parallel_text_cache.py -q
+            ecup_matching/tests/test_v6_parallel_text_cache.py \
+            ecup_matching/tests/test_v8_measured_worker_policy.py -q
       - name: Download exact source weights and immutable gate85 refit
         shell: bash
         env:
@@ -119,6 +121,7 @@ jobs:
               assert v8['runtime']['dual_text_cache_exact'] is True
               p5=f.read('ecup_matching/submission/predict_v5.py').decode(); p6=f.read('ecup_matching/submission/predict_v6.py').decode(); tc=f.read('ecup_matching/submission/v6_text_cache.py').decode()
               assert 'norm_cache' in p5 and '_structured_scores_streaming' in p6 and 'torch_autocast' in p6 and 'build_dual_text_cache' in p6 and 'build_dual_text_cache' in tc
+              assert 'structured_workers = resolve_worker_count(8)' in p6
               run=f.read('run.py').decode(); assert 'EXPECTED_COVERAGE = 0.85' in run and 'apply_graph_to_prediction' in run
           (root/'out/SHA256SUMS.txt').write_text(f'{h}  {z.name}\n')
           print('FINAL_ARCHIVE_OK',z.stat().st_size,h)
@@ -136,7 +139,7 @@ jobs:
             "$final_root/out/$FINAL_NAME" "$final_root/out/SHA256SUMS.txt" "$final_root/out/BUILD_RESULT.json" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "E-CUP v8 gate85 exact final candidate" \
-            --notes "Exact gate85 + FP16 + cap8 + exact parallel dual text-cache + leakage-free graph candidate. Must pass separate full 275k GPU hard gate before submission."
+            --notes "Exact gate85 + FP16 + measured worker8 + exact parallel dual text-cache + leakage-free graph candidate. Must pass separate full 275k GPU hard gate before submission."
           echo "release_tag=$tag" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
