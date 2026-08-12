@@ -36,6 +36,18 @@ def _diagnostics(frame: pd.DataFrame, score: np.ndarray) -> dict[str, object]:
     }
 
 
+def _optional_spearman(frame: pd.DataFrame, score: np.ndarray) -> float | None:
+    try:
+        return float(soft_rank_report(frame, score)["macro_spearman"])
+    except ValueError as exc:
+        # A candidate can become exactly constant (for example a 50/50 blend
+        # of two inverse rankings).  Its pseudo-AP is still defined; Spearman
+        # simply cannot be used as a tie-break for that one grid point.
+        if "constant score or soft target" not in str(exc):
+            raise
+        return None
+
+
 def evaluate_grouped_candidates(
     frame: pd.DataFrame,
     scores: Mapping[str, object],
@@ -85,36 +97,40 @@ def tune_two_model_blend(
         mapping = {names[0]: first, names[1]: 1.0 - first}
         blended = rank_blend(tune_frame, tune_scores, mapping)
         pseudo = pseudo_macro_ap_report(tune_frame, blended)
-        soft = soft_rank_report(tune_frame, blended)
         candidates.append(
             {
                 "weights": mapping,
                 "tune_pseudo_ap": float(pseudo["macro_pseudo_average_precision"]),
-                "tune_spearman": float(soft["macro_spearman"]),
+                "tune_spearman": _optional_spearman(tune_frame, blended),
             }
         )
     if not candidates:
         raise ValueError("blend grid is empty")
-    candidates.sort(
-        key=lambda row: (
+
+    def _sort_key(row: Mapping[str, object]):
+        spearman = row["tune_spearman"]
+        tie = float(spearman) if spearman is not None else -np.inf
+        return (
             -float(row["tune_pseudo_ap"]),
-            -float(row["tune_spearman"]),
+            -tie,
             tuple(float(row["weights"][name]) for name in names),
         )
-    )
+
+    candidates.sort(key=_sort_key)
     selected = candidates[0]
     selected_weights = {name: float(selected["weights"][name]) for name in names}
     confirm_blend = rank_blend(confirm_frame, confirm_scores, selected_weights)
+    confirm_pseudo = pseudo_macro_ap_report(confirm_frame, confirm_blend)
+    confirm_spearman = _optional_spearman(confirm_frame, confirm_blend)
     return {
         "diagnostic_only": True,
         "split": split,
         "selected_weights": selected_weights,
         "tune": {
             "macro_pseudo_average_precision": float(selected["tune_pseudo_ap"]),
-            "macro_spearman": float(selected["tune_spearman"]),
+            "macro_spearman": selected["tune_spearman"],
         },
-        "confirm": _diagnostics(confirm_frame, confirm_blend)["pseudo"]
-        | {"macro_spearman": float(soft_rank_report(confirm_frame, confirm_blend)["macro_spearman"])},
+        "confirm": confirm_pseudo | {"macro_spearman": confirm_spearman},
         "grid": candidates,
         "true_test_ap_claimed": False,
     }
