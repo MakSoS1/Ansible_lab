@@ -29,6 +29,7 @@ jobs:
           python -m pytest \
             ecup_matching/tests/test_v8_distribution.py \
             ecup_matching/tests/test_v8_graph.py \
+            ecup_matching/tests/test_v8_testlike.py \
             -q
       - name: retained v7 regression tests
         run: |
