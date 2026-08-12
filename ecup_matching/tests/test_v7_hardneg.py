@@ -1,9 +1,10 @@
 import pandas as pd
 
-from ecup_matching.ml.v7_neural import (
-    MacroPairBatchSampler,
+from ecup_matching.ml.v7_hardneg import (
+    HardNegativeMacroPairBatchSampler,
     attach_target_free_pair_hardness,
 )
+from ecup_matching.ml.v7_neural import MacroPairBatchSampler
 
 
 def test_target_free_hardness_ranks_near_duplicate_negative_above_easy_negative():
@@ -33,7 +34,7 @@ def test_hard_negative_sampler_draws_from_high_hardness_pool_when_fraction_is_on
             "negative_hardness": [0, 0, 0, 0, 0.1, 0.2, 0.9, 1.0],
         }
     )
-    sampler = MacroPairBatchSampler(
+    sampler = HardNegativeMacroPairBatchSampler(
         frame,
         batch_size=4,
         seed=17,
@@ -46,7 +47,7 @@ def test_hard_negative_sampler_draws_from_high_hardness_pool_when_fraction_is_on
         assert set(negatives.index).issubset({6, 7})
 
 
-def test_hard_negative_sampler_default_remains_backward_compatible():
+def test_base_macro_sampler_remains_backward_compatible():
     frame = pd.DataFrame(
         {
             "category": ["x"] * 4,
