@@ -3,7 +3,7 @@ name: E-CUP v7 neural quality CI
 on:
   workflow_dispatch:
   push:
-    branches: [ecup-v7-neural]
+    branches: [ecup-v7-neural, ecup-v7-category-token]
 
 permissions:
   contents: read
@@ -30,6 +30,7 @@ jobs:
             ecup_matching/tests/test_v7_frozen_split.py \
             ecup_matching/tests/test_v7_neural_contract.py \
             ecup_matching/tests/test_v7_neural_training.py \
+            ecup_matching/tests/test_v7_category_token.py \
             ecup_matching/tests/test_v5_item_text.py \
             ecup_matching/tests/test_v5_teacher2_objective.py \
             -q
