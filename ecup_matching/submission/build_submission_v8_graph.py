@@ -68,7 +68,7 @@ def main() -> int:
     rescored = apply_graph_to_prediction(test, items, prediction, GRAPH_CONFIG)
 
     final = base[['id1', 'id2']].copy()
-    final['predict'] = rescored['predict'].to_numpy(dtype=np.float32)
+    final['predict'] = rescored['predict'].to_numpy(dtype=np.float64)
     if len(final) != len(matches) or not np.isfinite(final['predict'].to_numpy(float)).all():
         raise RuntimeError('v8 graph prediction is incomplete or non-finite')
     args.output_path.parent.mkdir(parents=True, exist_ok=True)
