@@ -100,9 +100,11 @@ def _sha256(path: Path) -> str:
 
 
 def _validate_source_v6(root: Path, expected_metric: float) -> dict[str, object]:
+    # The archived Python runtime is intentionally NOT trusted as optimized.
+    # The original gate95 bundle accidentally shipped a stale predict_v6.py;
+    # model and metadata bytes remain useful and are validated here, while the
+    # executable runtime closure is overlaid from an independently verified SHA.
     required = [
-        'run.py',
-        'ecup_matching/submission/predict_v6.py',
         'model_v5_structured.joblib',
         'model_v6_category_shrunk.json',
         'model_v6_hgb_meta.joblib',
@@ -110,12 +112,9 @@ def _validate_source_v6(root: Path, expected_metric: float) -> dict[str, object]
     ]
     missing = [name for name in required if not (root / name).is_file()]
     if missing:
-        raise ValueError(f'source v6 archive missing optimized runtime contract: {missing}')
+        raise ValueError(f'source v6 archive missing model contract: {missing}')
     if not (root / 'model_v5_contrastive').is_dir() or not (root / 'model_v5_teacher').is_dir():
         raise ValueError('source v6 archive missing neural model directories')
-    predictor = (root / 'ecup_matching/submission/predict_v6.py').read_text(encoding='utf-8')
-    if 'predict_to_csv_v6' not in predictor:
-        raise ValueError('source v6 predict_v6 runtime contract lacks predict_to_csv_v6')
     metadata = json.loads((root / 'model_v6_gate_metadata.json').read_text(encoding='utf-8'))
     if abs(float(metadata['strict_selected_oof_macro_ap']) - float(expected_metric)) > 1e-12:
         raise ValueError('source v6 strict OOF metric mismatch')
@@ -126,6 +125,32 @@ def _validate_source_v6(root: Path, expected_metric: float) -> dict[str, object]
     ) != 0:
         raise ValueError('source v6 violates sealed-gold contract')
     return metadata
+
+
+def _validated_runtime_sources(
+    *,
+    predict_v6_source: Path,
+    v6_parallel_source: Path,
+    v6_fast_source: Path,
+    v6_teacher_gate_source: Path,
+) -> dict[str, Path]:
+    sources = {
+        'predict_v6.py': Path(predict_v6_source),
+        'v6_parallel.py': Path(v6_parallel_source),
+        'v6_fast.py': Path(v6_fast_source),
+        'v6_teacher_gate.py': Path(v6_teacher_gate_source),
+    }
+    for name, path in sources.items():
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f'optimized runtime source must be a regular file: {name}: {path}')
+    predictor = sources['predict_v6.py'].read_text(encoding='utf-8')
+    for marker in ('predict_to_csv_v6', '_structured_scores_streaming', 'run_structured_chunks'):
+        if marker not in predictor:
+            raise ValueError(f'optimized predict_v6.py missing required marker: {marker}')
+    parallel = sources['v6_parallel.py'].read_text(encoding='utf-8')
+    if 'run_structured_chunks' not in parallel:
+        raise ValueError('optimized v6_parallel.py missing run_structured_chunks')
+    return sources
 
 
 def _write_zip(root: Path, output: Path) -> None:
@@ -151,6 +176,10 @@ def build_v8_from_v6_zip(
     *,
     v8_graph_source: Path,
     v8_submission_graph_source: Path,
+    predict_v6_source: Path,
+    v6_parallel_source: Path,
+    v6_fast_source: Path,
+    v6_teacher_gate_source: Path,
     source_v6_metric: float,
     graph_oof_delta: float,
     source_commit: str,
@@ -162,17 +191,34 @@ def build_v8_from_v6_zip(
     for path in (Path(v8_graph_source), Path(v8_submission_graph_source)):
         if not path.is_file() or path.is_symlink():
             raise ValueError(f'graph runtime source must be a regular file: {path}')
+    runtime_sources = _validated_runtime_sources(
+        predict_v6_source=predict_v6_source,
+        v6_parallel_source=v6_parallel_source,
+        v6_fast_source=v6_fast_source,
+        v6_teacher_gate_source=v6_teacher_gate_source,
+    )
 
     with tempfile.TemporaryDirectory(prefix='ecup-v8-fast-build-') as tmp:
         root = Path(tmp) / 'submission'
         safe_extract_zip(source_v6_zip, root)
         source_meta = _validate_source_v6(root, source_v6_metric)
 
+        submission_dir = root / 'ecup_matching/submission'
         ml = root / 'ecup_matching/ml'
+        submission_dir.mkdir(parents=True, exist_ok=True)
         ml.mkdir(parents=True, exist_ok=True)
-        init = ml / '__init__.py'
-        if not init.exists():
-            init.write_text('', encoding='utf-8')
+        for package_dir in (submission_dir, ml):
+            init = package_dir / '__init__.py'
+            if not init.exists():
+                init.write_text('', encoding='utf-8')
+
+        # Replace the stale archived runtime closure with the independently
+        # verified source revision. Models and refit metadata remain byte-for-byte
+        # from the exact v6 package.
+        shutil.copyfile(runtime_sources['predict_v6.py'], submission_dir / 'predict_v6.py')
+        shutil.copyfile(runtime_sources['v6_parallel.py'], submission_dir / 'v6_parallel.py')
+        shutil.copyfile(runtime_sources['v6_fast.py'], submission_dir / 'v6_fast.py')
+        shutil.copyfile(runtime_sources['v6_teacher_gate.py'], ml / 'v6_teacher_gate.py')
         shutil.copyfile(v8_graph_source, ml / 'v8_graph.py')
         shutil.copyfile(v8_submission_graph_source, ml / 'v8_submission_graph.py')
         (root / 'run.py').write_text(RUN_PY, encoding='utf-8')
@@ -186,6 +232,10 @@ def build_v8_from_v6_zip(
                 'strict_oof_macro_ap': float(source_v6_metric),
                 'teacher_coverage': float(source_meta['coverage']),
                 'runtime_path': 'predict_to_csv_v6',
+                'runtime_overlay_verified': True,
+            },
+            'runtime_sources': {
+                name: _sha256(path) for name, path in runtime_sources.items()
             },
             'graph': {
                 'config': dict(GRAPH_CONFIG),
@@ -195,7 +245,7 @@ def build_v8_from_v6_zip(
             'sealed_gold_opened': False,
             'gold_rows_scored': 0,
             'true_test_prevalence_claimed': False,
-            'notes': 'Uses optimized v6 inference path; graph is target-free and selected without sealed gold.',
+            'notes': 'Exact v6 model bundle plus independently verified optimized runtime overlay; graph is target-free.',
         }
         (root / 'v8_metadata.json').write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
