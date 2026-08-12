@@ -70,7 +70,7 @@ jobs:
           matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target']); dev=matches.iloc[rows].reset_index(drop=True)
           items=pd.read_parquet(root/'items_human.parquet',columns=['id','category']).drop_duplicates('id'); cmap=dict(zip(items.id.tolist(),items.category.astype(str).tolist())); dev['category']=dev.id1.map(cmap)
           categories=dev.category.astype(str).to_numpy(); target=dev.target.to_numpy(np.int8)
-          base=oof.fusion_oof_score.to_numpy(float); category=oof.category_shrunk_oof_score.to_numpy(float); hgb=oof.hgb_oof_score.to_numpy(float)
+          base=oof.fusion_oof_score.to_numpy(float); category=oof.category_shrunk_oof_score.to_numpy(float); hgb=oof.hgb_stack_oof_score.to_numpy(float)
           base_ap=float(macro_ap_report(dev,base,strict_official=True)['macro_average_precision'])
           assert abs(base_ap-0.595505427416499)<1e-10
           result=crossfit_category_fusion(category,hgb,target,categories,folds,weight_grid=(0.0,0.25,0.5,0.75,1.0))
