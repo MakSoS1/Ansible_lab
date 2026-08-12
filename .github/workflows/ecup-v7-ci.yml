@@ -27,6 +27,7 @@ jobs:
       - name: v7 targeted unit tests
         run: |
           python -m pytest \
+            ecup_matching/tests/test_v7_frozen_split.py \
             ecup_matching/tests/test_v7_neural_contract.py \
             ecup_matching/tests/test_v7_neural_training.py \
             ecup_matching/tests/test_v5_item_text.py \
@@ -38,7 +39,9 @@ jobs:
           import ecup_matching.ml.benchmark_v7_cuda
           import ecup_matching.ml.run_v7_outer_oof
           import ecup_matching.ml.run_v7_outer_oof_fast
+          import ecup_matching.ml.run_v7_outer_oof_frozen
           import ecup_matching.ml.run_v7_fold0_probe
+          import ecup_matching.ml.run_v7_fold0_probe_frozen
           print('v7_gpu_driver_imports_ok')
           PY
       - name: memory policy
