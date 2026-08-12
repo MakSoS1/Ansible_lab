@@ -1,0 +1,54 @@
+name: E-CUP v7 audit retained v5 category OOF
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-v7-neural]
+    paths:
+      - ".github/workflows/ecup-v7-v5-category-audit.yml"
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  META_PATH: experiments/v5/meta-category-hgb/59de0a1b8963/fold-aware-meta-evaluation.json
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install "huggingface_hub>=0.34,<1"
+      - name: Print safe retained v5 OOF category metrics only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          python - <<'PY'
+          import json, os
+          from huggingface_hub import hf_hub_download
+          local = hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'],
+              repo_type='dataset',
+              filename=os.environ['META_PATH'],
+              token=os.environ['HF_TOKEN'],
+          )
+          payload = json.load(open(local, encoding='utf-8'))
+          print('top_level_keys', sorted(payload.keys()))
+          def walk(obj, path='root'):
+              if isinstance(obj, dict):
+                  for key, value in obj.items():
+                      low = key.lower()
+                      if 'category' in low or 'macro' in low or 'per_' in low:
+                          if isinstance(value, (dict, list, int, float, str, bool)):
+                              print(json.dumps({'path': f'{path}.{key}', 'value': value}, ensure_ascii=False, sort_keys=True))
+                      if isinstance(value, dict):
+                          walk(value, f'{path}.{key}')
+          walk(payload)
+          PY
