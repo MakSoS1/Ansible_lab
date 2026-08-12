@@ -1,0 +1,165 @@
+name: E-CUP v8 gate graph Pareto
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths:
+      - .github/workflows/ecup-v8-gate-graph-pareto.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+
+      - name: Download canonical human inputs and immutable gate OOF artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          root="$RUNNER_TEMP/v8-gate-pareto"; mkdir -p "$root"
+          for f in matches.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" \
+              -o "$root/$f"
+          done
+          # Public Actions artifacts from the immutable v6 teacher-gate run 31533244700.
+          for spec in \
+            '55:9117904493' \
+            '70:9117909852' \
+            '85:9117875768' \
+            '95:9117910545'; do
+            gate="${spec%%:*}"; id="${spec##*:}"
+            curl -fL --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" \
+              -o "$root/gate-${gate}.zip"
+            mkdir "$root/gate-${gate}"
+            unzip -q "$root/gate-${gate}.zip" -d "$root/gate-${gate}"
+            test -s "$root/gate-${gate}/v6-teacher-gate-${gate}-oof.parquet"
+          done
+          echo "pareto_root=$root" >> "$GITHUB_ENV"
+
+      - name: Leakage-free fold-local graph evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          from ecup_matching.ml.v5_evaluation import macro_ap_report
+          from ecup_matching.ml.v8_graph import graph_features, graph_rescore
+
+          EXPECTED = {
+              55: 0.5966896566149946,
+              70: 0.598287140395421,
+              85: 0.5999300791828578,
+              95: 0.6006003614522999,
+          }
+          CONFIG = dict(
+              reciprocal_best_bonus=0.0,
+              reciprocal_top3_bonus=0.0,
+              endpoint_rank_weight=0.02,
+              ambiguity_penalty=0.01,
+          )
+          root = Path(os.environ['pareto_root'])
+          matches = pd.read_parquet(root/'matches.parquet', columns=['id1','id2','target'])
+          items = pd.read_parquet(root/'items_human.parquet', columns=['id','category']).drop_duplicates('id')
+          catmap = dict(zip(items['id'].tolist(), items['category'].astype(str).tolist()))
+          results = []
+
+          for gate, expected in EXPECTED.items():
+              oof = pd.read_parquet(root/f'gate-{gate}'/f'v6-teacher-gate-{gate}-oof.parquet')
+              required = {'row_index','fold','fusion_oof_score'}
+              missing = required - set(oof.columns)
+              if missing:
+                  raise RuntimeError(f'gate{gate} missing columns: {sorted(missing)}')
+              rows = oof['row_index'].to_numpy(dtype=np.int64)
+              folds = oof['fold'].to_numpy(dtype=np.int8)
+              score = oof['fusion_oof_score'].to_numpy(dtype=np.float64)
+              if len(np.unique(rows)) != len(rows) or not np.isfinite(score).all():
+                  raise RuntimeError(f'gate{gate} invalid OOF row/score contract')
+
+              work = matches.iloc[rows].reset_index(drop=True)
+              work['fold'] = folds
+              work['category'] = work['id1'].map(catmap)
+              right_cat = work['id2'].map(catmap)
+              if work['category'].isna().any() or right_cat.isna().any():
+                  raise RuntimeError(f'gate{gate} missing category')
+              if not np.array_equal(work['category'].astype(str).to_numpy(), right_cat.astype(str).to_numpy()):
+                  raise RuntimeError(f'gate{gate} cross-category OOF pair')
+
+              base = float(macro_ap_report(work, score, strict_official=True)['macro_average_precision'])
+              if abs(base - expected) > 1e-10:
+                  raise RuntimeError(f'gate{gate} base reproduction failed: {base} != {expected}')
+
+              graph_score = np.empty_like(score)
+              per_fold = []
+              for fold in sorted(np.unique(folds).tolist()):
+                  mask = folds == fold
+                  fold_work = work.loc[mask, ['id1','id2','category','target']].reset_index(drop=True)
+                  fold_base = score[mask]
+                  gf = graph_features(fold_work[['id1','id2','category']], fold_base)
+                  fold_graph = graph_rescore(fold_base, gf, **CONFIG)
+                  graph_score[mask] = fold_graph
+                  b = float(macro_ap_report(fold_work, fold_base)['macro_average_precision'])
+                  g = float(macro_ap_report(fold_work, fold_graph)['macro_average_precision'])
+                  per_fold.append({'fold': int(fold), 'base': b, 'graph': g, 'delta': g-b})
+
+              graph_ap = float(macro_ap_report(work, graph_score, strict_official=True)['macro_average_precision'])
+              result = {
+                  'gate': gate,
+                  'teacher_fraction': float(oof['teacher_selected'].mean()) if 'teacher_selected' in oof else gate/100.0,
+                  'base_macro_ap': base,
+                  'graph_macro_ap': graph_ap,
+                  'graph_delta': graph_ap-base,
+                  'all_folds_positive': all(x['delta'] > 0 for x in per_fold),
+                  'per_fold': per_fold,
+                  'fold_local_graph': True,
+                  'sealed_gold_opened': False,
+              }
+              results.append(result)
+              print('V8_GATE_GRAPH='+json.dumps(result, sort_keys=True), flush=True)
+
+          # Highest AP is useful, but runtime selection happens only after measured phase timing.
+          summary = {
+              'graph_config': {'rb':0.0,'rt':0.0,'ep':0.02,'ap':0.01},
+              'results': results,
+              'best_graph_ap_gate': max(results, key=lambda x:x['graph_macro_ap'])['gate'],
+              'gate85_clears_060': next(x for x in results if x['gate']==85)['graph_macro_ap'] >= 0.60,
+              'gold_opened': False,
+          }
+          out = root/'gate-graph-pareto.json'
+          out.write_text(json.dumps(summary, indent=2, sort_keys=True)+'\n', encoding='utf-8')
+          print('V8_GATE_GRAPH_PARETO='+json.dumps(summary, sort_keys=True), flush=True)
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-gate-graph-pareto
+          path: ${{ env.pareto_root }}/gate-graph-pareto.json
+          retention-days: 14
