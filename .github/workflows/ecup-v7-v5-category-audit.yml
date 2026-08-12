@@ -12,7 +12,7 @@ permissions:
 
 env:
   HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
-  META_PATH: experiments/v5/meta-category-hgb/59de0a1b8963/fold-aware-meta-evaluation.json
+  META_PATH: experiments/v5/category-hgb-fusion/79de99434912/v5-category-hgb-fusion-metrics.json
 
 jobs:
   audit:
@@ -45,7 +45,7 @@ jobs:
               if isinstance(obj, dict):
                   for key, value in obj.items():
                       low = key.lower()
-                      if 'category' in low or 'macro' in low or 'per_' in low:
+                      if 'category' in low or 'macro' in low or 'per_' in low or 'fold' in low:
                           if isinstance(value, (dict, list, int, float, str, bool)):
                               print(json.dumps({'path': f'{path}.{key}', 'value': value}, ensure_ascii=False, sort_keys=True))
                       if isinstance(value, dict):
