@@ -54,7 +54,9 @@ def train_v7_production(
     weak_presample_rows: int = 1_200_000,
     weak_final_rows: int = 600_000,
     weak_epochs: float = 0.10,
-    human_epochs: float = 0.50,
+    # The selected fold-0 candidate is the one-epoch run: 0.7023556010 versus
+    # 0.6791967999 at half an epoch (gpu-dispatch 31573080203).
+    human_epochs: float = 1.00,
     physical_batch_size: int = 32,
     effective_batch_size: int = 32,
     trainable_last_layers: int = 8,
@@ -225,7 +227,7 @@ def main() -> int:
     parser.add_argument("--weak-presample-rows", type=int, default=1_200_000)
     parser.add_argument("--weak-final-rows", type=int, default=600_000)
     parser.add_argument("--weak-epochs", type=float, default=0.10)
-    parser.add_argument("--human-epochs", type=float, default=0.50)
+    parser.add_argument("--human-epochs", type=float, default=1.00)
     parser.add_argument("--physical-batch-size", type=int, default=32)
     parser.add_argument("--effective-batch-size", type=int, default=32)
     parser.add_argument("--trainable-last-layers", type=int, default=8)
