@@ -66,7 +66,7 @@ def apply_graph_to_prediction(
     if not np.isfinite(rescored).all():
         raise RuntimeError("graph postprocess produced nonfinite score")
     out = prediction.copy().reset_index(drop=True)
-    out["predict"] = rescored.astype(np.float32)
+    out["predict"] = rescored.astype(np.float64, copy=False)
     return out
 
 
