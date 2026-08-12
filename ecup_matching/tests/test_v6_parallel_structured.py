@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import multiprocessing
 import sys
@@ -10,6 +11,7 @@ import pytest
 
 from ecup_matching.ml import features, features_v2
 from ecup_matching.ml.features_v2 import build_pair_features_v2
+from ecup_matching.submission import v6_parallel
 from ecup_matching.submission.v6_fast import collect_chunked_scores
 from ecup_matching.submission.v6_parallel import (
     parallel_supported,
@@ -233,3 +235,25 @@ def test_pool_failure_degrades_to_serial_instead_of_failing_the_run(monkeypatch)
     )
     for name in ("a", "b"):
         assert np.array_equal(expected[name], out[name])
+
+
+def test_worker_entry_limits_already_loaded_native_threadpools(monkeypatch):
+    """Env vars set after fork are insufficient; active BLAS/OpenMP pools must be limited too."""
+    calls: list[int] = []
+
+    @contextlib.contextmanager
+    def fake_threadpool_limits(*, limits):
+        calls.append(int(limits))
+        yield
+
+    monkeypatch.setattr(v6_parallel, "threadpool_limits", fake_threadpool_limits, raising=False)
+    monkeypatch.setattr(
+        v6_parallel,
+        "_WORKER_SCORE_CHUNK",
+        lambda start, end: {"a": np.arange(start, end, dtype=np.float64)},
+    )
+    monkeypatch.setattr(v6_parallel, "_WORKER_SIGNAL_NAMES", ("a",))
+
+    out = v6_parallel._worker_entry((3, 7))
+    assert calls == [1]
+    assert np.array_equal(out["a"], np.arange(3, 7, dtype=np.float64))
