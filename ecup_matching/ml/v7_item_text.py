@@ -22,6 +22,11 @@ _IDENTITY_KEY_GROUPS: tuple[tuple[str, ...], ...] = (
     ("объем", "обьем", "volume"),
     ("колич", "комплект", "count", "шт"),
     ("цвет", "color"),
+    ("материал", "material", "состав", "fabric", "ткан"),
+    ("пол", "gender", "sex", "для кого"),
+    ("сезон", "season"),
+    ("проба", "hallmark", "карат"),
+    ("вставк", "камень", "stone", "gem"),
 )
 
 _TYPED_VALUE_PREFIXES: tuple[str, ...] = (
