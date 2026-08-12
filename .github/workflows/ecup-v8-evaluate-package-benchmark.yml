@@ -1,0 +1,124 @@
+name: E-CUP v8 evaluate package transfer benchmark
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [v8_eval_job.json]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  FIXTURE_PREFIX: experiments/v8/testlike/fixture-50k-seed2026
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Resolve immutable benchmark path
+        shell: bash
+        run: |
+          set -euo pipefail
+          BENCH_PATH="$(python -c 'import json; print(json.load(open("v8_eval_job.json"))["hf_benchmark_path"])')"
+          [[ "$BENCH_PATH" =~ ^experiments/v8/testlike/package-benchmark/[0-9]+-[0-9]+$ ]]
+          printf 'BENCH_PATH=%s\n' "$BENCH_PATH" >> "$GITHUB_ENV"
+      - name: Download exact fixture labels and predictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v8-eval"; mkdir -p "$root"
+          for pair in \
+            "$FIXTURE_PREFIX/labels.parquet:labels.parquet" \
+            "$BENCH_PATH/v5-predictions.parquet:v5.parquet" \
+            "$BENCH_PATH/v6-predictions.parquet:v6.parquet" \
+            "$BENCH_PATH/runtime.json:runtime.json" \
+            "$BENCH_PATH/package_sha256.json:package_sha256.json"; do
+            src="${pair%%:*}"; dst="${pair##*:}"
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${src}?download=true" -o "$root/$dst"
+          done
+      - name: Leakage-free grouped evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np, pandas as pd
+          from ecup_matching.ml.v8_compare import evaluate_grouped_candidates, tune_graph_config, tune_two_model_blend
+          from ecup_matching.ml.v8_selection import rank_blend
+
+          root=Path(os.environ['RUNNER_TEMP'])/'v8-eval'
+          labels=pd.read_parquet(root/'labels.parquet')
+          if len(labels)!=50000 or labels['category'].astype(str).nunique()!=20:
+              raise RuntimeError('fixture label contract changed')
+          scores={}
+          for name in ('v5','v6'):
+              pred=pd.read_parquet(root/f'{name}.parquet')
+              if len(pred)!=len(labels) or 'id' not in pred or 'predict' not in pred:
+                  raise RuntimeError(f'{name} prediction contract failed')
+              if not np.array_equal(pred['id'].to_numpy(),labels['id'].to_numpy()):
+                  raise RuntimeError(f'{name} id order mismatch')
+              arr=pd.to_numeric(pred['predict'],errors='raise').to_numpy(float)
+              if not np.isfinite(arr).all(): raise RuntimeError(f'{name} nonfinite score')
+              scores[name]=arr
+
+          base=evaluate_grouped_candidates(labels,scores)
+          graph={name:tune_graph_config(labels,score,seed=2026) for name,score in scores.items()}
+          blend=tune_two_model_blend(labels,scores,seed=2026,weights=np.linspace(0,1,21))
+          selected=blend['selected_weights']
+          blended=rank_blend(labels,scores,selected)
+          blend_graph=tune_graph_config(labels,blended,seed=2026)
+          runtime=json.loads((root/'runtime.json').read_text())
+          package_sha=json.loads((root/'package_sha256.json').read_text())
+          report={
+              'version':'v8-grouped-package-transfer-eval',
+              'diagnostic_only':True,
+              'benchmark_path':os.environ['BENCH_PATH'],
+              'rows':len(labels),
+              'anchors':int(labels['id1'].nunique()),
+              'categories':int(labels['category'].astype(str).nunique()),
+              'base':base,
+              'graph':graph,
+              'blend':blend,
+              'blend_graph':blend_graph,
+              'runtime':runtime,
+              'package_sha256':package_sha,
+              'true_test_ap_claimed':False,
+              'gold_opened':False,
+          }
+          out=root/'v8-grouped-package-eval.json'
+          out.write_text(json.dumps(report,ensure_ascii=False,indent=2,sort_keys=True),encoding='utf-8')
+          summary={
+              'v5_pseudo':base['models']['v5']['pseudo']['macro_pseudo_average_precision'],
+              'v6_pseudo':base['models']['v6']['pseudo']['macro_pseudo_average_precision'],
+              'v5_spearman':base['models']['v5']['soft']['macro_spearman'],
+              'v6_spearman':base['models']['v6']['soft']['macro_spearman'],
+              'v5_graph_confirm_delta':graph['v5']['confirm_pseudo_delta'],
+              'v6_graph_confirm_delta':graph['v6']['confirm_pseudo_delta'],
+              'blend_weights':selected,
+              'blend_confirm_pseudo':blend['confirm']['macro_pseudo_average_precision'],
+              'blend_confirm_spearman':blend['confirm']['macro_spearman'],
+              'blend_graph_confirm_pseudo':blend_graph['confirm']['pseudo']['macro_pseudo_average_precision'],
+              'blend_graph_confirm_delta':blend_graph['confirm_pseudo_delta'],
+              'runtime':runtime,
+          }
+          print('V8_GROUPED_EVAL='+json.dumps(summary,ensure_ascii=False,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v8-grouped-package-eval
+          path: ${{ runner.temp }}/v8-eval/v8-grouped-package-eval.json
+          retention-days: 14
