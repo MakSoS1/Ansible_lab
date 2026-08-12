@@ -54,24 +54,30 @@ def serialization_workers(
     *,
     cpu_count: int | None = None,
     minimum_items_per_worker: int = 20_000,
+    max_workers: int = 8,
 ) -> int:
     """Pick a worker count for item serialization.
 
     Serializing an item is pure Python — normalize, canonicalize, format — and
     it does not get faster on a bigger GPU. At competition scale it is tens of
     seconds of single-threaded work sitting on the critical path.
+
+    Capped at 8 because each worker decodes a whole parquet row group including
+    the attributes column. Against the 13M-row full item file that is roughly a
+    gigabyte per worker, which is how a production refit got OOM-killed with
+    exit 137. Callers must opt in explicitly; the default stays serial.
     """
     override = os.environ.get("ECUP_V7_SERIALIZE_WORKERS", "").strip()
     if override:
         try:
-            return max(1, min(int(override), 32))
+            return max(1, min(int(override), max_workers))
         except ValueError:
             pass
     detected = cpu_count if cpu_count is not None else (os.cpu_count() or 1)
     if detected <= 2 or requested_items < 2 * minimum_items_per_worker:
         return 1
     by_size = max(1, requested_items // minimum_items_per_worker)
-    return max(1, min(detected - 1, by_size, 32))
+    return max(1, min(detected - 1, by_size, max_workers))
 
 
 _WORKER_STATE: dict[str, object] = {}
@@ -145,9 +151,10 @@ def build_v7_text_cache_from_parquet(
     texts: dict[object, str] = {}
     categories: dict[object, str] = {}
 
-    worker_count = (
-        serialization_workers(len(requested)) if workers is None else max(1, int(workers))
-    )
+    # Serial unless the caller opts in. Training scans the full 13M-row item
+    # file, where forked workers holding a row group each are what triggered the
+    # OOM; the submission path scans only the test items and opts in.
+    worker_count = 1 if workers is None else max(1, int(workers))
     row_groups = parquet.num_row_groups
     use_parallel = (
         worker_count > 1
@@ -161,6 +168,11 @@ def build_v7_text_cache_from_parquet(
         shards: list[tuple[int, ...]] = [
             tuple(range(start, min(start + 1, row_groups))) for start in range(row_groups)
         ]
+        print(
+            f'{{"phase": "serialize-items-pool", "workers": {min(worker_count, len(shards))}, '
+            f'"row_groups": {row_groups}, "requested_items": {len(requested)}}}',
+            flush=True,
+        )
         _WORKER_STATE.update(
             path=str(parquet_path),
             columns=columns,

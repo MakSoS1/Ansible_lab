@@ -20,7 +20,11 @@ import pandas as pd
 # Imported from v7_runtime, not v7_neural: the training module pulls in the
 # split/metric/validation graph, which must not be packaged into the offline
 # archive. Both halves share these functions, so they cannot drift.
-from ecup_matching.ml.v7_runtime import build_v7_text_cache_from_parquet, predict_pairs
+from ecup_matching.ml.v7_runtime import (
+    build_v7_text_cache_from_parquet,
+    predict_pairs,
+    serialization_workers,
+)
 
 
 DEFAULT_MAX_LENGTH = 256
@@ -116,10 +120,16 @@ def predict_to_csv_v7(
     needed = pd.unique(pd.concat([pairs["id1"], pairs["id2"]], ignore_index=True))
     previous = _phase("read-pairs", started, previous, pairs=len(pairs), items=len(needed))
 
+    # Opt in to parallel serialization here and only here: the submission scans
+    # the test item file, not the 13M-row training one, so a forked worker holds
+    # a small row group. This is CPU work that a faster GPU does not shrink.
+    workers = serialization_workers(len(needed))
     texts, _categories = build_v7_text_cache_from_parquet(
-        Path(items_path), needed, max_chars=int(max_chars)
+        Path(items_path), needed, max_chars=int(max_chars), workers=workers
     )
-    previous = _phase("serialize-items", started, previous, items=len(texts))
+    previous = _phase(
+        "serialize-items", started, previous, items=len(texts), workers=workers
+    )
 
     device = _select_device()
     model, tokenizer = _load_model(Path(model_dir), device)

@@ -109,9 +109,10 @@ def test_serialization_worker_count_is_bounded():
     assert serialization_workers(10, cpu_count=20) == 1, "tiny inputs stay serial"
     assert serialization_workers(1_000_000, cpu_count=1) == 1
     assert serialization_workers(1_000_000, cpu_count=2) == 1
-    assert serialization_workers(1_000_000, cpu_count=20) == 19
+    # Capped at 8: each worker decodes a whole row group including attributes.
+    assert serialization_workers(1_000_000, cpu_count=20) == 8
     assert serialization_workers(60_000, cpu_count=20) == 3
-    assert serialization_workers(1_000_000, cpu_count=1000) <= 32
+    assert serialization_workers(1_000_000, cpu_count=1000) <= 8
 
 
 def test_empty_request_returns_empty_caches(tmp_path):
@@ -185,3 +186,33 @@ def test_prefetcher_close_is_idempotent():
     prefetch = _BatchPrefetcher(lambda s, e: {"x": s}, total_rows=4, batch_size=2)
     prefetch.close()
     prefetch.close()
+
+
+def test_serialization_is_serial_unless_the_caller_opts_in(tmp_path, monkeypatch):
+    """Training scans the 13M-row item file; forked workers there caused an OOM kill."""
+    path = tmp_path / "items.parquet"
+    _items_parquet(path, rows=200, row_group_size=20)
+    seen: list[int] = []
+    real = __import__(
+        "ecup_matching.ml.v7_runtime", fromlist=["serialization_workers"]
+    ).serialization_workers
+    monkeypatch.setattr(
+        "ecup_matching.ml.v7_runtime.serialization_workers",
+        lambda *a, **k: seen.append(1) or real(*a, **k),
+    )
+    build_v7_text_cache_from_parquet(path, list(range(200)), max_chars=900)
+    assert not seen, "default path must not consult the worker heuristic at all"
+
+
+def test_worker_cap_bounds_row_group_memory():
+    """Each worker decodes a whole row group with attributes, so the cap is memory."""
+    assert serialization_workers(10_000_000, cpu_count=64) <= 8
+    assert serialization_workers(10_000_000, cpu_count=64, max_workers=2) == 2
+
+
+def test_submission_path_opts_in_to_parallel_serialization():
+    source = (
+        Path(__file__).resolve().parents[1] / "submission" / "predict_v7.py"
+    ).read_text(encoding="utf-8")
+    assert "workers=workers" in source
+    assert "serialization_workers(len(needed))" in source
