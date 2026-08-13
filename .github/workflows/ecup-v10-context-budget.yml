@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -q 'huggingface_hub>=1,<2' 'transformers==4.57.1' pandas pyarrow
+      - run: python -m pip install -q 'transformers==4.57.1' pandas pyarrow
       - name: Download canonical human items
         shell: bash
         run: |
@@ -46,7 +46,6 @@ jobs:
           MODEL='cointegrated/rubert-tiny2'; REV='e8ed3b0c8bbf4fb6984c3de043bf7d2f4e5969ae'
           tok=AutoTokenizer.from_pretrained(MODEL,revision=REV,use_fast=True)
           items=pd.read_parquet(Path(os.environ['RUNNER_TEMP'])/'items_human.parquet')
-          # Deterministic, category-balanced item sample; no label-based sampling.
           chunks=[]
           for cat,part in items.groupby('category',sort=True):
               chunks.append(part.sort_values('id').head(min(1000,len(part))))
@@ -58,10 +57,9 @@ jobs:
               result[f'over_{budget}_fraction']=float(np.mean(lens>budget))
               result[f'tokens_lost_mean_at_{budget}']=float(np.maximum(lens-budget,0).mean())
           bycat={}
-          offset=0
           for cat,part in sample.groupby('category',sort=True):
-              n=len(part); x=lens[offset:offset+n]; offset+=n
-              bycat[str(cat)]={'rows':n,'over128':float(np.mean(x>128)),'over160':float(np.mean(x>160)),'lost128':float(np.maximum(x-128,0).mean()),'lost160':float(np.maximum(x-160,0).mean())}
+              idx=part.index.to_numpy(); x=lens[idx]
+              bycat[str(cat)]={'rows':len(part),'over128':float(np.mean(x>128)),'over160':float(np.mean(x>160)),'lost128':float(np.maximum(x-128,0).mean()),'lost160':float(np.maximum(x-160,0).mean())}
           result['by_category']=bycat
           Path('v10-context-budget.json').write_text(json.dumps(result,ensure_ascii=False,indent=2,sort_keys=True)+'\n')
           print('V10_CONTEXT='+json.dumps(result,ensure_ascii=False,sort_keys=True))
