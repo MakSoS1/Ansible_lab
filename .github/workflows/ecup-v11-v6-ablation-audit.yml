@@ -1,0 +1,111 @@
+name: E-CUP v11 v6 ablation audit
+
+on:
+  push:
+    branches: [ecup-v11-fastlex]
+    paths:
+      - '.github/workflows/ecup-v11-v6-ablation-audit.yml'
+      - 'ecup_matching/experiments/v11/V6_ABLATION_AUDIT_REQUEST'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    env:
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      PREVALENCE_RATIO: '0.566880890615799'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download canonical data and retained ablations
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v11-v6-audit"; mkdir -p "$root"
+          test -n "${HF_TOKEN:-}"
+          for f in matches.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" -o "$root/$f"
+          done
+          base="https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/experiments/v6/fast-ablation"
+          for candidate in structured_only no_teacher no_contrastive; do
+            file="v6-fast-${candidate}-oof.parquet"
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "$base/$candidate/6a1e61a2d068/$file?download=true" -o "$root/$file"
+          done
+          echo "AUDIT_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Recompute strict OOF graph and target stress
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          from sklearn.metrics import average_precision_score
+          from ecup_matching.ml.v5_evaluation import macro_ap_report
+          from ecup_matching.ml.v8_graph import graph_features, graph_rescore
+
+          root=Path(os.environ['AUDIT_ROOT'])
+          ratio=float(os.environ['PREVALENCE_RATIO'])
+          matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target'])
+          items=pd.read_parquet(root/'items_human.parquet',columns=['id','category']).drop_duplicates('id')
+          catmap=dict(zip(items.id.tolist(),items.category.astype(str).tolist()))
+          cfg=dict(reciprocal_best_bonus=0.0,reciprocal_top3_bonus=0.0,endpoint_rank_weight=0.02,ambiguity_penalty=0.01)
+          results=[]
+          for cand in ('structured_only','no_teacher','no_contrastive'):
+            p=root/f'v6-fast-{cand}-oof.parquet'
+            oof=pd.read_parquet(p)
+            print('V11_V6_COLUMNS='+json.dumps({'candidate':cand,'columns':list(oof.columns),'rows':len(oof)},ensure_ascii=False),flush=True)
+            if 'row_index' not in oof or 'fold' not in oof or 'fusion_oof_score' not in oof:
+              raise RuntimeError(f'invalid OOF schema for {cand}')
+            rows=oof.row_index.to_numpy(np.int64); folds=oof.fold.to_numpy(np.int16); score=oof.fusion_oof_score.to_numpy(float)
+            if len(np.unique(rows))!=len(rows) or not np.isfinite(score).all(): raise RuntimeError(f'invalid OOF contract {cand}')
+            work=matches.iloc[rows].reset_index(drop=True)
+            work['category']=work.id1.map(catmap)
+            if work.category.isna().any(): raise RuntimeError('missing category')
+            if not np.array_equal(work.category.astype(str).to_numpy(), work.id2.map(catmap).astype(str).to_numpy()): raise RuntimeError('cross-category pair')
+            base=float(macro_ap_report(work,score,strict_official=True)['macro_average_precision'])
+            graph=np.empty_like(score); fold_reports=[]
+            for fold in sorted(np.unique(folds).tolist()):
+              mask=folds==fold
+              fw=work.loc[mask,['id1','id2','category','target']].reset_index(drop=True); fs=score[mask]
+              gf=graph_features(fw[['id1','id2','category']],fs); gs=graph_rescore(fs,gf,**cfg); graph[mask]=gs
+              b=float(macro_ap_report(fw,fs)['macro_average_precision']); g=float(macro_ap_report(fw,gs)['macro_average_precision'])
+              fold_reports.append({'fold':int(fold),'base':b,'graph':g,'delta':g-b})
+            gap=float(macro_ap_report(work,graph,strict_official=True)['macro_average_precision'])
+            cats=work.category.astype(str).to_numpy(); y=work.target.to_numpy(np.int8)
+            plans={}
+            for cat in sorted(np.unique(cats).tolist()):
+              idx=np.flatnonzero(cats==cat); cy=y[idx]; prevalence=float(cy.mean()); target_prev=prevalence*ratio
+              neg=int(np.sum(cy==0)); pos=int(np.sum(cy==1)); keep=min(pos,max(1,int(round(target_prev*neg/max(1e-12,1-target_prev)))))
+              plans[cat]=(keep,pos,neg)
+            trials=[]
+            for seed in range(2026,2126):
+              rng=np.random.default_rng(seed); aps=[]
+              for cat in sorted(plans):
+                idx=np.flatnonzero(cats==cat); cy=y[idx]; neg_idx=idx[cy==0]; pos_idx=idx[cy==1]; k=plans[cat][0]
+                sel=np.concatenate([neg_idx,rng.choice(pos_idx,size=k,replace=False)])
+                aps.append(float(average_precision_score(y[sel],graph[sel])))
+              trials.append(float(np.mean(aps)))
+            arr=np.asarray(trials,float)
+            r={'candidate':cand,'rows':int(len(work)),'strict_oof':base,'graph_oof':gap,'graph_delta':gap-base,
+               'all_graph_folds_positive':all(x['delta']>0 for x in fold_reports),'folds':fold_reports,
+               'stress_mean':float(arr.mean()),'stress_std':float(arr.std(ddof=1)),'stress_p05':float(np.quantile(arr,.05)),'stress_p95':float(np.quantile(arr,.95)),
+               'sealed_gold_evaluated':False}
+            print('V11_V6_AUDIT='+json.dumps(r,ensure_ascii=False,sort_keys=True),flush=True); results.append(r)
+          payload={'version':'v11-v6-retained-ablation-audit','prevalence_ratio':ratio,'results':results,'sealed_gold_evaluated':False}
+          (root/'v11-v6-ablation-audit.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v11-v6-ablation-audit
+          path: ${{ env.AUDIT_ROOT }}/v11-v6-ablation-audit.json
+          retention-days: 30
