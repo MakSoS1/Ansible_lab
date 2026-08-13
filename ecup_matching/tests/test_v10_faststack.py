@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 
 
 def test_no_teacher_composition_never_requires_teacher() -> None:
@@ -53,3 +55,40 @@ def test_faststack_package_guard_rejects_teacher_assets(tmp_path: Path) -> None:
         assert "teacher" in str(exc).lower()
     else:
         raise AssertionError("teacher checkpoint must be rejected")
+
+
+def test_contrastive_only_cache_matches_legacy_contrastive_view() -> None:
+    from ecup_matching.submission.v10_text_cache import build_contrastive_text_cache
+
+    class FakeNorm:
+        @staticmethod
+        def normalize_item(item_id, name, attributes, category):
+            return SimpleNamespace(
+                item_id=item_id,
+                name=str(name),
+                attributes=str(attributes),
+                category=str(category),
+            )
+
+    class FakeText:
+        @staticmethod
+        def serialize_item_v5(norm, *, max_chars):
+            return f"{norm.item_id}|{norm.category}|{norm.name}|{norm.attributes}"[:max_chars]
+
+    items = pd.DataFrame(
+        {
+            "id": [11, 12, 13],
+            "name": ["alpha", "beta", "gamma"],
+            "attributes": ["a=1", "b=2", "c=3"],
+            "category": ["x", "y", "z"],
+        }
+    )
+    got = build_contrastive_text_cache(items, FakeNorm, FakeText, workers=1)
+    expected = {
+        row.id: FakeText.serialize_item_v5(
+            FakeNorm.normalize_item(row.id, row.name, row.attributes, row.category),
+            max_chars=700,
+        )
+        for row in items.itertuples(index=False)
+    }
+    assert got == expected
