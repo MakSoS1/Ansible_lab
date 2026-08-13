@@ -1,6 +1,6 @@
 {
   "version": "v9",
-  "status": "completed",
+  "status": "completed-compact-submission-candidate",
   "validation": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -55,51 +55,97 @@
     "production_refit_is_validation": false,
     "private_hf_prefix": "experiments/v9/production/gate40/853a3925ac2b"
   },
-  "keeper_package": {
+  "superseded_platform_timeout_package": {
     "name": "ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip",
-    "build_run_id": 31640050373,
-    "release_tag": "ecup-v9-gate40-final-eb2bcf18d53e",
     "bytes": 1251659961,
     "sha256": "925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782",
+    "platform_result": "Container did not finish in time",
+    "submission_status": "rejected-for-submission-runtime-risk",
+    "validation_evidence_retained": true
+  },
+  "keeper_package": {
+    "name": "ecup-v9-compact-fp16storage-0.5970059311-submission.zip",
+    "build_run_id": 31675196422,
+    "release_tag": "ecup-v9-compact-6ba133ce25f7",
+    "bytes": 596925132,
+    "sha256": "aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345",
+    "source_bytes": 1251659961,
+    "bytes_saved": 654734829,
+    "size_ratio": 0.4769067882646763,
     "runtime_policy": {
       "structured_worker_cap": 8,
       "cuda_autocast": "float16",
       "contrastive_batch_rtx2060": 256,
       "teacher_batch_rtx2060": 96
+    },
+    "storage_compaction": {
+      "contrastive_and_teacher_floating_safetensors": "fp16",
+      "integer_tensors_preserved": true,
+      "structured_and_meta_models_changed": false,
+      "dead_bytecode_removed": true
     }
   },
+  "compact_equivalence": {
+    "run_id": 31675338174,
+    "artifact_id": 9171461622,
+    "rows": 20000,
+    "original_seconds": 91.352614853,
+    "compact_seconds": 81.015456088,
+    "mean_abs_delta": 0.00016378653597360943,
+    "p99_abs_delta": 0.0019011406844106082,
+    "p999_abs_delta": 0.008163265306122325,
+    "max_abs_delta": 0.10074231177094373,
+    "pearson_correlation": 0.9999931722281602,
+    "spearman_rank_correlation": 0.9999931451822124,
+    "top_fraction_overlap": {
+      "0.01": 1.0,
+      "0.05": 0.999,
+      "0.10": 0.999,
+      "0.25": 0.9996
+    },
+    "output_valid": true,
+    "strict_oof_remeasured_after_storage_compaction": false,
+    "reason_not_remeasured": "production refit already saw all development rows; sealed gold remains unopened",
+    "interpretation": "near-identical ranking transfer evidence, not exact numeric equality and not a new validation score"
+  },
   "runtime_gate": {
-    "run_id": 31641656589,
-    "artifact_id": 9159596648,
+    "run_id": 31675903851,
+    "artifact_id": 9171929877,
+    "artifact_sha256": "93936d2bade56f8765c259ca31a0c8950e89aedeacd330b1f105d3b111eddb23",
     "device": "NVIDIA GeForce RTX 2060 SUPER",
     "organizer_image": "odsai/ecup26-matching-baseline:1.0",
-    "outer_wall_authoritative": true,
+    "timer_scope": "safe ZIP extraction + docker inference + output validation; network download and fixture preparation excluded",
     "public": {
       "rows": 115000,
       "acceptance_seconds": 330.0,
-      "wall_seconds": 281.821475323,
-      "headroom_seconds": 48.178524677,
+      "extract_seconds": 5.234229078,
+      "inference_seconds": 287.592726358,
+      "validation_seconds": 0.738098444,
+      "wall_seconds": 293.569452608,
+      "headroom_seconds": 36.430547391999994,
       "return_code": 0,
       "output_valid": true,
-      "unique_scores": 108272,
+      "unique_scores": 108264,
       "passed": true
     },
     "private": {
       "rows": 275000,
       "acceptance_seconds": 700.0,
-      "wall_seconds": 634.766220868,
-      "headroom_seconds": 65.233779132,
+      "extract_seconds": 5.714303003,
+      "inference_seconds": 640.236212537,
+      "validation_seconds": 0.992280967,
+      "wall_seconds": 646.947129008,
+      "headroom_seconds": 53.05287099199995,
       "return_code": 0,
       "output_valid": true,
-      "unique_scores": 271386,
+      "unique_scores": 271298,
       "passed": true
     },
-    "both_passed": true,
-    "independent_previous_private_wall_seconds": 637.82083456
+    "both_passed": true
   },
   "verification": {
-    "run_id": 31642803187,
-    "tests_passed": 423,
+    "run_id": 31676442849,
+    "tests_passed": 425,
     "tests_skipped": 5,
     "memory_policy": "OK"
   },
