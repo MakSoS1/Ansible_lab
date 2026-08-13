@@ -1,31 +1,15 @@
 {
-  "version": "v10",
-  "status": "completed",
+  "version": "v11",
+  "status": "completed-submission-ready",
   "model": "no_teacher+frozen_graph-faststack",
-  "plan": "ecup_matching/experiments/v10/PLAN.md",
-  "results": "ecup_matching/experiments/v10/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v10/SAFE_METRICS.json",
-  "distribution_policy": {
-    "github_releases": "forbidden",
-    "github_prereleases": "forbidden",
-    "submission_store": "private_huggingface_only",
-    "hf_repo": "Maksim123321/e-cup-2026-matching-private",
-    "canonical_prefix": "submissions/<version>/",
-    "github_actions_artifacts": "transient_ci_evidence_only",
-    "enforcement_script": "scripts/release_policy.py",
-    "enforcement_in_full_verification": true,
-    "obsolete_release_workflows_removed": 5,
-    "release_cleanup_run_id": 31695205540,
-    "existing_releases_deleted": 8,
-    "remaining_releases_after_cleanup": 0
-  },
+  "results": "ecup_matching/experiments/v11/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v11/SAFE_METRICS.json",
   "validation_protocol": {
     "human_rows": 365654,
     "development_rows": 285210,
     "sealed_gold_rows": 80444,
     "development_folds": 5,
     "cross_split_item_overlap": 0,
-    "connected_components": 345654,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
     "metric": "unweighted mean of sklearn average_precision_score over exactly 20 official categories",
     "gold_metric_opened": false,
@@ -35,145 +19,75 @@
     "version": "v7",
     "score_observed_by_owner": 0.36,
     "used_for_fitting": false,
-    "v10_target_region": 0.5,
-    "v10_target_is_claimed_score": false,
-    "v10_measured_leaderboard_score": null
+    "v11_target_region": 0.5,
+    "v11_target_is_claimed_score": false,
+    "v11_measured_leaderboard_score": null
   },
   "selection": {
-    "candidate": "no_teacher+frozen_graph",
+    "candidate": "no_teacher+frozen_graph-faststack",
     "strict_raw_oof_macro_ap": 0.5931387077244183,
     "strict_graph_oof_macro_ap": 0.5950413762943735,
-    "graph_delta": 0.0019026685699552,
-    "graph_positive_folds": 5,
     "target_stress_graph_mean": 0.44961526826354,
-    "target_stress_std": 0.0016793717,
-    "target_stress_p05": 0.44725891257,
-    "target_stress_p50": 0.44972458938,
-    "target_stress_p95": 0.45217563833,
-    "target_stress_is_leaderboard_score": false,
-    "teacher_checkpoint_required": false
+    "teacher_checkpoint_required": false,
+    "contrastive_runtime_required": true,
+    "stronger_local_rejected_candidate": {
+      "candidate": "no_contrastive+frozen_graph",
+      "strict_graph_oof_macro_ap": 0.5978943607354008,
+      "target_stress_graph_mean": 0.45353679907723865,
+      "rejection_reason": "pair-scaled teacher retained; higher platform timeout risk"
+    }
   },
   "keeper_package": {
-    "name": "ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
-    "build_run_id": 31699070599,
-    "build_artifact_id": 9180563742,
+    "name": "ecup-v11-faststack-graph-0.5950413763-submission.zip",
     "bytes": 480249754,
     "sha256": "0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a",
-    "source_sha": "0e86d6a951d47d6d92230563e3d9790b2f044f86",
+    "payload_identity": "byte-identical to the fixed v10 no-teacher keeper",
+    "original_build_run_id": 31699070599,
+    "original_source_sha": "0e86d6a951d47d6d92230563e3d9790b2f044f86",
     "teacher_checkpoint_packaged": false,
-    "cpu_gpu_overlap": true,
-    "contrastive_only_text_cache": true,
-    "canonical_store": "private_huggingface",
-    "platform_submission_status": "ready",
     "root_metadata_json_present": true,
     "metadata_image": "odsai/ecup26-matching-baseline:1.0",
     "metadata_entry_point": "python -u run.py",
-    "do_not_resubmit": false
+    "export_run_id": 31712297949,
+    "export_artifact_id": 9185774794
   },
-  "superseded_rejected_package": {
-    "name": "ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
-    "bytes": 480249520,
-    "sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
-    "platform_failure_observed": "Failed",
-    "rejection_reason": "missing_root_metadata_json",
-    "do_not_resubmit": true
-  },
-  "runtime_gate": {
+  "fresh_runtime_gate": {
+    "run_id": 31712095181,
+    "job_id": 94487396402,
     "device": "NVIDIA GeForce RTX 2060 SUPER",
     "organizer_image": "odsai/ecup26-matching-baseline:1.0",
+    "timer_scope": "ZIP extraction + Docker inference + output validation",
     "public": {
-      "run_id": 31689794784,
       "rows": 115000,
-      "wall_seconds": 173.842174445,
-      "return_code": 0,
-      "internal_acceptance_seconds": 330.0,
-      "organizer_nominal_seconds": 360.0,
-      "passed_production_time_budget": true
-    },
-    "private": {
-      "run_id": 31692817075,
-      "artifact_id": 9178292328,
-      "rows": 275000,
-      "wall_seconds": 391.608035937,
-      "internal_acceptance_seconds": 700.0,
-      "headroom_seconds": 308.391964063,
-      "organizer_nominal_seconds": 780.0,
-      "return_code": 0,
-      "output_valid": true,
-      "unique_scores": 271964,
+      "extract_seconds": 2.039450411000871,
+      "wall_seconds": 161.9069420099986,
+      "acceptance_seconds": 180.0,
+      "unique_scores": 108578,
       "passed": true
     },
-    "runtime_evidence_inherited_for_fixed_package": true,
-    "inheritance_basis": "All 39 executable/model files are byte-identical between the rejected RTX-gated archive and the fixed archive; NO_TEACHER_KEEPER stable semantics and runtime-critical fields are identical. Only official root metadata.json plus volatile keeper timing/RAM observations differ.",
-    "fresh_private_hf_gpu_regate": {
-      "run_id": 31699637670,
-      "passed": false,
-      "inference_started": false,
-      "reason": "gpu-dispatch repository currently has no HF_TOKEN secret, so the run stopped before downloading the private HF archive"
-    },
-    "platform_launcher_contract_covered": true,
-    "platform_launcher_coverage_run_id": 31700024320
-  },
-  "platform_preflight": {
-    "run_id": 31700024320,
-    "artifact_id": 9180933352,
-    "exact_old_hf_archive_checked": true,
-    "exact_fixed_hf_archive_checked": true,
-    "exact_new_sha256_verified": true,
-    "exact_new_bytes_verified": true,
-    "executable_files_compared": 39,
-    "executable_payload_identity": true,
-    "keeper_stable_semantics_identity": true,
-    "keeper_runtime_critical_identity": true,
-    "keeper_volatile_diff_only": {
-      "elapsed_seconds": {
-        "old": 74.57092722,
-        "new": 74.641457828
-      },
-      "peak_ram_gib": {
-        "old": 0.8091239929199219,
-        "new": 0.700836181640625
-      }
-    },
-    "root_run_py_present": true,
-    "root_metadata_json_present": true,
-    "official_baseline_metadata": {
-      "image": "odsai/ecup26-matching-baseline:1.0",
-      "entry_point": "python -u run.py"
-    },
-    "platform_contract_passed": true,
-    "metadata_driven_launcher_smoke": {
-      "rows": 64,
-      "wall_seconds": 17.318099936,
-      "valid_output": true,
-      "unique_scores": 14,
+    "private": {
+      "rows": 275000,
+      "extract_seconds": 2.791927307000151,
+      "wall_seconds": 379.24445236499014,
+      "acceptance_seconds": 420.0,
+      "unique_scores": 271964,
       "passed": true
     }
   },
-  "hf_publication": {
-    "repo": "Maksim123321/e-cup-2026-matching-private",
-    "run_id": 31700346018,
-    "hf_commit": "c7d4e67f1c75fc097de385757ef44d842e001e7a",
-    "archive_path": "submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
-    "manifest_path": "submissions/v10/final/V10_KEEPER.json",
-    "archive_and_manifest_relisted_after_upload": true,
-    "canonical_archive_redownloaded_after_upload": true,
-    "published_archive_bytes": 480249754,
-    "published_archive_sha256": "0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a",
-    "published_metadata_verified": true,
-    "canonical_distribution": true
-  },
   "verification": {
-    "run_id": 31698309151,
-    "status": "last_green_before_final_packaging_state_update",
+    "run_id": 31712646355,
+    "job_id": 94489299438,
+    "tests_passed": 450,
+    "tests_skipped": 6,
     "memory_policy": "OK"
   },
-  "memora": {
-    "run_id": 31698309158,
-    "status": "last_green_before_final_packaging_state_update",
-    "memory_policy": "OK",
-    "private_hf_checkpoint_verified": true
+  "distribution_policy": {
+    "submission_store": "private_huggingface_only",
+    "hf_repo": "Maksim123321/e-cup-2026-matching-private",
+    "canonical_prefix": "submissions/v11/final/",
+    "github_actions_artifacts": "transient_ci_evidence_only"
   },
   "sealed_gold_evaluated": false,
-  "next_action": "Submit the exact canonical private-HF archive with SHA256 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a to the competition platform. Record the measured leaderboard score separately and do not rewrite strict OOF or target-stress history. Never resubmit superseded SHA256 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d."
+  "leaderboard_score": null,
+  "next_action": "Submit only the exact v11 keeper SHA256 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a. Record the measured leaderboard result separately; do not rewrite OOF or target-stress history."
 }
