@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ecup_matching.ml.v11_fastlex import FEATURE_NAMES, build_fast_pair_features
+from ecup_matching.ml.v11_sparse import SparseConfig, sparse_pair_scores
 
 
 def _items():
@@ -34,3 +35,13 @@ def test_fastlex_captures_codes_numbers_and_attributes_without_edit_distance():
     source = Path("ecup_matching/ml/v11_fastlex.py").read_text(encoding="utf-8")
     assert "SequenceMatcher" not in source
     assert "difflib" not in source
+
+
+def test_sparse_semantic_channel_is_deterministic_and_prefers_near_duplicate():
+    pairs = pd.DataFrame({"id1": [1, 1], "id2": [2, 3]})
+    cfg = SparseConfig(n_features=32768)
+    first = sparse_pair_scores(_items(), pairs, config=cfg)
+    second = sparse_pair_scores(_items(), pairs, config=cfg)
+    np.testing.assert_allclose(first, second, rtol=0, atol=0)
+    assert np.isfinite(first).all()
+    assert first[0] > first[1]
