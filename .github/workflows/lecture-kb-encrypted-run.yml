@@ -1,0 +1,88 @@
+name: Lecture KB encrypted final run
+
+on:
+  push:
+    branches: [lecture-kb-compute-20260813]
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    strategy:
+      fail-fast: false
+      matrix:
+        video_id: [O8hy7q6JGqI, axJLEpDbAu4, xT1OxGl4lFI, h_XfNaUKPQ8, eq5DQ_7hc3s]
+    runs-on: macos-15
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Apple Silicon
+        run: |
+          uname -m
+          test "$(uname -m)" = "arm64"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install system dependencies
+        run: brew install ffmpeg tesseract-lang
+      - name: Install Python dependencies
+        run: python -m pip install 'yt-dlp[default]>=2026.7.0' 'Pillow>=11' 'numpy>=2' 'mlx-whisper>=0.4.0'
+      - name: Process lecture losslessly
+        env:
+          VIDEO_ID: ${{ matrix.video_id }}
+        run: python tools/lecture_compute.py --video-id "$VIDEO_ID" --output-root "$RUNNER_TEMP/plain"
+      - name: Verify canonical hashes before encryption
+        env:
+          VIDEO_ID: ${{ matrix.video_id }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'plain' / os.environ['VIDEO_ID']
+          speech = 0
+          for line in (root/'speech'/'asr.jsonl').read_text(encoding='utf-8').splitlines():
+              r=json.loads(line); assert hashlib.sha256(r['text'].encode()).hexdigest()==r['text_sha256']; speech+=1
+          slides = 0
+          for line in (root/'slides'/'slides.jsonl').read_text(encoding='utf-8').splitlines():
+              r=json.loads(line); assert hashlib.sha256(r['ocr_text'].encode()).hexdigest()==r['ocr_text_sha256']
+              p=root/r['image_path']; assert hashlib.sha256(p.read_bytes()).hexdigest()==r['image_sha256']; slides+=1
+          m=json.loads((root/'processing_manifest.json').read_text(encoding='utf-8'))
+          assert m['asr']['ok'] and m['slides']['ok'] and speech>0 and slides>0
+          print(json.dumps({'video_id':os.environ['VIDEO_ID'],'speech':speech,'slides':slides,'duration':m['duration_seconds']}, sort_keys=True))
+          PY
+      - name: Encrypt lecture before artifact upload
+        env:
+          VIDEO_ID: ${{ matrix.video_id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/encrypted"
+          tar -C "$RUNNER_TEMP/plain" -czf "$RUNNER_TEMP/encrypted/lecture.tar.gz" "$VIDEO_ID"
+          cat > "$RUNNER_TEMP/encrypted/public.pem" <<'PEM'
+          -----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAlWdwp0XGp4yihahu7Ch/
+          +BtoCjUj8oPXQKzDkVhfY1r6+PPxmlXIhanZmu/XMUoRQgLcGjmERWgraHA5dCBz
+          JwSIhTN7WrgNFilQe+pIS3eB8dioDOyHMo6WPWnDwFHMgIrdWOhZw0b+un+amN3x
+          AA72hlgG1XBlM8miDe7tXCuvdSuxmbIkZ+wSdB3mEfwey6+3IOGv8Vzp6X/Hxwyp
+          yW1gEuc+bYTGGZlG2cMaHN5PaFhaPUxSkcLqzZLYmQnMI2ETncZmsG/6E1PmWW+O
+          nciAE1bv7hHYFRoVlNkUpZKnJ2xfxFjmMwlfcdqU+x5D8jnQfGikWSVTxfNu7TMq
+          9q/51yRb6uXqb0BS2KbB8+t7X2yIT3lns3cxETD87C+sQnpr9Ovr0m+o2W3J5Pji
+          v418YeCgZAK0jA36Ds+80BfNDUoS356cOL8DU0T3h0sr1cADtdJPEhvFn94dRWMB
+          YyMqEQWpHMS2IOQ72OY6x2YPm4ivsUj2si7Is7drXsLPAgMBAAE=
+          -----END PUBLIC KEY-----
+          PEM
+          KEY_HEX="$(openssl rand -hex 32)"
+          IV_HEX="$(openssl rand -hex 16)"
+          openssl enc -aes-256-cbc -K "$KEY_HEX" -iv "$IV_HEX" -in "$RUNNER_TEMP/encrypted/lecture.tar.gz" -out "$RUNNER_TEMP/encrypted/lecture.enc"
+          printf '%s:%s' "$KEY_HEX" "$IV_HEX" | openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/encrypted/public.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -out "$RUNNER_TEMP/encrypted/key.enc"
+          shasum -a 256 "$RUNNER_TEMP/encrypted/lecture.enc" "$RUNNER_TEMP/encrypted/key.enc" > "$RUNNER_TEMP/encrypted/cipher.sha256"
+          rm -rf "$RUNNER_TEMP/plain" "$RUNNER_TEMP/encrypted/lecture.tar.gz" "$RUNNER_TEMP/encrypted/public.pem"
+      - name: Upload encrypted-only artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-lecture-${{ matrix.video_id }}
+          path: |
+            ${{ runner.temp }}/encrypted/lecture.enc
+            ${{ runner.temp }}/encrypted/key.enc
+            ${{ runner.temp }}/encrypted/cipher.sha256
+          if-no-files-found: error
+          retention-days: 1
