@@ -1,6 +1,6 @@
 {
   "version": "v10",
-  "status": "completed",
+  "status": "platform_rejected_packaging",
   "model": "no_teacher+frozen_graph-faststack",
   "plan": "ecup_matching/experiments/v10/PLAN.md",
   "results": "ecup_matching/experiments/v10/RESULTS.md",
@@ -62,7 +62,11 @@
     "teacher_checkpoint_packaged": false,
     "cpu_gpu_overlap": true,
     "contrastive_only_text_cache": true,
-    "canonical_store": "private_huggingface"
+    "canonical_store": "private_huggingface",
+    "platform_submission_status": "rejected",
+    "platform_failure_observed": "Failed",
+    "rejection_reason": "missing_root_metadata_json",
+    "do_not_resubmit": true
   },
   "runtime_gate": {
     "device": "NVIDIA GeForce RTX 2060 SUPER",
@@ -90,7 +94,9 @@
       "unique_scores": 271964,
       "passed": true
     },
-    "private_gate_passed": true
+    "private_gate_passed": true,
+    "platform_launcher_contract_covered": false,
+    "gate_blind_spot": "The gate hard-coded the organizer image and python /submission/run.py command, bypassing root metadata.json parsing."
   },
   "hf_publication": {
     "repo": "Maksim123321/e-cup-2026-matching-private",
@@ -99,7 +105,23 @@
     "manifest_path": "submissions/v10/final/V10_KEEPER.json",
     "archive_and_manifest_relisted_after_upload": true,
     "published_archive_sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
-    "canonical_distribution": true
+    "canonical_distribution": false,
+    "note": "Bytes are intact on private HF, but this archive is platform-invalid and must not be resubmitted."
+  },
+  "platform_preflight": {
+    "run_id": 31697218016,
+    "artifact_id": 9179783115,
+    "exact_hf_archive_checked": true,
+    "exact_sha256_verified": true,
+    "exact_bytes_verified": true,
+    "root_run_py_present": true,
+    "root_metadata_json_present": false,
+    "official_baseline_metadata": {
+      "image": "odsai/ecup26-matching-baseline:1.0",
+      "entry_point": "python -u run.py"
+    },
+    "platform_contract_passed": false,
+    "diagnosis": "missing_root_metadata_json"
   },
   "verification": {
     "run_id": 31694049694,
@@ -124,5 +146,5 @@
     "runtime_mcp_version": "1.29.0"
   },
   "sealed_gold_evaluated": false,
-  "next_action": "Submit the exact v10 keeper ZIP from private HF to the competition platform. Record the measured v10 leaderboard score separately; do not rewrite strict OOF or target-stress history."
+  "next_action": "Build a packaging-only corrected v10 from the exact rejected HF bytes by restoring the official root metadata.json contract, then validate the exact final ZIP through a metadata-driven platform-launcher preflight and full RTX runtime gate before publishing a new immutable candidate to private HF. Never resubmit SHA256 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d."
 }
