@@ -1,0 +1,14 @@
+name: Lecture KB public Apple Silicon smoke
+
+on:
+  push:
+    branches: [lecture-kb-compute-20260813]
+
+jobs:
+  smoke-macos:
+    runs-on: macos-15
+    steps:
+      - run: |
+          uname -m
+          test "$(uname -m)" = "arm64"
+          echo public-macos-arm64-ok
