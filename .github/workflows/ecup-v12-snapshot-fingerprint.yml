@@ -10,6 +10,7 @@ permissions:
 
 env:
   HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  PUBLIC_BASE: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
 
 jobs:
   fingerprint:
@@ -22,20 +23,34 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -q 'huggingface_hub>=1,<2'
-      - name: Fingerprint exact private-HF inputs
+      - name: Compare exact private-HF and current official inputs
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os
+          import hashlib, json, os, urllib.request
           from pathlib import Path
           from huggingface_hub import hf_hub_download
-          out={}
-          for name in ('matches.parquet','items_human.parquet','matches_llm.parquet','items.parquet'):
-              p=Path(hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=name,token=os.environ['HF_TOKEN']))
+          names=('matches.parquet','items_human.parquet','matches_llm.parquet','items.parquet')
+          root=Path(os.environ['RUNNER_TEMP'])/'v12-public'; root.mkdir()
+          def digest(p):
               h=hashlib.sha256()
-              with p.open('rb') as f:
+              with Path(p).open('rb') as f:
                   for chunk in iter(lambda:f.read(8<<20),b''): h.update(chunk)
-              out[name]={'bytes':p.stat().st_size,'sha256':h.hexdigest()}
-          print('V12_CANONICAL_FINGERPRINT='+json.dumps(out,sort_keys=True))
+              return {'bytes':Path(p).stat().st_size,'sha256':h.hexdigest()}
+          private={}; public={}
+          for name in names:
+              hp=Path(hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=name,token=os.environ['HF_TOKEN']))
+              private[name]=digest(hp)
+              pp=root/name
+              with urllib.request.urlopen(os.environ['PUBLIC_BASE'].rstrip('/')+'/'+name,timeout=120) as r, pp.open('wb') as f:
+                  while True:
+                      chunk=r.read(8<<20)
+                      if not chunk: break
+                      f.write(chunk)
+              public[name]=digest(pp)
+          equal={name:private[name]==public[name] for name in names}
+          print('V12_CANONICAL_FINGERPRINT='+json.dumps(private,sort_keys=True))
+          print('V12_PUBLIC_FINGERPRINT='+json.dumps(public,sort_keys=True))
+          print('V12_PUBLIC_EQUALS_CANONICAL='+json.dumps(equal,sort_keys=True))
           PY
