@@ -1,6 +1,6 @@
 {
   "version": "v10",
-  "status": "platform_rejected_packaging",
+  "status": "rejected",
   "model": "no_teacher+frozen_graph-faststack",
   "plan": "ecup_matching/experiments/v10/PLAN.md",
   "results": "ecup_matching/experiments/v10/RESULTS.md",
