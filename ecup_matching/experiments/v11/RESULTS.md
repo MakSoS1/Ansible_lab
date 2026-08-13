@@ -57,6 +57,18 @@ Private-size output contained `271,964` unique finite scores with exact pair ord
 
 For context, the old compact v9 organizer-like wall on the same RTX class was ~`293.57 s` / `646.95 s` for 115k / 275k. v11 therefore cuts measured wall by roughly 45% / 41%, giving materially more platform margin. This is strong runtime evidence, not a guarantee about the external platform.
 
+## Canonical publication
+
+Private Hugging Face publication run `31727189671`, job `94538392482`:
+
+- repo: `Maksim123321/e-cup-2026-matching-private`;
+- archive: `submissions/v11/final/ecup-v11-faststack-graph-0.5950413763-submission.zip`;
+- manifest: `submissions/v11/final/V11_KEEPER.json`;
+- HF commit: `4c2c59d25501ea0813d8a01ff06402635cb31e7b`;
+- canonical archive was re-downloaded after publication and re-hashed;
+- re-downloaded SHA-256: **`0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a`**;
+- temporary GitHub benchmark release was removed after HF verification.
+
 ## Verification
 
 Public branch verification run `31712646355`, job `94489299438`:
