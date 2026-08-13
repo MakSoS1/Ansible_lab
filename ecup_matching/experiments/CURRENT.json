@@ -1,10 +1,10 @@
 {
-  "version": "v9",
+  "version": "v10",
   "status": "completed",
-  "model": "v9-gate40-graph-compact-fp16-storage",
-  "plan": "ecup_matching/experiments/v9/PLAN.md",
-  "results": "ecup_matching/experiments/v9/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v9/SAFE_METRICS.json",
+  "model": "no_teacher+frozen_graph-faststack",
+  "plan": "ecup_matching/experiments/v10/PLAN.md",
+  "results": "ecup_matching/experiments/v10/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v10/SAFE_METRICS.json",
   "validation_protocol": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -21,127 +21,77 @@
     "version": "v7",
     "score_observed_by_owner": 0.36,
     "used_for_fitting": false,
-    "v9_target_region": 0.5,
-    "v9_target_is_claimed_score": false,
-    "v9_measured_leaderboard_score": null
+    "v10_target_region": 0.5,
+    "v10_target_is_claimed_score": false,
+    "v10_measured_leaderboard_score": null
   },
-  "validation_v2": {
-    "source_run_id": 31639183423,
-    "retrieval_prevalence_ratio": 0.566880890615799,
-    "gate25_graph_oof": 0.5961903713277379,
-    "gate25_target_stress_mean": 0.45077792061326727,
-    "gate40_strict_oof": 0.595505427416499,
-    "gate40_graph_oof": 0.597005931143384,
-    "gate40_target_stress_mean": 0.4515676235464289,
-    "selected": "gate40",
-    "selection_made_before_final_runtime": true,
-    "leaderboard_anchor_used_for_fitting": false,
-    "compact_storage_metrics_remeasured": false,
-    "compact_storage_metrics_inherited_as_algorithm_selection_evidence": true
-  },
-  "production_refit": {
-    "run_id": 31639692541,
-    "artifact_id": 9158411928,
-    "teacher_coverage": 0.4,
-    "teacher_fraction": 0.400025,
-    "development_rows": 285210,
-    "elapsed_seconds": 74.4,
-    "peak_ram_gib": 0.736,
-    "private_hf_prefix": "experiments/v9/production/gate40/853a3925ac2b",
-    "gold_metric_opened": false,
-    "gold_rows_scored": 0
-  },
-  "superseded_platform_timeout_package": {
-    "name": "ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip",
-    "bytes": 1251659961,
-    "sha256": "925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782",
-    "platform_result": "Container did not finish in time",
-    "submission_status": "rejected-for-submission-runtime-risk",
-    "historical_validation_evidence_retained": true
+  "selection": {
+    "candidate": "no_teacher+frozen_graph",
+    "strict_raw_oof_macro_ap": 0.5931387077244183,
+    "strict_graph_oof_macro_ap": 0.5950413762943735,
+    "graph_delta": 0.0019026685699552,
+    "graph_positive_folds": 5,
+    "target_stress_graph_mean": 0.44961526826354,
+    "target_stress_std": 0.0016793717,
+    "target_stress_p05": 0.44725891257,
+    "target_stress_p50": 0.44972458938,
+    "target_stress_p95": 0.45217563833,
+    "target_stress_is_leaderboard_score": false,
+    "teacher_checkpoint_required": false
   },
   "keeper_package": {
-    "name": "ecup-v9-compact-fp16storage-0.5970059311-submission.zip",
-    "build_run_id": 31675196422,
-    "release_tag": "ecup-v9-compact-6ba133ce25f7",
-    "bytes": 596925132,
-    "sha256": "aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345",
-    "source_bytes": 1251659961,
-    "bytes_saved": 654734829,
-    "size_ratio": 0.4769067882646763,
-    "storage_compaction": "teacher and contrastive floating safetensors stored as fp16; integer tensors preserved; structured/meta models unchanged",
-    "structured_worker_cap": 8,
-    "cuda_autocast": "float16",
-    "contrastive_batch_rtx2060": 256,
-    "teacher_batch_rtx2060": 96
-  },
-  "compact_equivalence": {
-    "run_id": 31675338174,
-    "rows": 20000,
-    "mean_abs_delta": 0.00016378653597360943,
-    "p99_abs_delta": 0.0019011406844106082,
-    "p999_abs_delta": 0.008163265306122325,
-    "max_abs_delta": 0.10074231177094373,
-    "pearson_correlation": 0.9999931722281602,
-    "spearman_rank_correlation": 0.9999931451822124,
-    "top_1pct_overlap": 1.0,
-    "top_5pct_overlap": 0.999,
-    "top_10pct_overlap": 0.999,
-    "top_25pct_overlap": 0.9996,
-    "output_valid": true,
-    "interpretation": "near-identical ranking evidence; not an exact numeric-equivalence claim and not a new strict OOF measurement"
+    "name": "ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
+    "build_run_id": 31689478925,
+    "release_tag": "ecup-v10-faststack-9de2bc83f878",
+    "bytes": 480249520,
+    "sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
+    "source_sha": "9de2bc83f878c87703c3290670f042bfdbb70dfc",
+    "teacher_checkpoint_packaged": false,
+    "cpu_gpu_overlap": true,
+    "contrastive_only_text_cache": true
   },
   "runtime_gate": {
-    "run_id": 31675903851,
-    "artifact_id": 9171929877,
     "device": "NVIDIA GeForce RTX 2060 SUPER",
     "organizer_image": "odsai/ecup26-matching-baseline:1.0",
-    "timer_scope": "safe ZIP extraction + docker inference + output validation; network download and fixture preparation excluded",
     "public": {
+      "run_id": 31689794784,
       "rows": 115000,
-      "acceptance_seconds": 330.0,
-      "extract_seconds": 5.234229078,
-      "inference_seconds": 287.592726358,
-      "validation_seconds": 0.738098444,
-      "wall_seconds": 293.569452608,
-      "headroom_seconds": 36.430547391999994,
+      "wall_seconds": 173.842174445,
       "return_code": 0,
-      "output_valid": true,
-      "unique_scores": 108264,
-      "passed": true
+      "internal_acceptance_seconds": 330.0,
+      "organizer_nominal_seconds": 360.0,
+      "passed_production_time_budget": true,
+      "note": "the historical workflow was red only because it enforced an exploratory 120-second tuning target"
     },
     "private": {
+      "run_id": 31692817075,
+      "artifact_id": 9178292328,
       "rows": 275000,
-      "acceptance_seconds": 700.0,
-      "extract_seconds": 5.714303003,
-      "inference_seconds": 640.236212537,
-      "validation_seconds": 0.992280967,
-      "wall_seconds": 646.947129008,
-      "headroom_seconds": 53.05287099199995,
+      "wall_seconds": 391.608035937,
+      "internal_acceptance_seconds": 700.0,
+      "headroom_seconds": 308.391964063,
+      "organizer_nominal_seconds": 780.0,
       "return_code": 0,
       "output_valid": true,
-      "unique_scores": 271298,
+      "unique_scores": 271964,
       "passed": true
     },
-    "both_passed": true
+    "private_gate_passed": true
   },
   "hf_publication": {
     "repo": "Maksim123321/e-cup-2026-matching-private",
-    "run_id": 31677161875,
-    "archive_path": "submissions/v9/compact/ecup-v9-compact-fp16storage-0.5970059311-submission.zip",
-    "manifest_path": "submissions/v9/compact/V9_COMPACT_KEEPER.json",
+    "run_id": 31693414226,
+    "archive_path": "submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
+    "manifest_path": "submissions/v10/final/V10_KEEPER.json",
     "archive_and_manifest_relisted_after_upload": true,
-    "published_archive_sha256": "aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345"
+    "published_archive_sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d"
   },
   "verification": {
-    "run_id": 31676442849,
-    "tests_passed": 425,
-    "tests_skipped": 5,
-    "memory_policy": "OK"
+    "run_id": null,
+    "tests_passed": null,
+    "tests_skipped": null,
+    "memory_policy": "pending final canonical verification"
   },
-  "rejected_v9_meta_candidates": [
-    "fixed prevalence-weighted HGB: worse strict OOF, graph OOF and target-stress",
-    "cross-fitted category-specific category/HGB fusion: worse strict OOF, graph OOF and target-stress"
-  ],
   "sealed_gold_evaluated": false,
-  "next_action": "Submit the exact compact keeper ZIP from private HF to the platform and record the measured v9 leaderboard score as a separate external evidence axis. Do not rewrite strict OOF or target-stress history."
+  "next_action": "Submit the exact v10 keeper ZIP from private HF to the competition platform. Record the measured v10 leaderboard score separately; do not rewrite strict OOF or target-stress history."
 }
