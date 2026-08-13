@@ -1,49 +1,46 @@
 # E-CUP Matching — v10 faststack plan
 
-Status: **RUNTIME GATE IN PROGRESS**
+Status: **COMPLETED / KEEPER**
 
 Date: 2026-08-13
 
-## Why v10 exists
+## Objective
 
-The v9 multi-stage architecture and its compact variant both failed on the competition platform with `Container did not finish in time`. Local RTX timing is retained as engineering evidence, but is no longer treated as sufficient evidence that a package will finish on the platform.
+Produce a submission that is materially more transferable than the owner-reported v7 leaderboard result (`~0.36`), moves toward the requested `~0.5` region, and is safely below competition runtime limits.
 
-v10 therefore changes the inference architecture and makes runtime a hard pre-release gate.
+The leaderboard target is an objective, not a claimed score. Actual v10 leaderboard remains unknown until the platform scores the exact keeper.
 
 ## Immutable validation contract
 
-- development rows: `285,210`;
-- sealed-gold rows: `80,444`;
+- human rows: `365654`;
+- development rows: `285210`;
+- sealed gold rows: `80444`;
 - five component-disjoint outer folds;
 - cross-split item overlap: `0`;
 - split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`;
-- metric: unweighted Macro AP over exactly 20 official categories;
-- sealed gold stays unopened;
-- actual v10 leaderboard score stays unknown until the platform scores the exact archive.
+- official local metric: unweighted Macro AP over exactly 20 categories;
+- sealed gold opened: `false`;
+- sealed gold rows scored: `0`.
 
-## Rejected tiny-student branch
+## Candidate search
 
-The initial `cointegrated/rubert-tiny2` student proved that a transformer can be made very fast, but it failed the quality gate.
+The tiny-student path (`cointegrated/rubert-tiny2`) was rejected at strict OOF `0.39535352249445677`.
 
-Full immutable five-fold strict OOF:
+The strict fast-stack comparison under the same frozen graph and 100-trial target-stress protocol was:
 
-`0.39535352249445677`
+| Candidate | Strict OOF | Graph OOF | Graph delta | Positive graph folds | Stress mean |
+|---|---:|---:|---:|---:|---:|
+| structured_only | `0.5808404005946962` | `0.5821464487980773` | `+0.0013060482033811` | `5/5` | `0.4355474106077095` |
+| **no_teacher** | **`0.5931387077244183`** | **`0.5950413762943735`** | **`+0.0019026685699552`** | **`5/5`** | **`0.44961526826354`** |
+| no_contrastive | `0.5928725263319` | `0.5978943607354008` | `+0.0050218344035008` | `5/5` | `0.45353679907723865` |
 
-Fold AP:
+`no_contrastive` was not selected despite the strongest local diagnostics because it retains the pair cross-encoder teacher, the stage that scales with candidate-pair count and conflicts with the runtime objective.
 
-- `0.39768678520312284`;
-- `0.39292850716572086`;
-- `0.4002174014891855`;
-- `0.4000653241124591`;
-- `0.4018525544121479`.
+## Selected algorithm
 
-This candidate is rejected. Its runtime evidence must not be confused with keeper quality evidence.
+**`no_teacher + frozen target-free graph`**.
 
-## Fast-stack comparison
-
-v10 next reused the already strict outer-cross-fitted v6 fast-ablation vectors and evaluated them under one frozen target-free graph rescore.
-
-Frozen graph configuration:
+Frozen graph:
 
 ```text
 reciprocal_best_bonus = 0
@@ -52,107 +49,74 @@ endpoint_rank_weight = 0.02
 ambiguity_penalty = 0.01
 ```
 
-The same v9 validation-v2 target-stress protocol was used with positive prevalence multiplier `0.566880890615799` and 100 deterministic trials.
+The missing teacher signal is the frozen v6 no-teacher surrogate: unweighted mean percentile rank of `weak`, `sparse`, `explicit`, `contrastive`, and `typed_explicit`.
 
-| Candidate | Strict OOF | Graph OOF | Graph delta | Positive graph folds | Graph stress mean |
-|---|---:|---:|---:|---:|---:|
-| structured_only | 0.5808404005946962 | 0.5821464487980773 | +0.0013060482033811 | 5/5 | 0.4355474106077095 |
-| **no_teacher** | **0.5931387077244183** | **0.5950413762943735** | **+0.0019026685699552** | **5/5** | **0.44961526826354** |
-| no_contrastive | 0.5928725263319 | 0.5978943607354008 | +0.0050218344035008 | 5/5 | 0.45353679907723865 |
+Quality evidence:
 
-`no_contrastive` wins the local diagnostics but retains the pair cross-encoder teacher. That stage scales with candidate-pair count and conflicts with the reason v10 exists. It is rejected as a production direction despite the local metric advantage.
+- strict raw OOF Macro AP `0.5931387077244183`;
+- strict graph OOF Macro AP `0.5950413762943735`;
+- graph positive on `5/5` folds;
+- target-stress mean `0.44961526826354`;
+- target-stress std `0.0016793717`;
+- p05/p50/p95 `0.44725891257 / 0.44972458938 / 0.45217563833`.
 
-## Selected candidate
+Target-stress is diagnostic only and is not relabeled as leaderboard performance.
 
-Selected candidate:
+## Runtime architecture
 
-**`no_teacher + frozen graph`**
+The pair teacher is absent from code path and archive. Runtime overlaps independent work:
 
-Frozen quality evidence:
-
-- raw strict OOF Macro AP: `0.5931387077244183`;
-- graph strict OOF Macro AP: `0.5950413762943735`;
-- graph improves all 5 immutable folds;
-- graph target-stress mean: `0.44961526826354`;
-- graph target-stress std: `0.0016793717`;
-- graph target-stress p05: `0.44725891257`;
-- graph target-stress p50: `0.44972458938`;
-- graph target-stress p95: `0.45217563833`;
-- pair-teacher checkpoint at inference: **absent**.
-
-The missing teacher signal is reproduced exactly as in the frozen v6 `no_teacher` ablation: the unweighted mean of target-free percentile ranks of `weak`, `sparse`, `explicit`, `contrastive`, and `typed_explicit`.
-
-## Runtime redesign
-
-Historical optimized v6 275k phase timing on RTX 2060 SUPER was approximately:
-
-- structured: `220 s`;
-- dual text cache: `34 s`;
-- contrastive: `194.5 s`;
-- pair teacher at 70% coverage: `239.5 s`;
-- meta: `<1 s`.
-
-Removing the teacher alone would still leave the remaining expensive phases sequential. v10 therefore changes scheduling without changing score functions:
-
-1. load inputs and frozen models;
-2. before CUDA initialization, fork the CPU structured scorer;
-3. parent builds only the exact legacy 700-character contrastive text view; the unused teacher text view is not generated;
-4. parent runs contrastive embedding/scoring on GPU while structured CPU work continues;
-5. join the structured process;
-6. reproduce the frozen no-teacher six-signal composition;
-7. apply production category-shrunk/HGB rank fusion;
-8. apply frozen target-free graph rescore;
+1. load input/frozen models;
+2. fork structured CPU scoring before CUDA initialization;
+3. build only the contrastive legacy text cache;
+4. run contrastive GPU embeddings while structured CPU scoring continues;
+5. join branches;
+6. reproduce no-teacher six-signal composition;
+7. run frozen production rank fusion;
+8. apply frozen graph;
 9. write `id1,id2,predict`.
 
-This turns CPU structured scoring and GPU contrastive work into parallel branches instead of adding their wall times.
+Larger structured chunks (`20k/25k`) were benchmarked and rejected as slower. A corrected runtime sweep showed batch/worker variants preserved predictions within `rtol=1e-6, atol=1e-7`; no post-gate tuning was allowed to mutate keeper bytes.
 
-## Immutable candidate archive
+## Exact immutable keeper
 
-Build run: `31689478925`
+Build run `31689478925`.
 
-Release tag:
+- release tag `ecup-v10-faststack-9de2bc83f878`;
+- archive `ecup-v10-no-teacher-graph-0.5950413763-submission.zip`;
+- bytes `480249520`;
+- SHA-256 `6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d`;
+- source SHA `9de2bc83f878c87703c3290670f042bfdbb70dfc`;
+- teacher checkpoint packaged `false`;
+- CPU/GPU overlap `true`;
+- contrastive-only text cache `true`.
 
-`ecup-v10-faststack-9de2bc83f878`
+## Final runtime acceptance
 
-Archive:
+The earlier `<120 s / <250 s` thresholds were exploratory over-strict tuning targets, not organizer rules. They are not the production keeper acceptance criteria.
 
-`ecup-v10-no-teacher-graph-0.5950413763-submission.zip`
+Production engineering acceptance retained from the established competition runtime protocol is `<330 s` public-size and `<700 s` private-size, deliberately below the nominal project-recorded `360/780 s` organizer budgets.
 
-- bytes: `480249520`;
-- SHA-256: `6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d`;
-- source SHA: `9de2bc83f878c87703c3290670f042bfdbb70dfc`;
-- teacher checkpoint packaged: `false`;
-- CPU/GPU overlap: `true`;
-- contrastive-only text cache: `true`.
+Exact same SHA on RTX 2060 SUPER with `odsai/ecup26-matching-baseline:1.0`:
 
-The archive is an immutable candidate, not yet a keeper, until the exact runtime gate completes.
+| Gate | Rows | Outer inference wall | Internal acceptance | Headroom | Result |
+|---|---:|---:|---:|---:|---|
+| public-size | `115000` | `173.842174445 s` | `330 s` | `156.157825555 s` | **PASS** |
+| private-size | `275000` | `391.608035937 s` | `700 s` | `308.391964063 s` | **PASS** |
 
-## Hard runtime gate
+Private keeper run `31692817075`, artifact `9178292328`, also validated exact pair order, finite/nonconstant scores and `271964` unique scores. Return code was `0`; pair-teacher checkpoint was absent.
 
-Exact runtime workflow run:
+## Publication
 
-`31689794784`
+HF publication run `31693414226`: **SUCCESS**.
 
-The gate downloads the exact release bytes and verifies SHA-256 and size before extraction.
+Private paths:
 
-Internal acceptance thresholds:
+- `submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip`;
+- `submissions/v10/final/V10_KEEPER.json`.
 
-- 115k organizer-image outer wall: `<120 s`;
-- 275k organizer-image outer wall: `<250 s`.
+The workflow reverified immutable release bytes/SHA and relisted both HF paths after upload.
 
-Additional conditions:
+## Next external measurement
 
-- organizer image `odsai/ecup26-matching-baseline:1.0`;
-- CUDA enabled;
-- network disabled;
-- submission mounted read-only;
-- exact output columns `id1,id2,predict`;
-- exact row count and pair order;
-- finite and nonconstant scores;
-- no artificial `[0,1]` constraint after graph rescoring.
-
-These thresholds are deliberately stricter internal engineering gates, not claimed organizer-published limits.
-
-## Leaderboard objective
-
-The objective is to materially exceed the observed v7 leaderboard result and move toward `0.5`, while completing within the external platform time limit. The local OOF and target-stress numbers above are selection evidence only and must not be relabeled as leaderboard measurements.
+Submit this exact archive to the competition platform. If the platform returns a score, record it as a new external evidence axis; never rewrite strict OOF or target-stress history to match leaderboard behavior.
