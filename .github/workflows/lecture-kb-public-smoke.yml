@@ -1,0 +1,11 @@
+name: Lecture KB public runner smoke
+
+on:
+  push:
+    branches: [lecture-kb-compute-20260813]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo public-runner-ok
