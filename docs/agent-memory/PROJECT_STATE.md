@@ -1,32 +1,29 @@
 # E-CUP Matching — Canonical Project State
 
-Updated: 2026-08-12
-Current iteration: **v9 — COMPLETED, awaiting platform score**
+Updated: 2026-08-13
+Current iteration: **v9 compact — COMPLETED, published to private HF, awaiting platform score**
 
 ## Objective
 
 Maximize E-CUP 2026 product-matching Macro AP with honest unseen-product validation and an offline organizer-compatible submission that finishes safely inside runtime limits.
 
-The owner reports v7 as the best successfully scored submission so far at approximately `0.36`. That leaderboard value is external evidence only: it was not used as a row-level label or fitted calibration target. The requested v9 region near `0.5` remains a goal; the measured v9 leaderboard score is unknown until the platform scores the final archive.
+The owner reports v7 as the best successfully scored submission so far at approximately `0.36`. That leaderboard value is external evidence only and was not used as a row-level label or fitted calibration target. The requested region near `0.5` remains a goal; compact v9 has no measured leaderboard score yet.
 
-## Final v9 keeper
+## Current keeper
 
-Architecture: **gate40 + complete optimized runtime closure + structured cap8 + CUDA FP16 + frozen target-free graph postprocess**.
+Architecture: **gate40 + structured/meta stack + contrastive + selective teacher + frozen target-free graph**, with teacher/contrastive floating safetensors stored as FP16 to reduce package size.
 
 Exact archive:
 
-- `ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip`;
-- `1,251,659,961` bytes;
-- SHA-256 `925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782`;
-- build run `31640050373`;
-- release tag `ecup-v9-gate40-final-eb2bcf18d53e`.
+- `ecup-v9-compact-fp16storage-0.5970059311-submission.zip`;
+- `596,925,132` bytes;
+- SHA-256 `aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345`;
+- build run `31675196422`;
+- release tag `ecup-v9-compact-6ba133ce25f7`;
+- private HF: `submissions/v9/compact/`;
+- HF publication run `31677161875` verified both ZIP and `V9_COMPACT_KEEPER.json` remote paths.
 
-Runtime semantics:
-
-- structured workers capped at `8`;
-- CUDA FP16/autocast;
-- contrastive batch `256`, teacher batch `96` on RTX 2060 SUPER;
-- fold-validated graph config: reciprocal bonuses `0`, endpoint-rank weight `0.02`, ambiguity penalty `0.01`.
+The superseded 1.25 GB v9 (`925456c...35782`) received platform `Container did not finish in time`; retain it only as historical validation/runtime evidence and do not resubmit it.
 
 ## Immutable validation protocol
 
@@ -48,72 +45,54 @@ Run `31639183423`, target-stress prevalence ratio `0.566880890615799`.
 | gate25 | `0.2500227902` | `0.5947115591` | `0.5961903713` | `0.4507779206` |
 | **gate40** | **`0.4000245433`** | **`0.5955054274`** | **`0.5970059311`** | **`0.4515676235`** |
 
-All five folds have positive graph delta for gate40. Gate40 was selected before final runtime and dominates gate25 on the three frozen quality/stress axes. Gate25 was predeclared and production-refit as a fallback but was not activated.
+These are the algorithm-selection metrics measured before compact storage. They were not re-labelled as compact OOF: production refit saw all development rows and sealed gold remains unopened. `0.4515676` is diagnostic, not a leaderboard prediction.
 
-The `0.4515676` target-stress number is diagnostic, not a claimed leaderboard prediction.
+## Compact equivalence
 
-## Production refit
+RTX equivalence run `31675338174`, 20,000 identical pairs under organizer image:
 
-Run `31639692541`:
+- Spearman `0.999993145182`;
+- Pearson `0.999993172228`;
+- mean absolute delta `0.000163786536`;
+- top-1% overlap `1.0`;
+- top-5% / top-10% overlap `0.999`;
+- exact schema/pair order and finite nonconstant outputs valid.
 
-- all `285,210` development rows;
-- teacher fraction `~0.400025`;
-- `74.4 s`;
-- peak RAM `0.736 GiB`;
-- artifact `9158411928`;
-- private HF `experiments/v9/production/gate40/853a3925ac2b`;
-- sealed gold untouched.
+This is near-identical ranking evidence, not exact numeric equality and not a new OOF score.
 
-Production refit is never treated as validation.
+## End-to-end runtime evidence
 
-## Why v8 was closed
+Run `MakSoS1/gpu-dispatch#31675903851` on NVIDIA GeForce RTX 2060 SUPER with `odsai/ecup26-matching-baseline:1.0`. Timer scope: safe ZIP extraction + docker inference + output validation.
 
-v8 gate70 evidence showed inner `run.py` around `731.22 s` but true outside-container wall `820.784 s`. The old workflow nevertheless wrote a pass because it checked process exit/output instead of enforcing outer wall. The platform then returned `Container did not finish in time` again.
-
-Binding correction: **outside-container wall is authoritative**.
-
-## Exact runtime evidence
-
-A first corrected 275k run `31640233511` completed the exact v9 bytes in `637.82083456 s` outside wall. Its red status was traced to an artificial validator requirement that graph-rescored scores be probabilities in `[0,1]`; diagnostic run `31641425359` proved exact schema, row count, ID order, finite and nonconstant numeric scores. No clipping was added because clipping would alter ranking through ties.
-
-Final independent dual run `MakSoS1/gpu-dispatch#31641656589` on RTX 2060 SUPER and organizer image:
-
-| Gate | Rows | Acceptance | Outside wall | Headroom | Result |
+| Gate | Rows | Total wall | Acceptance | Headroom | Result |
 |---|---:|---:|---:|---:|---|
-| public-size | `115,000` | `330 s` | **`281.821475323 s`** | **`48.178524677 s`** | **PASS** |
-| private-size | `275,000` | `700 s` | **`634.766220868 s`** | **`65.233779132 s`** | **PASS** |
+| public-size | `115,000` | **`293.569452608 s`** | `330 s` | `36.430547392 s` | **PASS** |
+| private-size | `275,000` | **`646.947129008 s`** | `700 s` | `53.052870992 s` | **PASS** |
 
-Both returned code `0`, preserved exact pair order, and produced valid finite nonconstant scores. Evidence artifact `9159596648`.
+Extraction alone was `5.234229078 s` public and `5.714303003 s` private. Both returned code `0` and valid ordered output. Evidence artifact `9171929877`.
 
-## Rejected v9 meta experiments
+## Why package size changed
 
-Two essentially runtime-free alternatives were tested leakage-free and rejected:
-
-- fixed prevalence-weighted HGB: strict `-0.0000658754`, graph `-0.0000604780`, stress `-0.0000779612`;
-- cross-fitted category-specific category/HGB fusion: strict `-0.0005091711`, graph `-0.0002712630`, stress `-0.0002826191`.
-
-Neither changes the keeper bytes.
+Immutable audit showed the old 1.25 GB archive was dominated by teacher (~680 MiB compressed) and contrastive (~449 MiB compressed) safetensors, not dead runtime files. FP16 storage reduced the exact keeper to `596,925,132` bytes, saving `654,734,829` bytes, while structured/meta models and inference logic stayed unchanged.
 
 ## Repository verification
 
-Run `31642803187`:
+Run `31676442849`:
 
-- **423 passed**;
+- **425 passed**;
 - **5 skipped**;
 - `scripts/memory_policy.py`: **OK**.
 
 ## Binding lessons
 
-- Infrastructure/OOM/API failures are not model scores.
+- Infrastructure/runtime failures are not model scores.
 - Production refit is not validation.
 - Platform leaderboard, strict OOF and target-stress are separate evidence axes.
-- A single leaderboard score is not converted into row-level labels or direct calibration.
 - Sealed gold is never opened to recover a leaderboard/runtime gap.
-- High single-fold research diagnostics do not substitute for complete strict OOF.
-- Outside-container wall, not inner process time or exit code, is authoritative for timeout safety.
-- A continuous ranking score need not lie in `[0,1]` unless the competition contract explicitly requires a probability.
-- Final runtime closure is derived from imports, never hand-maintained.
-- Mixed precision is retained only with quality/ranking evidence.
+- Package extraction/setup belongs in organizer-like runtime measurement where feasible.
+- Outside-container wall is authoritative for timeout safety.
+- Mixed precision/storage compaction must have direct prediction/ranking evidence.
+- Continuous ranking scores do not need clipping to `[0,1]` unless the contract requires probabilities.
 - Never weaken a gate after observing failure.
 
 ## Current files to read
@@ -122,12 +101,11 @@ Run `31642803187`:
 2. `ecup_matching/experiments/v9/PLAN.md`
 3. `ecup_matching/experiments/v9/RESULTS.md`
 4. `ecup_matching/experiments/v9/SAFE_METRICS.json`
-5. `ecup_matching/experiments/v9/VALIDATION_V2.json`
-6. `docs/agent-memory/EXPERIMENT_INDEX.md`
-7. `docs/agent-memory/DECISIONS.md`
-8. `docs/agent-memory/SECURITY.md`
-9. `docs/agent-memory/ITERATION_PROTOCOL.md`
+5. `docs/agent-memory/EXPERIMENT_INDEX.md`
+6. `docs/agent-memory/DECISIONS.md`
+7. `docs/agent-memory/SECURITY.md`
+8. `docs/agent-memory/ITERATION_PROTOCOL.md`
 
 ## Next action
 
-Run hardened Memora ingest/checkpoint for the completed v9 state, then submit the exact keeper ZIP. After the platform scores it, record that leaderboard number separately without rewriting local validation history.
+Submit the exact compact HF keeper to the competition platform. When it finishes scoring, record the measured leaderboard value separately without rewriting the frozen local validation evidence.
