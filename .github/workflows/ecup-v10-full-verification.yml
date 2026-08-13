@@ -5,11 +5,12 @@ on:
   push:
     branches: [ecup-v10-distilled-fast]
     paths:
-      - ".github/workflows/ecup-v10-full-verification.yml"
+      - ".github/workflows/**"
       - "ecup_matching/**"
       - "docs/agent-memory/**"
       - "AGENTS.md"
       - "scripts/memory_policy.py"
+      - "scripts/release_policy.py"
 
 permissions:
   contents: read
@@ -32,3 +33,5 @@ jobs:
         run: python -m pytest ecup_matching/tests -q
       - name: Canonical memory policy
         run: python scripts/memory_policy.py
+      - name: Forbid GitHub Releases and prereleases
+        run: python scripts/release_policy.py
