@@ -45,3 +45,5 @@ def test_sparse_semantic_channel_is_deterministic_and_prefers_near_duplicate():
     np.testing.assert_allclose(first, second, rtol=0, atol=0)
     assert np.isfinite(first).all()
     assert first[0] > first[1]
+
+# Sparse implementation landed after the RED import failure; this commit intentionally retriggers the same contract.
