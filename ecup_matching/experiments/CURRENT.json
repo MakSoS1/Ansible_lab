@@ -1,6 +1,6 @@
 {
   "version": "v9",
-  "status": "completed-compact-published-awaiting-platform-score",
+  "status": "completed",
   "model": "v9-gate40-graph-compact-fp16-storage",
   "plan": "ecup_matching/experiments/v9/PLAN.md",
   "results": "ecup_matching/experiments/v9/RESULTS.md",
