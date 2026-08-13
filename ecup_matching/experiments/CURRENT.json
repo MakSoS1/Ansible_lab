@@ -11,7 +11,13 @@
     "submission_store": "private_huggingface_only",
     "hf_repo": "Maksim123321/e-cup-2026-matching-private",
     "canonical_prefix": "submissions/<version>/",
-    "github_actions_artifacts": "transient_ci_evidence_only"
+    "github_actions_artifacts": "transient_ci_evidence_only",
+    "enforcement_script": "scripts/release_policy.py",
+    "enforcement_in_full_verification": true,
+    "obsolete_release_workflows_removed": 5,
+    "release_cleanup_run_id": 31695205540,
+    "existing_releases_deleted": 8,
+    "remaining_releases_after_cleanup": 0
   },
   "validation_protocol": {
     "human_rows": 365654,
