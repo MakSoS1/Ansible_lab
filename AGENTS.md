@@ -2,6 +2,16 @@
 
 Mandatory entry point for E-CUP matching work. Do not train, tune, inspect sealed-gold labels, change validation semantics, or publish another submission before reading the canonical state.
 
+## HARD distribution policy — private Hugging Face only
+
+**NEVER create GitHub Releases or prereleases for E-CUP.** This is a binding project invariant, not a suggestion.
+
+- Never use `gh release create`, GitHub Release creation APIs, release-publishing actions, or attach submission ZIPs to GitHub Releases.
+- Every E-CUP submission archive, keeper archive and keeper manifest must be published only to the private dataset `Maksim123321/e-cup-2026-matching-private`, under `submissions/<version>/...`.
+- GitHub Actions artifacts may exist only as short-lived CI/debug evidence. They are not canonical submission storage and must not be the delivery path for a submission.
+- Git tags may be used only as source-code provenance if useful; they are not a submission distribution mechanism.
+- Before telling the owner where to obtain a submission, give the private Hugging Face path. Do not create a Release as a convenience mirror.
+
 ## Current iteration: v10 — completed keeper
 
 - Working branch: `ecup-v10-distilled-fast`.
@@ -20,9 +30,8 @@ Mandatory entry point for E-CUP matching work. Do not train, tune, inspect seale
 - bytes `480249520`;
 - SHA-256 `6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d`;
 - build run `31689478925`;
-- release tag `ecup-v10-faststack-9de2bc83f878`;
 - source SHA `9de2bc83f878c87703c3290670f042bfdbb70dfc`;
-- private HF `submissions/v10/final/`;
+- canonical private HF path `submissions/v10/final/`;
 - teacher checkpoint packaged `false`;
 - CPU structured and GPU contrastive branches overlap;
 - frozen target-free graph: reciprocal bonuses `0`, endpoint rank `0.02`, ambiguity penalty `0.01`.
@@ -63,6 +72,8 @@ Verified private paths:
 - `submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip`;
 - `submissions/v10/final/V10_KEEPER.json`.
 
+These private HF paths are the canonical and only submission distribution location.
+
 ## Mandatory reading order
 
 1. `ecup_matching/experiments/CURRENT.json`
@@ -77,6 +88,7 @@ Verified private paths:
 
 ## Binding invariants
 
+- Never create GitHub Releases/prereleases for this project; submissions live only in the private HF dataset.
 - Never change the split to improve a metric.
 - Never inspect/use sealed-gold labels/items for tuning, mining, calibration or runtime decisions.
 - Every target-fitted development layer requires outer cross-fitting.
