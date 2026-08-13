@@ -5,7 +5,6 @@ on:
     branches: [ecup-v9-compact]
     paths:
       - .github/v9-compact-publish-ready.json
-      - .github/workflows/ecup-v9-compact-publish-hf.yml
   workflow_dispatch:
 
 permissions:
@@ -13,7 +12,6 @@ permissions:
 
 jobs:
   publish:
-    if: ${{ hashFiles('.github/v9-compact-publish-ready.json') != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
