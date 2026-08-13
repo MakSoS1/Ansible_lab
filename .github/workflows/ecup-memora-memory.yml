@@ -3,7 +3,7 @@ name: E-CUP hardened Memora memory
 on:
   workflow_dispatch:
   push:
-    branches: [ecup-matching-2026, ecup-v5-meta-060, ecup-v7-neural, ecup-v9-leaderboard-adapt, ecup-v9-compact]
+    branches: [ecup-matching-2026, ecup-v5-meta-060, ecup-v7-neural, ecup-v9-leaderboard-adapt, ecup-v9-compact, ecup-v10-distilled-fast]
     paths:
       - ".github/workflows/ecup-memora-memory.yml"
       - "AGENTS.md"
