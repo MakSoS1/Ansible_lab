@@ -103,7 +103,6 @@ jobs:
           cp ecup_matching/submission/v6_text_cache.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
           cp ecup_matching/ml/v6_teacher_gate.py "$RUNNER_TEMP/pkg/ecup_matching/ml/"
           cp ecup_matching/ml/v6_fast_ablation.py "$RUNNER_TEMP/pkg/ecup_matching/ml/"
-          cp ecup_matching/ml/v5_meta_blend.py "$RUNNER_TEMP/pkg/ecup_matching/ml/"
           cp ecup_matching/ml/v8_graph.py "$RUNNER_TEMP/pkg/ecup_matching/ml/"
           cp ecup_matching/submission/run_v10_faststack.py "$RUNNER_TEMP/pkg/run.py"
           cp "$RUNNER_TEMP/out/model_v10_category_shrunk.json" "$RUNNER_TEMP/pkg/"
@@ -117,6 +116,8 @@ jobs:
           test -f "$RUNNER_TEMP/pkg/ecup_matching/submission/v10_text_cache.py"
       - name: Import and archive contract smoke
         shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
         run: |
           set -euo pipefail
           PYTHONPATH="$RUNNER_TEMP/pkg" python - <<'PY'
@@ -133,6 +134,8 @@ jobs:
           assert m['teacher_checkpoint_required'] is False
           print('v10_faststack_import_contract_ok')
           PY
+          find "$RUNNER_TEMP/pkg" -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find "$RUNNER_TEMP/pkg" -type f -name '*.pyc' -delete
           (cd "$RUNNER_TEMP/pkg" && zip -q -r -9 "$GITHUB_WORKSPACE/$FINAL_NAME" .)
           python - <<'PY'
           import json, os, stat, zipfile, hashlib
