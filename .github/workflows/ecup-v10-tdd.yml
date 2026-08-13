@@ -8,8 +8,12 @@ on:
       - ".github/workflows/ecup-v10-tdd.yml"
       - "ecup_matching/ml/v10_distill.py"
       - "ecup_matching/submission/v10_contract.py"
+      - "ecup_matching/submission/predict_v10.py"
+      - "ecup_matching/submission/run_v10.py"
+      - "ecup_matching/build_submission_v10.py"
       - "ecup_matching/tests/test_v10_distill.py"
       - "ecup_matching/tests/test_v10_submission_contract.py"
+      - "ecup_matching/tests/test_v10_runtime_contract.py"
 
 permissions:
   contents: read
@@ -30,4 +34,5 @@ jobs:
         run: |
           python -m pytest -q \
             ecup_matching/tests/test_v10_distill.py \
-            ecup_matching/tests/test_v10_submission_contract.py
+            ecup_matching/tests/test_v10_submission_contract.py \
+            ecup_matching/tests/test_v10_runtime_contract.py
