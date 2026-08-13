@@ -1,0 +1,115 @@
+name: E-CUP v10 fast-stack diagnostics
+
+on:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - '.github/workflows/ecup-v10-faststack-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  PREV_RATIO: '0.566880890615799'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download canonical inputs and immutable fast OOFs
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v10-fastdiag"; mkdir -p "$root"
+          for f in matches.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" -o "$root/$(basename "$f")"
+          done
+          declare -A PATHS
+          PATHS[no_teacher]='experiments/v6/fast-ablation/no_teacher/6a1e61a2d068/v6-fast-no_teacher-oof.parquet'
+          PATHS[no_contrastive]='experiments/v6/fast-ablation/no_contrastive/6a1e61a2d068/v6-fast-no_contrastive-oof.parquet'
+          PATHS[structured_only]='experiments/v6/fast-ablation/structured_only/6a1e61a2d068/v6-fast-structured_only-oof.parquet'
+          for name in no_teacher no_contrastive structured_only; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${PATHS[$name]}?download=true" -o "$root/${name}.parquet"
+          done
+          echo "DIAG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Exact strict graph and 100-trial target stress
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np, pandas as pd
+          from sklearn.metrics import average_precision_score
+          from ecup_matching.ml.v5_evaluation import macro_ap_report
+          from ecup_matching.ml.v8_graph import graph_features, graph_rescore
+
+          expected={
+            'no_teacher':0.5931387077244183,
+            'no_contrastive':0.5928725263319,
+            'structured_only':0.5808404005946962,
+          }
+          root=Path(os.environ['DIAG_ROOT']); ratio=float(os.environ['PREV_RATIO'])
+          matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target'])
+          items=pd.read_parquet(root/'items_human.parquet',columns=['id','category']).drop_duplicates('id')
+          cmap=dict(zip(items.id.tolist(),items.category.astype(str).tolist()))
+          all_results=[]
+          for name,want in expected.items():
+            oof=pd.read_parquet(root/f'{name}.parquet')
+            rows=oof.row_index.to_numpy(np.int64); folds=oof.fold.to_numpy(np.int8)
+            score=oof.fusion_oof_score.to_numpy(np.float64)
+            work=matches.iloc[rows].reset_index(drop=True); work['fold']=folds; work['category']=work.id1.map(cmap)
+            right=work.id2.map(cmap)
+            if work.category.isna().any() or right.isna().any() or not np.array_equal(work.category.astype(str),right.astype(str)):
+              raise RuntimeError('category contract failed')
+            base=float(macro_ap_report(work,score,strict_official=True)['macro_average_precision'])
+            if abs(base-want)>1e-10: raise RuntimeError(f'{name} metric mismatch {base} != {want}')
+            graph=np.empty_like(score); folds_out=[]
+            for f in sorted(np.unique(folds)):
+              m=folds==f; fw=work.loc[m,['id1','id2','category','target']].reset_index(drop=True); bs=score[m]
+              gf=graph_features(fw[['id1','id2','category']],bs)
+              gs=graph_rescore(bs,gf,reciprocal_best_bonus=0,reciprocal_top3_bonus=0,endpoint_rank_weight=.02,ambiguity_penalty=.01)
+              graph[m]=gs
+              b=float(macro_ap_report(fw,bs)['macro_average_precision']); g=float(macro_ap_report(fw,gs)['macro_average_precision'])
+              folds_out.append({'fold':int(f),'base':b,'graph':g,'delta':g-b})
+            graph_ap=float(macro_ap_report(work,graph,strict_official=True)['macro_average_precision'])
+
+            y=work.target.to_numpy(np.int8); cats=work.category.astype(str).to_numpy(); categories=sorted(np.unique(cats).tolist())
+            plan={}
+            for cat in categories:
+              idx=np.flatnonzero(cats==cat); yy=y[idx]; p=float(yy.mean()); tp=p*ratio
+              neg=np.flatnonzero((cats==cat)&(y==0)); pos=np.flatnonzero((cats==cat)&(y==1))
+              keep=min(len(pos),max(1,int(round(tp*len(neg)/max(1e-12,1-tp)))))
+              plan[cat]=(neg,pos,keep)
+            def stress(vec):
+              vals=[]
+              for seed in range(2026,2126):
+                rng=np.random.default_rng(seed); aps=[]
+                for cat in categories:
+                  neg,pos,keep=plan[cat]; sel=np.concatenate([neg,rng.choice(pos,size=keep,replace=False)])
+                  aps.append(float(average_precision_score(y[sel],vec[sel])))
+                vals.append(float(np.mean(aps)))
+              a=np.asarray(vals)
+              return {'mean':float(a.mean()),'std':float(a.std(ddof=1)),'p05':float(np.quantile(a,.05)),'p50':float(np.quantile(a,.5)),'p95':float(np.quantile(a,.95))}
+            result={'candidate':name,'strict_oof':base,'graph_oof':graph_ap,'graph_delta':graph_ap-base,'all_graph_folds_positive':all(x['delta']>0 for x in folds_out),'folds':folds_out,'stress_base':stress(score),'stress_graph':stress(graph),'prevalence_ratio':ratio,'trials':100,'gold_opened':False}
+            all_results.append(result); print('V10_FAST_DIAG='+json.dumps(result,ensure_ascii=False,sort_keys=True),flush=True)
+          summary={'results':all_results,'best_graph_oof':max(all_results,key=lambda x:x['graph_oof'])['candidate'],'best_stress_graph':max(all_results,key=lambda x:x['stress_graph']['mean'])['candidate'],'gold_opened':False}
+          print('V10_FAST_DIAG_SUMMARY='+json.dumps(summary,ensure_ascii=False,sort_keys=True),flush=True)
+          Path(os.environ['DIAG_ROOT'],'v10-fast-diagnostics.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2,sort_keys=True)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v10-fast-diagnostics
+          path: ${{ env.DIAG_ROOT }}/v10-fast-diagnostics.json
+          retention-days: 14
