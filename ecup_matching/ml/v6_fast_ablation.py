@@ -6,7 +6,19 @@ from typing import Mapping
 import numpy as np
 
 from .v5_fixed_blend import percentile_rank
-from .v5_meta_blend import SIX_SIGNAL_NAMES
+
+
+# Keep the production ordering local. Importing v5_meta_blend only for this
+# constant dragged its training-only sklearn metric dependency into submission
+# packages; the tuple itself is part of the frozen v5/v6 runtime contract.
+SIX_SIGNAL_NAMES: tuple[str, ...] = (
+    "weak",
+    "sparse",
+    "explicit",
+    "contrastive",
+    "teacher",
+    "typed_explicit",
+)
 
 
 @dataclass(frozen=True)
