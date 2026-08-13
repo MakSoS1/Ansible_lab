@@ -12,6 +12,7 @@ from ecup_matching.submission.predict_v10_faststack import (
 
 
 MIN_STRICT_GRAPH_OOF = 0.595
+RUNTIME_VERSION = "v10-faststack-overlap-v1"
 
 
 def submission_root(run_file: Path) -> Path:
