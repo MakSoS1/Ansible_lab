@@ -14,8 +14,7 @@ Canonical short registry. Detailed rationale and immutable evidence live under `
 | v6 | runtime reference | strict OOF `0.6006003615` | selective-teacher/runtime engineering family |
 | v7 | platform-scored historical candidate | owner reports leaderboard `~0.36`; strict 5-fold OOF was not completed | high fold-0 diagnostic did not transfer |
 | v8 | rejected runtime failure | exact gate70 outer wall `820.784 s` | old workflow runtime pass marker invalid; platform timed out |
-| v9 old 1.25 GB | rejected-for-submission runtime risk | graph strict OOF `0.5970059311`; target-stress `0.4515676235`; platform `Container did not finish in time` | retain only as historical algorithm evidence |
-| **v9 compact** | **completed; published; awaiting platform score** | inherited graph OOF `0.5970059311`; Spearman vs old v9 `0.9999931452`; full E2E 115k/275k GREEN | **current exact keeper** |
+| v9 | completed | graph strict OOF `0.5970059311`; target-stress `0.4515676235`; compact E2E 115k/275k GREEN | current 596.9 MB compact keeper published; old 1.25 GB package timed out |
 
 Local OOF, compact-equivalence, target-stress diagnostics and platform leaderboard scores are separate evidence axes. Sealed gold remains unopened.
 
@@ -42,6 +41,10 @@ Source run `31639183423`. Frozen graph config: reciprocal-best `0`, reciprocal-t
 | gate40 | `0.4000245433` | `0.5955054274` | `0.5970059311` | `+0.0015005037` | `0.4515676235` |
 
 Gate40 was selected before final runtime. The compact package stores the same production model family differently; the OOF/stress values above were **not remeasured after storage compaction** and remain algorithm-selection evidence.
+
+## Superseded platform-timeout package
+
+The old v9 package `ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip` was `1,251,659,961` bytes with SHA `925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782`. It received `Container did not finish in time` and is rejected for further submission while its validation history is retained.
 
 ## v9 compact package
 
@@ -86,7 +89,7 @@ Evidence artifact `9171929877`. Both returned code `0` with exact pair order and
 
 ## Repository verification
 
-Compact verification run `31676442849`: **425 passed, 5 skipped**, `scripts/memory_policy.py` **OK**.
+Compact code verification run `31676442849`: **425 passed, 5 skipped**, `scripts/memory_policy.py` **OK**. Final canonical state must retain `CURRENT.status=completed` and an exact `| v9 | ...` registry row so the memory policy remains valid.
 
 ## Binding lessons
 
