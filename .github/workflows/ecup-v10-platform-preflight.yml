@@ -62,7 +62,7 @@ jobs:
           curl -fL --retry 10 --retry-all-errors "$OFFICIAL_LIGHT_URL" -o "$RUNNER_TEMP/preflight/official.zip"
           test -s "$RUNNER_TEMP/preflight/official.zip"
 
-      - name: Prove fixed payload is byte-identical except metadata.json
+      - name: Prove executable payload identity and keeper semantic identity
         shell: bash
         run: |
           set -euo pipefail
@@ -84,28 +84,48 @@ jobs:
                       if not info.is_dir(): hashes[info.filename]=hashlib.sha256(z.read(info.filename)).hexdigest()
               return hashes
 
-          old_h=inspect(old); new_h=inspect(new); off_h=inspect(official)
+          old_h=inspect(old); new_h=inspect(new); inspect(official)
           expected_meta={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
           assert 'metadata.json' not in old_h
           assert 'metadata.json' in new_h and 'run.py' in new_h
-          with zipfile.ZipFile(new) as z: new_meta=json.loads(z.read('metadata.json'))
-          with zipfile.ZipFile(official) as z: official_meta=json.loads(z.read('metadata.json'))
-          assert official_meta==expected_meta
-          assert new_meta==expected_meta
-          old_payload=dict(old_h)
-          new_payload={k:v for k,v in new_h.items() if k!='metadata.json'}
-          assert old_payload==new_payload, {
-              'removed':sorted(set(old_payload)-set(new_payload)),
-              'added':sorted(set(new_payload)-set(old_payload)),
-              'changed':sorted(k for k in old_payload.keys()&new_payload.keys() if old_payload[k]!=new_payload[k])[:20],
+          with zipfile.ZipFile(new) as z:
+              new_meta=json.loads(z.read('metadata.json'))
+              new_keeper=json.loads(z.read('NO_TEACHER_KEEPER.json'))
+          with zipfile.ZipFile(old) as z:
+              old_keeper=json.loads(z.read('NO_TEACHER_KEEPER.json'))
+          with zipfile.ZipFile(official) as z:
+              official_meta=json.loads(z.read('metadata.json'))
+          assert official_meta==expected_meta and new_meta==expected_meta
+
+          ignored_files={'metadata.json','NO_TEACHER_KEEPER.json'}
+          old_exec={k:v for k,v in old_h.items() if k not in ignored_files}
+          new_exec={k:v for k,v in new_h.items() if k not in ignored_files}
+          assert old_exec==new_exec, {
+              'removed':sorted(set(old_exec)-set(new_exec)),
+              'added':sorted(set(new_exec)-set(old_exec)),
+              'changed':sorted(k for k in old_exec.keys()&new_exec.keys() if old_exec[k]!=new_exec[k])[:20],
           }
+
+          volatile={'elapsed_seconds','peak_ram_gib'}
+          old_stable={k:v for k,v in old_keeper.items() if k not in volatile}
+          new_stable={k:v for k,v in new_keeper.items() if k not in volatile}
+          assert old_stable==new_stable, {
+              'changed_stable_keys':sorted(k for k in old_stable.keys()|new_stable.keys() if old_stable.get(k)!=new_stable.get(k))
+          }
+          runtime_critical=('candidate','strict_graph_oof_macro_ap','selection_gold_metric_opened','selection_gold_rows_scored','teacher_checkpoint_required')
+          assert all(old_keeper.get(k)==new_keeper.get(k) for k in runtime_critical)
+          volatile_diff={k:{'old':old_keeper.get(k),'new':new_keeper.get(k)} for k in volatile if old_keeper.get(k)!=new_keeper.get(k)}
+
           report={
               'old_sha256':hashlib.sha256(old.read_bytes()).hexdigest(),
               'new_sha256':hashlib.sha256(new.read_bytes()).hexdigest(),
               'old_bytes':old.stat().st_size,
               'new_bytes':new.stat().st_size,
-              'payload_files_compared':len(old_payload),
-              'payload_identity_except_metadata':True,
+              'executable_files_compared':len(old_exec),
+              'executable_payload_identity':True,
+              'keeper_stable_semantics_identity':True,
+              'keeper_runtime_critical_identity':True,
+              'keeper_volatile_diff':volatile_diff,
               'new_root_run_py_present':True,
               'new_root_metadata_json_present':True,
               'new_metadata':new_meta,
