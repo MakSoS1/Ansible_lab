@@ -41,16 +41,19 @@ jobs:
           from pathlib import Path
           import numpy as np, pandas as pd
           from transformers import AutoTokenizer
-          from ecup_matching.ml.v7_item_text import build_item_text_v7
+          from ecup_matching.ml.v7_runtime import build_v7_text_cache_from_parquet
 
           MODEL='cointegrated/rubert-tiny2'; REV='e8ed3b0c8bbf4fb6984c3de043bf7d2f4e5969ae'
           tok=AutoTokenizer.from_pretrained(MODEL,revision=REV,use_fast=True)
-          items=pd.read_parquet(Path(os.environ['RUNNER_TEMP'])/'items_human.parquet')
+          items_path=Path(os.environ['RUNNER_TEMP'])/'items_human.parquet'
+          items=pd.read_parquet(items_path,columns=['id','category'])
           chunks=[]
           for cat,part in items.groupby('category',sort=True):
               chunks.append(part.sort_values('id').head(min(1000,len(part))))
           sample=pd.concat(chunks,ignore_index=True)
-          texts=[build_item_text_v7(row,max_chars=700) for _,row in sample.iterrows()]
+          ids=sample.id.tolist()
+          text_map,_=build_v7_text_cache_from_parquet(items_path,ids,max_chars=700,workers=2)
+          texts=[text_map[item_id] for item_id in ids]
           lens=np.asarray([len(tok.encode(t,add_special_tokens=True,truncation=False)) for t in texts],dtype=int)
           result={'rows':int(len(sample)),'model':MODEL,'revision':REV,'raw_token_mean':float(lens.mean()),'raw_token_p50':float(np.quantile(lens,.5)),'raw_token_p90':float(np.quantile(lens,.9)),'raw_token_p95':float(np.quantile(lens,.95)),'raw_token_p99':float(np.quantile(lens,.99))}
           for budget in (96,128,160,192):
