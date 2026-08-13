@@ -3,6 +3,12 @@
 Updated: 2026-08-13
 Current iteration: **v10 no-teacher faststack — COMPLETED, published to private HF, awaiting platform score**
 
+## HARD distribution policy
+
+**GitHub Releases/prereleases are forbidden for E-CUP.** All submission ZIPs and keeper manifests are stored and delivered only through the private Hugging Face dataset `Maksim123321/e-cup-2026-matching-private` under `submissions/<version>/...`.
+
+Do not use `gh release create`, GitHub Release creation APIs/actions, or Release assets as submission storage. GitHub Actions artifacts are allowed only as transient CI/debug evidence. Private HF is the single canonical submission store.
+
 ## Objective
 
 Maximize E-CUP 2026 product-matching Macro AP with honest unseen-product validation and an offline organizer-compatible submission that finishes safely inside runtime limits.
@@ -19,9 +25,8 @@ Exact archive:
 - `480249520` bytes;
 - SHA-256 `6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d`;
 - build run `31689478925`;
-- release tag `ecup-v10-faststack-9de2bc83f878`;
 - source SHA `9de2bc83f878c87703c3290670f042bfdbb70dfc`;
-- private HF `submissions/v10/final/`;
+- canonical private HF `submissions/v10/final/`;
 - HF run `31693414226` verified both ZIP and `V10_KEEPER.json` after upload.
 
 ## Immutable validation protocol
@@ -71,10 +76,11 @@ Private dataset: `Maksim123321/e-cup-2026-matching-private`.
 - `submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip`;
 - `submissions/v10/final/V10_KEEPER.json`.
 
-Publication run `31693414226`: SUCCESS. The workflow redownloaded the immutable GitHub Release asset, checked exact bytes/SHA and no-teacher package contract, uploaded both files, and relisted both remote paths.
+Publication run `31693414226`: SUCCESS. Both files were SHA/contract-verified and relisted after upload. These HF objects are the canonical distribution copies. Historical GitHub Release copies are not part of the project contract and are being removed.
 
 ## Binding lessons
 
+- Never create GitHub Releases or prereleases for E-CUP; publish submissions only to the private HF dataset.
 - Infrastructure/runtime failures are not model scores.
 - Production refit is not validation.
 - Platform leaderboard, strict OOF and target-stress are separate evidence axes.
