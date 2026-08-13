@@ -1,12 +1,11 @@
-name: E-CUP v10 faststack TDD
+name: E-CUP v11 FastLex TDD
 
 on:
   push:
-    branches: [ecup-v10-distilled-fast]
+    branches: [ecup-v11-fastlex]
     paths:
-      - 'ecup_matching/submission/predict_v10_faststack.py'
-      - 'ecup_matching/submission/run_v10_faststack.py'
-      - 'ecup_matching/tests/test_v10_faststack.py'
+      - 'ecup_matching/ml/v11_fastlex.py'
+      - 'ecup_matching/tests/test_v11_fastlex.py'
       - '.github/workflows/ecup-v10-faststack-tdd.yml'
   workflow_dispatch:
 
@@ -25,4 +24,4 @@ jobs:
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
       - run: python -m pip install -r ecup_matching/requirements-ci.txt
-      - run: python -m pytest ecup_matching/tests/test_v10_faststack.py -q
+      - run: python -m pytest ecup_matching/tests/test_v11_fastlex.py -q
