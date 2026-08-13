@@ -4,6 +4,7 @@ on:
   push:
     branches: [ecup-v11-fastlex]
     paths:
+      - 'ecup_matching/ml/v11_*.py'
       - '.github/workflows/ecup-v10-faststack-diagnostics.yml'
   workflow_dispatch:
 
