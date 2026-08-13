@@ -17,9 +17,8 @@ from .run_v5_fixed_blend import align_oof_frame
 from .run_v5_pretrained_biencoder import development_rows_and_folds
 from .run_v5_typed_explicit_fusion import CURRENT5_COLUMNS
 from .v5_category_shrunk import fit_category_shrunk_full
-from .v5_evaluation import OFFICIAL_CATEGORIES
 from .v5_hgb_stack import DEFAULT_HGB_PARAMS, fit_fixed_hgb_full
-from .v5_meta_blend import SIX_SIGNAL_NAMES, _rank_signals
+from .v5_meta_blend import SIX_SIGNAL_NAMES
 from .v5_validation import manifest_sha256
 from .v6_fast_ablation import build_fast_candidate_scores
 
@@ -90,7 +89,9 @@ def fit_v10_faststack_production(
     right_category = dev["id2"].map(category_by_id)
     if dev["category"].isna().any() or right_category.isna().any():
         raise RuntimeError("failed to attach official categories")
-    if not np.array_equal(dev["category"].astype(str).to_numpy(), right_category.astype(str).to_numpy()):
+    if not np.array_equal(
+        dev["category"].astype(str).to_numpy(), right_category.astype(str).to_numpy()
+    ):
         raise RuntimeError("development pair endpoints disagree on category")
 
     six = {
@@ -104,14 +105,11 @@ def fit_v10_faststack_production(
     target = dev["target"].to_numpy(dtype=np.int8)
     categories = dev["category"].astype(str).to_numpy()
 
-    ranked = _rank_signals(candidate_scores, SIX_SIGNAL_NAMES)
     category_fit = fit_category_shrunk_full(
-        ranked,
+        candidate_scores,
         target,
         categories,
-        signal_names=SIX_SIGNAL_NAMES,
         prior_strength=PRIOR_STRENGTH,
-        category_names=OFFICIAL_CATEGORIES,
         step_schedule=STEP_SCHEDULE,
         max_passes=4,
     )
@@ -120,8 +118,14 @@ def fit_v10_faststack_production(
         "candidate": CANDIDATE,
         "signal_names": list(SIX_SIGNAL_NAMES),
         "global_weights": [float(value) for value in category_fit["global_weights"]],
-        "category_weights": category_fit["category_weights"],
-        "category_support": category_fit["category_support"],
+        "category_weights": {
+            str(category): [float(value) for value in weights]
+            for category, weights in category_fit["category_weights"].items()
+        },
+        "category_support": {
+            str(category): int(support)
+            for category, support in category_fit["category_support"].items()
+        },
         "prior_strength": float(PRIOR_STRENGTH),
         "step_schedule": [float(value) for value in STEP_SCHEDULE],
         "max_passes": 4,
