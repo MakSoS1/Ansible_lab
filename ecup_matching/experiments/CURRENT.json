@@ -5,6 +5,14 @@
   "plan": "ecup_matching/experiments/v10/PLAN.md",
   "results": "ecup_matching/experiments/v10/RESULTS.md",
   "safe_metrics": "ecup_matching/experiments/v10/SAFE_METRICS.json",
+  "distribution_policy": {
+    "github_releases": "forbidden",
+    "github_prereleases": "forbidden",
+    "submission_store": "private_huggingface_only",
+    "hf_repo": "Maksim123321/e-cup-2026-matching-private",
+    "canonical_prefix": "submissions/<version>/",
+    "github_actions_artifacts": "transient_ci_evidence_only"
+  },
   "validation_protocol": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -42,13 +50,13 @@
   "keeper_package": {
     "name": "ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
     "build_run_id": 31689478925,
-    "release_tag": "ecup-v10-faststack-9de2bc83f878",
     "bytes": 480249520,
     "sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
     "source_sha": "9de2bc83f878c87703c3290670f042bfdbb70dfc",
     "teacher_checkpoint_packaged": false,
     "cpu_gpu_overlap": true,
-    "contrastive_only_text_cache": true
+    "contrastive_only_text_cache": true,
+    "canonical_store": "private_huggingface"
   },
   "runtime_gate": {
     "device": "NVIDIA GeForce RTX 2060 SUPER",
@@ -84,20 +92,21 @@
     "archive_path": "submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
     "manifest_path": "submissions/v10/final/V10_KEEPER.json",
     "archive_and_manifest_relisted_after_upload": true,
-    "published_archive_sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d"
+    "published_archive_sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
+    "canonical_distribution": true
   },
   "verification": {
-    "run_id": 31693753760,
+    "run_id": 31694049694,
     "tests_passed": 442,
     "tests_skipped": 5,
     "memory_policy": "OK"
   },
   "memora": {
-    "run_id": 31693792699,
-    "artifact_id": 9178506377,
+    "run_id": 31694049666,
+    "artifact_id": 9178603719,
     "iteration": "v10",
-    "checkpoint_id": "20260813T110441Z-v10-ad4a597f",
-    "checkpoint_sha256": "7dc9ba4f22827122b26a45241960b545406926025214650f1e1cbe56ff826d12",
+    "checkpoint_id": "20260813T110808Z-v10-d5ba8b9c",
+    "checkpoint_sha256": "df75fc4f00443b71fabfcc669b2342c6ae75611f68dcbbc5d5dbae253146fb35",
     "repository_tests_passed": 442,
     "repository_tests_skipped": 5,
     "upstream_tests_passed": 51,
