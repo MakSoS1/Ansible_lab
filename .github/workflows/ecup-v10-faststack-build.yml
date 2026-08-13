@@ -8,11 +8,10 @@ on:
       - 'ecup_matching/submission/v10_text_cache.py'
       - 'ecup_matching/submission/run_v10_faststack.py'
       - 'ecup_matching/ml/run_v10_faststack_production.py'
-      - '.github/workflows/ecup-v10-faststack-build.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
@@ -158,18 +157,32 @@ jobs:
           print(json.dumps(report,indent=2,sort_keys=True))
           PY
           sha256sum -c SHA256SUMS.txt
-      - name: Publish immutable prerelease for exact RTX gate
+      - name: Publish exact candidate only to private Hugging Face
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          short="${GITHUB_SHA:0:12}"; tag="ecup-v10-faststack-${short}"
-          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
-          gh release create "$tag" "$FINAL_NAME" V10_BUILD_RESULT.json SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "E-CUP v10 no-teacher faststack ${short}" \
-            --notes "Immutable no-teacher candidate with CPU/GPU overlap. Strict graph OOF 0.5950413762943735, target-stress mean 0.44961526826354, sealed gold unopened. Not a leaderboard claim. Must pass exact RTX E2E runtime gate before keeper status." --prerelease
+          python - <<'PY'
+          import os
+          from huggingface_hub import CommitOperationAdd, HfApi
+          repo = os.environ['HF_REPO_ID']
+          token = os.environ['HF_TOKEN']
+          short = os.environ['GITHUB_SHA'][:12]
+          prefix = f"submissions/v10/candidates/{short}"
+          files = [os.environ['FINAL_NAME'], 'V10_BUILD_RESULT.json', 'SHA256SUMS.txt']
+          api = HfApi(token=token)
+          api.create_commit(
+              repo_id=repo,
+              repo_type='dataset',
+              operations=[CommitOperationAdd(path_in_repo=f"{prefix}/{p}", path_or_fileobj=p) for p in files],
+              commit_message=f"Store E-CUP v10 candidate {short} on private HF",
+          )
+          visible = set(api.list_repo_files(repo_id=repo, repo_type='dataset'))
+          for p in files:
+              remote = f"{prefix}/{p}"
+              if remote not in visible:
+                  raise RuntimeError(f"private HF verification failed: {remote}")
+              print('verified_private_hf', remote)
+          PY
       - name: Upload build evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
