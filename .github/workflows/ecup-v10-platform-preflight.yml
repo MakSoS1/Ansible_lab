@@ -1,0 +1,114 @@
+name: E-CUP v10 exact HF platform preflight
+
+on:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - '.github/workflows/ecup-v10-platform-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  HF_ARCHIVE_PATH: submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+  EXPECTED_SHA256: 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d
+  EXPECTED_BYTES: '480249520'
+  OFFICIAL_LIGHT_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matching-baseline-lightweight.zip
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Download exact final keeper from private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'huggingface_hub>=1.0,<2'
+          mkdir -p "$RUNNER_TEMP/preflight"
+          python - <<'PY'
+          import os, shutil
+          from huggingface_hub import hf_hub_download
+          src=hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+              filename=os.environ['HF_ARCHIVE_PATH'], token=os.environ['HF_TOKEN'])
+          dst=os.path.join(os.environ['RUNNER_TEMP'],'preflight','keeper.zip')
+          shutil.copyfile(src,dst)
+          print(dst)
+          PY
+          test "$(stat -c '%s' "$RUNNER_TEMP/preflight/keeper.zip")" = "$EXPECTED_BYTES"
+          test "$(sha256sum "$RUNNER_TEMP/preflight/keeper.zip" | awk '{print $1}')" = "$EXPECTED_SHA256"
+      - name: Download official lightweight submission contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 10 --retry-all-errors "$OFFICIAL_LIGHT_URL" -o "$RUNNER_TEMP/preflight/official.zip"
+          test -s "$RUNNER_TEMP/preflight/official.zip"
+      - name: Compare exact archive root with official contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          root=Path(os.environ['RUNNER_TEMP'])/'preflight'
+          keeper=root/'keeper.zip'; official=root/'official.zip'
+          def inspect(path):
+              with zipfile.ZipFile(path) as z:
+                  assert z.testzip() is None
+                  names=z.namelist()
+                  assert len(names)==len(set(names))
+                  for info in z.infolist():
+                      p=PurePosixPath(info.filename)
+                      assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
+                      assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
+                  return names
+          kn=inspect(keeper); on=inspect(official)
+          with zipfile.ZipFile(official) as z:
+              official_meta=json.loads(z.read('metadata.json'))
+          keeper_meta=None
+          if 'metadata.json' in kn:
+              with zipfile.ZipFile(keeper) as z:
+                  keeper_meta=json.loads(z.read('metadata.json'))
+          expected_meta={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+          report={
+              'archive':'ecup-v10-no-teacher-graph-0.5950413763-submission.zip',
+              'bytes':keeper.stat().st_size,
+              'sha256':hashlib.sha256(keeper.read_bytes()).hexdigest(),
+              'root_run_py_present':'run.py' in kn,
+              'root_metadata_json_present':'metadata.json' in kn,
+              'keeper_metadata':keeper_meta,
+              'official_metadata':official_meta,
+              'expected_metadata':expected_meta,
+              'official_contract_matches_expected':official_meta==expected_meta,
+              'platform_contract_passed':keeper_meta==expected_meta and 'run.py' in kn,
+              'diagnosis':None,
+          }
+          if keeper_meta is None:
+              report['diagnosis']='missing_root_metadata_json'
+          elif keeper_meta != expected_meta:
+              report['diagnosis']='invalid_root_metadata_json'
+          elif 'run.py' not in kn:
+              report['diagnosis']='missing_root_run_py'
+          Path('V10_PLATFORM_PREFLIGHT.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          print('PREFLIGHT='+json.dumps(report,sort_keys=True))
+          # This is a diagnostic workflow. A proven mismatch is the expected finding,
+          # so keep the job green and expose it in the report rather than masking it as CI infra failure.
+          assert official_meta==expected_meta
+          PY
+      - name: Upload diagnostic evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v10-platform-preflight-${{ github.run_id }}
+          path: V10_PLATFORM_PREFLIGHT.json
+          retention-days: 14
