@@ -1,87 +1,77 @@
 # E-CUP Matching — Canonical Project State
 
 Updated: 2026-08-13
-Current iteration: **v9 compact — COMPLETED, published to private HF, awaiting platform score**
+Current iteration: **v10 no-teacher faststack — COMPLETED, published to private HF, awaiting platform score**
 
 ## Objective
 
 Maximize E-CUP 2026 product-matching Macro AP with honest unseen-product validation and an offline organizer-compatible submission that finishes safely inside runtime limits.
 
-The owner reports v7 as the best successfully scored submission so far at approximately `0.36`. That leaderboard value is external evidence only and was not used as a row-level label or fitted calibration target. The requested region near `0.5` remains a goal; compact v9 has no measured leaderboard score yet.
+The owner reports v7 leaderboard at approximately `0.36`. That is external evidence only and was not used for row-level fitting. The requested region near `0.5` remains the external target; v10 has no measured leaderboard score yet.
 
 ## Current keeper
 
-Architecture: **gate40 + structured/meta stack + contrastive + selective teacher + frozen target-free graph**, with teacher/contrastive floating safetensors stored as FP16 to reduce package size.
+Architecture: **no_teacher + category-shrunk/HGB rank fusion + frozen target-free graph**, with the CPU structured branch overlapped with GPU contrastive inference. The pair cross-encoder teacher is absent from inference and is not packaged.
 
 Exact archive:
 
-- `ecup-v9-compact-fp16storage-0.5970059311-submission.zip`;
-- `596,925,132` bytes;
-- SHA-256 `aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345`;
-- build run `31675196422`;
-- release tag `ecup-v9-compact-6ba133ce25f7`;
-- private HF: `submissions/v9/compact/`;
-- HF publication run `31677161875` verified both ZIP and `V9_COMPACT_KEEPER.json` remote paths.
-
-The superseded 1.25 GB v9 (`925456c...35782`) received platform `Container did not finish in time`; retain it only as historical validation/runtime evidence and do not resubmit it.
+- `ecup-v10-no-teacher-graph-0.5950413763-submission.zip`;
+- `480249520` bytes;
+- SHA-256 `6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d`;
+- build run `31689478925`;
+- release tag `ecup-v10-faststack-9de2bc83f878`;
+- source SHA `9de2bc83f878c87703c3290670f042bfdbb70dfc`;
+- private HF `submissions/v10/final/`;
+- HF run `31693414226` verified both ZIP and `V10_KEEPER.json` after upload.
 
 ## Immutable validation protocol
 
-- human labels `365,654`;
-- development rows `285,210`;
-- sealed gold rows `80,444`;
+- human labels `365654`;
+- development rows `285210`;
+- sealed gold rows `80444`;
 - five component-disjoint folds;
 - cross-split item/component overlap `0`;
 - split SHA-256 `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`;
-- official metric: unweighted mean of `average_precision_score` over exactly 20 categories;
+- metric: unweighted mean of `average_precision_score` over exactly 20 categories;
 - sealed gold opened `false`, rows scored `0`.
 
-## Validation v2
+## v10 frozen quality evidence
 
-Run `31639183423`, target-stress prevalence ratio `0.566880890615799`.
+| Candidate | Strict OOF | Graph OOF | Target-stress mean |
+|---|---:|---:|---:|
+| structured_only | `0.5808404006` | `0.5821464488` | `0.4355474106` |
+| **no_teacher** | **`0.5931387077`** | **`0.5950413763`** | **`0.4496152683`** |
+| no_contrastive | `0.5928725263` | `0.5978943607` | `0.4535367991` |
 
-| Candidate | Teacher fraction | Strict OOF | Fold-local graph OOF | Target-stress mean |
-|---|---:|---:|---:|---:|
-| gate25 | `0.2500227902` | `0.5947115591` | `0.5961903713` | `0.4507779206` |
-| **gate40** | **`0.4000245433`** | **`0.5955054274`** | **`0.5970059311`** | **`0.4515676235`** |
+`no_contrastive` has the strongest local diagnostics but retains the pair teacher and was rejected for production runtime risk. v10 deliberately selects `no_teacher` because runtime architecture matters more than the small local delta.
 
-These are the algorithm-selection metrics measured before compact storage. They were not re-labelled as compact OOF: production refit saw all development rows and sealed gold remains unopened. `0.4515676` is diagnostic, not a leaderboard prediction.
+Graph delta for selected v10 is `+0.0019026685699552`, positive on all `5/5` immutable folds. Target-stress is diagnostic only; `0.44961526826354` is not a claimed leaderboard score.
 
-## Compact equivalence
+## Runtime evidence
 
-RTX equivalence run `31675338174`, 20,000 identical pairs under organizer image:
+Exact same archive SHA under `odsai/ecup26-matching-baseline:1.0` on NVIDIA GeForce RTX 2060 SUPER:
 
-- Spearman `0.999993145182`;
-- Pearson `0.999993172228`;
-- mean absolute delta `0.000163786536`;
-- top-1% overlap `1.0`;
-- top-5% / top-10% overlap `0.999`;
-- exact schema/pair order and finite nonconstant outputs valid.
-
-This is near-identical ranking evidence, not exact numeric equality and not a new OOF score.
-
-## End-to-end runtime evidence
-
-Run `MakSoS1/gpu-dispatch#31675903851` on NVIDIA GeForce RTX 2060 SUPER with `odsai/ecup26-matching-baseline:1.0`. Timer scope: safe ZIP extraction + docker inference + output validation.
-
-| Gate | Rows | Total wall | Acceptance | Headroom | Result |
+| Gate | Rows | Outer inference wall | Acceptance | Headroom | Result |
 |---|---:|---:|---:|---:|---|
-| public-size | `115,000` | **`293.569452608 s`** | `330 s` | `36.430547392 s` | **PASS** |
-| private-size | `275,000` | **`646.947129008 s`** | `700 s` | `53.052870992 s` | **PASS** |
+| public-size | `115000` | `173.842174445 s` | `330 s` | `156.157825555 s` | PASS |
+| private-size | `275000` | **`391.608035937 s`** | `700 s` | **`308.391964063 s`** | **PASS** |
 
-Extraction alone was `5.234229078 s` public and `5.714303003 s` private. Both returned code `0` and valid ordered output. Evidence artifact `9171929877`.
+Private keeper run `31692817075`, artifact `9178292328`, returned code `0` and validated exact pair order, finite/nonconstant scores, `271964` unique scores and absence of a teacher checkpoint.
 
-## Why package size changed
+The earlier `<120/<250` runtime thresholds were an exploratory over-strict tuning target, not organizer rules and not the final keeper contract.
 
-Immutable audit showed the old 1.25 GB archive was dominated by teacher (~680 MiB compressed) and contrastive (~449 MiB compressed) safetensors, not dead runtime files. FP16 storage reduced the exact keeper to `596,925,132` bytes, saving `654,734,829` bytes, while structured/meta models and inference logic stayed unchanged.
+## Why v10 is faster
 
-## Repository verification
+v9 still used a pair-scaled cross-encoder teacher. v10 removes it entirely and overlaps independent CPU structured scoring with GPU contrastive embedding/scoring. On the 275k keeper run, structured took `297.304 s` and text+contrastive `345.838 s`, but their critical path was `345.838 s` rather than their sum. `run.py` total was `364.64 s`, outer docker wall `391.608035937 s`.
 
-Run `31676442849`:
+## Hugging Face keeper
 
-- **425 passed**;
-- **5 skipped**;
-- `scripts/memory_policy.py`: **OK**.
+Private dataset: `Maksim123321/e-cup-2026-matching-private`.
+
+- `submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip`;
+- `submissions/v10/final/V10_KEEPER.json`.
+
+Publication run `31693414226`: SUCCESS. The workflow redownloaded the immutable GitHub Release asset, checked exact bytes/SHA and no-teacher package contract, uploaded both files, and relisted both remote paths.
 
 ## Binding lessons
 
@@ -89,18 +79,17 @@ Run `31676442849`:
 - Production refit is not validation.
 - Platform leaderboard, strict OOF and target-stress are separate evidence axes.
 - Sealed gold is never opened to recover a leaderboard/runtime gap.
-- Package extraction/setup belongs in organizer-like runtime measurement where feasible.
 - Outside-container wall is authoritative for timeout safety.
-- Mixed precision/storage compaction must have direct prediction/ranking evidence.
-- Continuous ranking scores do not need clipping to `[0,1]` unless the contract requires probabilities.
-- Never weaken a gate after observing failure.
+- Small local metric gains do not justify restoring a pair-scaled inference stage without a fresh exact runtime proof.
+- Continuous graph-rescored ranking scores do not need clipping to `[0,1]` unless the contract requires probabilities.
+- Never mutate keeper bytes after the exact runtime gate and keep calling them the same keeper.
 
 ## Current files to read
 
 1. `ecup_matching/experiments/CURRENT.json`
-2. `ecup_matching/experiments/v9/PLAN.md`
-3. `ecup_matching/experiments/v9/RESULTS.md`
-4. `ecup_matching/experiments/v9/SAFE_METRICS.json`
+2. `ecup_matching/experiments/v10/PLAN.md`
+3. `ecup_matching/experiments/v10/RESULTS.md`
+4. `ecup_matching/experiments/v10/SAFE_METRICS.json`
 5. `docs/agent-memory/EXPERIMENT_INDEX.md`
 6. `docs/agent-memory/DECISIONS.md`
 7. `docs/agent-memory/SECURITY.md`
@@ -108,4 +97,4 @@ Run `31676442849`:
 
 ## Next action
 
-Submit the exact compact HF keeper to the competition platform. When it finishes scoring, record the measured leaderboard value separately without rewriting the frozen local validation evidence.
+Submit the exact v10 keeper from private HF to the competition platform. When it finishes scoring, record the measured leaderboard value separately without rewriting frozen local validation evidence.
