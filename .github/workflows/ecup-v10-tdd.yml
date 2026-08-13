@@ -8,6 +8,8 @@ on:
       - ".github/workflows/ecup-v10-tdd.yml"
       - "ecup_matching/ci/runtime_closure.py"
       - "ecup_matching/ml/v10_distill.py"
+      - "ecup_matching/ml/v10_student_contract.py"
+      - "ecup_matching/ml/run_v7_outer_oof.py"
       - "ecup_matching/submission/v10_contract.py"
       - "ecup_matching/submission/predict_v10.py"
       - "ecup_matching/submission/run_v10.py"
@@ -16,6 +18,7 @@ on:
       - "ecup_matching/tests/test_v10_submission_contract.py"
       - "ecup_matching/tests/test_v10_runtime_contract.py"
       - "ecup_matching/tests/test_v10_build_submission.py"
+      - "ecup_matching/tests/test_v10_student_training_contract.py"
 
 permissions:
   contents: read
@@ -38,4 +41,5 @@ jobs:
             ecup_matching/tests/test_v10_distill.py \
             ecup_matching/tests/test_v10_submission_contract.py \
             ecup_matching/tests/test_v10_runtime_contract.py \
-            ecup_matching/tests/test_v10_build_submission.py
+            ecup_matching/tests/test_v10_build_submission.py \
+            ecup_matching/tests/test_v10_student_training_contract.py
