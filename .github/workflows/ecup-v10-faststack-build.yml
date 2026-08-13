@@ -5,6 +5,7 @@ on:
     branches: [ecup-v10-distilled-fast]
     paths:
       - 'ecup_matching/submission/predict_v10_faststack.py'
+      - 'ecup_matching/submission/v10_text_cache.py'
       - 'ecup_matching/submission/run_v10_faststack.py'
       - 'ecup_matching/ml/run_v10_faststack_production.py'
       - '.github/workflows/ecup-v10-faststack-build.yml'
@@ -96,6 +97,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/pkg/ecup_matching/submission" "$RUNNER_TEMP/pkg/ecup_matching/ml"
           cp ecup_matching/submission/predict_v10_faststack.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
           cp ecup_matching/submission/predict_v6.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
+          cp ecup_matching/submission/v10_text_cache.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
           cp ecup_matching/submission/v6_fast.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
           cp ecup_matching/submission/v6_parallel.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
           cp ecup_matching/submission/v6_text_cache.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
@@ -112,16 +114,16 @@ jobs:
           test ! -e "$RUNNER_TEMP/pkg/model_v5_teacher"
           test -f "$RUNNER_TEMP/pkg/model_v5_contrastive/model.safetensors"
           test -f "$RUNNER_TEMP/pkg/model_v5_structured.joblib"
+          test -f "$RUNNER_TEMP/pkg/ecup_matching/submission/v10_text_cache.py"
       - name: Import and archive contract smoke
         shell: bash
         run: |
           set -euo pipefail
           PYTHONPATH="$RUNNER_TEMP/pkg" python - <<'PY'
-          import json, inspect, sys
+          import json, inspect, os
           from pathlib import Path
           from ecup_matching.submission.predict_v10_faststack import assert_no_teacher_assets, predict_to_csv_v10_faststack
-          root=Path(sys.path[0]) if sys.path[0] else Path('.')
-          pkg=Path(__import__('os').environ['RUNNER_TEMP'])/'pkg'
+          pkg=Path(os.environ['RUNNER_TEMP'])/'pkg'
           assert_no_teacher_assets(pkg)
           assert 'teacher_model_dir' not in inspect.signature(predict_to_csv_v10_faststack).parameters
           m=json.loads((pkg/'NO_TEACHER_KEEPER.json').read_text())
@@ -140,14 +142,14 @@ jobs:
           with zipfile.ZipFile(z) as a:
             assert a.testzip() is None
             names=a.namelist(); assert len(names)==len(set(names))
-            required={'run.py','model_v5_structured.joblib','model_v5_contrastive/model.safetensors','model_v10_category_shrunk.json','model_v10_hgb_meta.joblib','NO_TEACHER_KEEPER.json','ecup_matching/submission/predict_v10_faststack.py','ecup_matching/ml/v8_graph.py'}
+            required={'run.py','model_v5_structured.joblib','model_v5_contrastive/model.safetensors','model_v10_category_shrunk.json','model_v10_hgb_meta.joblib','NO_TEACHER_KEEPER.json','ecup_matching/submission/predict_v10_faststack.py','ecup_matching/submission/v10_text_cache.py','ecup_matching/ml/v8_graph.py'}
             assert required <= set(names), sorted(required-set(names))
             assert not any(n.startswith('model_v5_teacher/') for n in names)
             assert not any('__pycache__' in n or n.endswith('.pyc') for n in names)
             for info in a.infolist():
               p=PurePosixPath(info.filename); assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
               assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
-          report={'filename':z.name,'sha256':sha,'bytes':size,'strict_raw_oof_macro_ap':0.5931387077244183,'strict_graph_oof_macro_ap':0.5950413762943735,'target_stress_graph_mean':0.44961526826354,'candidate':'no_teacher','teacher_checkpoint_packaged':False,'sealed_gold_opened':False,'leaderboard_score':None,'leaderboard_score_claimed':False}
+          report={'filename':z.name,'sha256':sha,'bytes':size,'strict_raw_oof_macro_ap':0.5931387077244183,'strict_graph_oof_macro_ap':0.5950413762943735,'target_stress_graph_mean':0.44961526826354,'candidate':'no_teacher','teacher_checkpoint_packaged':False,'cpu_gpu_overlap':True,'contrastive_only_text_cache':True,'sealed_gold_opened':False,'leaderboard_score':None,'leaderboard_score_claimed':False}
           Path('V10_BUILD_RESULT.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
           Path('SHA256SUMS.txt').write_text(f'{sha}  {z.name}\n')
           print(json.dumps(report,indent=2,sort_keys=True))
@@ -164,7 +166,7 @@ jobs:
           gh release create "$tag" "$FINAL_NAME" V10_BUILD_RESULT.json SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "E-CUP v10 no-teacher faststack ${short}" \
-            --notes "Immutable no-teacher candidate. Strict graph OOF 0.5950413762943735, target-stress mean 0.44961526826354, sealed gold unopened. Not a leaderboard claim. Must pass exact RTX E2E runtime gate before keeper status." --prerelease
+            --notes "Immutable no-teacher candidate with CPU/GPU overlap. Strict graph OOF 0.5950413762943735, target-stress mean 0.44961526826354, sealed gold unopened. Not a leaderboard claim. Must pass exact RTX E2E runtime gate before keeper status." --prerelease
       - name: Upload build evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
