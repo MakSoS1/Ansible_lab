@@ -5,6 +5,7 @@ import pandas as pd
 
 from ecup_matching.ml.v11_fastlex import FEATURE_NAMES, build_fast_pair_features
 from ecup_matching.ml.v11_sparse import SparseConfig, sparse_pair_scores
+from ecup_matching.ml.v11_stack import crossfit_hgb_scores
 
 
 def _items():
@@ -46,4 +47,15 @@ def test_sparse_semantic_channel_is_deterministic_and_prefers_near_duplicate():
     assert np.isfinite(first).all()
     assert first[0] > first[1]
 
-# Sparse implementation landed after the RED import failure; this commit intentionally retriggers the same contract.
+
+def test_crossfit_stack_does_not_use_held_fold_labels_for_that_fold():
+    n = 80
+    x = np.linspace(0.0, 1.0, n)
+    features = pd.DataFrame({"category": np.where(np.arange(n) % 2, "a", "b"), "lex": x, "sparse": x**2})
+    folds = np.repeat([0, 1], n // 2)
+    target = (x > 0.55).astype(np.int8)
+    base = crossfit_hgb_scores(features, target, folds, min_local_rows=10)
+    changed = target.copy(); changed[folds == 0] = 1 - changed[folds == 0]
+    perturbed = crossfit_hgb_scores(features, changed, folds, min_local_rows=10)
+    np.testing.assert_allclose(base[folds == 0], perturbed[folds == 0], rtol=0, atol=0)
+    assert np.isfinite(base).all()
