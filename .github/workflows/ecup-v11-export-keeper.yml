@@ -1,0 +1,29 @@
+name: E-CUP v11 export exact keeper
+on:
+  push:
+    branches: [ecup-v11-fastlex]
+    paths: ['.github/workflows/ecup-v11-export-keeper.yml']
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      HF_PATH: submissions/v10/candidates/0e86d6a951d4/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+      FILE: ecup-v11-faststack-graph-0.5950413763-submission.zip
+      SHA: 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a
+    steps:
+      - name: Download exact keeper and verify
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" "https://huggingface.co/datasets/$HF_REPO_ID/resolve/main/$HF_PATH?download=true" -o "$FILE"
+          echo "$SHA  $FILE" | sha256sum -c -
+          test "$(stat -c %s "$FILE")" = 480249754
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v11-faststack-keeper
+          path: ecup-v11-faststack-graph-0.5950413763-submission.zip
+          compression-level: 0
+          retention-days: 30
