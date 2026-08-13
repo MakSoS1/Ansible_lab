@@ -1,0 +1,45 @@
+name: E-CUP one-time purge GitHub Releases
+
+on:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - '.github/workflows/ecup-one-time-purge-releases.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  purge:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete every GitHub Release and verify zero remain
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          deleted=0
+          while true; do
+            ids="$(curl -fsSL "${headers[@]}" "${api}/releases?per_page=100" | jq -r '.[].id')"
+            if [ -z "$ids" ]; then
+              break
+            fi
+            while IFS= read -r id; do
+              [ -n "$id" ] || continue
+              echo "deleting_release_id=$id"
+              curl -fsS -X DELETE "${headers[@]}" "${api}/releases/${id}"
+              deleted=$((deleted + 1))
+            done <<< "$ids"
+          done
+          remaining="$(curl -fsSL "${headers[@]}" "${api}/releases?per_page=100" | jq 'length')"
+          echo "deleted_releases=$deleted"
+          echo "remaining_releases=$remaining"
+          test "$remaining" -eq 0
