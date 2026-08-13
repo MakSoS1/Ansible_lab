@@ -1,0 +1,79 @@
+{
+  "version": "v11",
+  "status": "completed-submission-ready",
+  "validation": {
+    "development_rows": 285210,
+    "sealed_gold_rows": 80444,
+    "development_folds": 5,
+    "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "metric": "unweighted mean of sklearn average_precision_score over exactly 20 official categories",
+    "sealed_gold_opened": false,
+    "gold_rows_scored": 0
+  },
+  "external_leaderboard_anchor": {
+    "version": "v7",
+    "score_observed_by_owner": 0.36,
+    "used_for_fitting": false,
+    "v11_target_region": 0.5,
+    "v11_measured_leaderboard_score": null
+  },
+  "selected_candidate": {
+    "name": "no_teacher+frozen_graph-faststack",
+    "strict_oof_macro_ap": 0.5931387077244183,
+    "fold_local_graph_oof_macro_ap": 0.5950413762943735,
+    "target_stress_graph_mean": 0.44961526826354,
+    "teacher_runtime": false,
+    "contrastive_runtime": true,
+    "selection_reason": "best measured quality/runtime tradeoff after fresh ablation audit"
+  },
+  "stronger_local_but_rejected_runtime_candidate": {
+    "name": "no_contrastive+frozen_graph",
+    "strict_oof_macro_ap": 0.5928725263319,
+    "fold_local_graph_oof_macro_ap": 0.5978943607354008,
+    "target_stress_graph_mean": 0.45353679907723865,
+    "teacher_runtime": true,
+    "rejection_reason": "pair-scaled teacher retained; materially higher platform timeout risk"
+  },
+  "keeper_package": {
+    "user_facing_name": "ecup-v11-faststack-graph-0.5950413763-submission.zip",
+    "bytes": 480249754,
+    "sha256": "0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a",
+    "payload_identity": "byte-identical to fixed v10 no-teacher keeper",
+    "teacher_checkpoint_packaged": false,
+    "root_metadata_json_present": true,
+    "metadata_image": "odsai/ecup26-matching-baseline:1.0",
+    "metadata_entry_point": "python -u run.py"
+  },
+  "fresh_runtime_gate": {
+    "run_id": 31712095181,
+    "job_id": 94487396402,
+    "device": "NVIDIA GeForce RTX 2060 SUPER",
+    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
+    "timer_scope": "ZIP extraction + Docker inference + output validation",
+    "public": {
+      "rows": 115000,
+      "extract_seconds": 2.039450411000871,
+      "wall_seconds": 161.9069420099986,
+      "acceptance_seconds": 180.0,
+      "unique_scores": 108578,
+      "passed": true
+    },
+    "private": {
+      "rows": 275000,
+      "extract_seconds": 2.791927307000151,
+      "wall_seconds": 379.24445236499014,
+      "acceptance_seconds": 420.0,
+      "unique_scores": 271964,
+      "passed": true
+    }
+  },
+  "verification": {
+    "run_id": 31712646355,
+    "job_id": 94489299438,
+    "tests_passed": 450,
+    "tests_skipped": 6,
+    "memory_policy": "OK"
+  },
+  "leaderboard_score": null,
+  "sealed_gold_evaluated": false
+}
