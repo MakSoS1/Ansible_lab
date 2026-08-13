@@ -2,13 +2,16 @@ name: E-CUP v9 full verification
 
 on:
   push:
-    branches: [ecup-v9-leaderboard-adapt]
+    branches: [ecup-v9-leaderboard-adapt, ecup-v9-compact]
     paths:
       - .github/workflows/ecup-v9-final-verification.yml
       - docs/agent-memory/EXPERIMENT_INDEX.md
       - docs/agent-memory/PROJECT_STATE.md
       - ecup_matching/experiments/CURRENT.json
       - ecup_matching/experiments/v9/**
+      - ecup_matching/submission/build_submission_v9_compact.py
+      - ecup_matching/tests/test_build_submission_v9_compact.py
+      - ecup_matching/requirements-ci.txt
   workflow_dispatch:
 
 permissions:
