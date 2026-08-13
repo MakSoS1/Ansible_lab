@@ -1,4 +1,4 @@
-"""Static import closure of the v6 submission entrypoint.
+"""Static import closure of offline submission entrypoints.
 
 The submission runs offline from an extracted archive with no repository
 checkout, so any first-party module that is imported but not packaged fails at
@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = "ecup_matching"
 ENTRYPOINTS: tuple[str, ...] = ("ecup_matching.submission.run_v6",)
 V7_ENTRYPOINTS: tuple[str, ...] = ("ecup_matching.submission.run_v7",)
+V10_ENTRYPOINTS: tuple[str, ...] = ("ecup_matching.submission.run_v10",)
 
 # Resolved at runtime from the pinned ``legacy_ecup`` tree that the verified v5
 # base archive ships at its own top level, not through ``ecup_matching``.
@@ -130,15 +131,25 @@ def missing_from(
     return [rel for rel in runtime_import_closure(entrypoints) if not (root / rel).is_file()]
 
 
+def entrypoints_for_iteration(iteration: str) -> tuple[str, ...]:
+    if iteration == "v7":
+        return V7_ENTRYPOINTS
+    if iteration == "v10":
+        return V10_ENTRYPOINTS
+    if iteration == "v6":
+        return ENTRYPOINTS
+    raise ValueError(f"unsupported iteration: {iteration}")
+
+
 if __name__ == "__main__":  # pragma: no cover - CI entrypoint
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--copy-into", type=Path)
     parser.add_argument("--verify", type=Path)
-    parser.add_argument("--iteration", choices=("v6", "v7"), default="v6")
+    parser.add_argument("--iteration", choices=("v6", "v7", "v10"), default="v6")
     args = parser.parse_args()
-    entrypoints = V7_ENTRYPOINTS if args.iteration == "v7" else ENTRYPOINTS
+    entrypoints = entrypoints_for_iteration(args.iteration)
     if args.copy_into is not None:
         for name in copy_runtime_closure(args.copy_into, entrypoints):
             print(f"packaged {name}")
