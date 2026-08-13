@@ -4,8 +4,8 @@ on:
   push:
     branches: [ecup-v11-fastlex]
     paths:
-      - 'ecup_matching/ml/v11_fastlex.py'
-      - 'ecup_matching/tests/test_v11_fastlex.py'
+      - 'ecup_matching/ml/v11_*.py'
+      - 'ecup_matching/tests/test_v11_*.py'
       - '.github/workflows/ecup-v10-faststack-tdd.yml'
   workflow_dispatch:
 
@@ -24,4 +24,4 @@ jobs:
           cache: pip
           cache-dependency-path: ecup_matching/requirements-ci.txt
       - run: python -m pip install -r ecup_matching/requirements-ci.txt
-      - run: python -m pytest ecup_matching/tests/test_v11_fastlex.py -q
+      - run: python -m pytest ecup_matching/tests/test_v11_fastlex.py ecup_matching/tests/test_v11_sparse_channels.py -q
