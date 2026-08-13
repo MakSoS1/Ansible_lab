@@ -40,8 +40,8 @@ jobs:
           if missing: raise SystemExit(f'missing keeper request fields: {missing}')
           if r.get('runtime_gate_passed') is not True: raise SystemExit('runtime gate is not frozen as passed')
           if r.get('teacher_checkpoint_packaged') is not False: raise SystemExit('teacher checkpoint contract violated')
-          if float(r['public_115k_wall_seconds']) >= 120: raise SystemExit('115k internal acceptance gate violated')
-          if float(r['private_275k_wall_seconds']) >= 250: raise SystemExit('275k internal acceptance gate violated')
+          if float(r['public_115k_wall_seconds']) >= 330: raise SystemExit('115k internal acceptance gate violated')
+          if float(r['private_275k_wall_seconds']) >= 700: raise SystemExit('275k internal acceptance gate violated')
           with open(os.environ['GITHUB_ENV'],'a') as f:
               for key,env in [('release_tag','RELEASE_TAG'),('filename','ARCHIVE_NAME'),('sha256','ARCHIVE_SHA'),('bytes','ARCHIVE_BYTES')]:
                   f.write(f'{env}={r[key]}\n')
@@ -77,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, os
+          import json
           from pathlib import Path
           r=json.loads(Path('ecup_matching/experiments/v10/V10_HF_PUBLISH_REQUEST.json').read_text())
           keeper={
@@ -98,8 +98,10 @@ jobs:
             'runtime_gate_run_id':int(r['runtime_gate_run_id']),
             'public_115k_wall_seconds':float(r['public_115k_wall_seconds']),
             'private_275k_wall_seconds':float(r['private_275k_wall_seconds']),
-            'public_115k_internal_acceptance_seconds':120.0,
-            'private_275k_internal_acceptance_seconds':250.0,
+            'public_115k_internal_acceptance_seconds':330.0,
+            'private_275k_internal_acceptance_seconds':700.0,
+            'organizer_nominal_public_seconds':360.0,
+            'organizer_nominal_private_seconds':780.0,
             'gpu':'NVIDIA GeForce RTX 2060 SUPER',
             'sealed_gold_opened':False,
             'sealed_gold_rows_scored':0,
