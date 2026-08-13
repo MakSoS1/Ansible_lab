@@ -1,0 +1,41 @@
+name: E-CUP v10 private HF teacher inventory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - ".github/workflows/ecup-v10-hf-inventory.yml"
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -q 'huggingface_hub>=1.0,<2'
+      - name: List likely fold-safe teacher artifacts
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          files=api.list_repo_files(repo_id=os.environ['HF_REPO_ID'], repo_type='dataset')
+          needles=('oof','validation','fold','gate40','v9','v5','teacher')
+          selected=[p for p in files if any(n in p.lower() for n in needles)]
+          print('TOTAL',len(files))
+          print('SELECTED',len(selected))
+          for p in selected:
+              print(p)
+          PY
