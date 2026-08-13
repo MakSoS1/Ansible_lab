@@ -87,10 +87,26 @@
     "published_archive_sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d"
   },
   "verification": {
-    "run_id": null,
-    "tests_passed": null,
-    "tests_skipped": null,
-    "memory_policy": "pending final canonical verification"
+    "run_id": 31693753760,
+    "tests_passed": 442,
+    "tests_skipped": 5,
+    "memory_policy": "OK"
+  },
+  "memora": {
+    "run_id": 31693792699,
+    "artifact_id": 9178506377,
+    "iteration": "v10",
+    "checkpoint_id": "20260813T110441Z-v10-ad4a597f",
+    "checkpoint_sha256": "7dc9ba4f22827122b26a45241960b545406926025214650f1e1cbe56ff826d12",
+    "repository_tests_passed": 442,
+    "repository_tests_skipped": 5,
+    "upstream_tests_passed": 51,
+    "memory_policy": "OK",
+    "local_db_integrity": "OK",
+    "local_db_secret_scan": "OK",
+    "private_hf_checkpoint_verified": true,
+    "runtime_upstream_commit": "bc64ff745a9b2c0e6245e0137654f041fba0c155",
+    "runtime_mcp_version": "1.29.0"
   },
   "sealed_gold_evaluated": false,
   "next_action": "Submit the exact v10 keeper ZIP from private HF to the competition platform. Record the measured v10 leaderboard score separately; do not rewrite strict OOF or target-stress history."
