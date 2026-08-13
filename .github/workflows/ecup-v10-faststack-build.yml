@@ -4,6 +4,7 @@ on:
   push:
     branches: [ecup-v10-distilled-fast]
     paths:
+      - '.github/workflows/ecup-v10-faststack-build.yml'
       - 'ecup_matching/submission/predict_v10_faststack.py'
       - 'ecup_matching/submission/v10_text_cache.py'
       - 'ecup_matching/submission/run_v10_faststack.py'
@@ -91,7 +92,6 @@ jobs:
           rm -f "$RUNNER_TEMP/pkg/model_v5_category_hgb_metadata.json" \
                 "$RUNNER_TEMP/pkg/model_v5_category_shrunk.json" \
                 "$RUNNER_TEMP/pkg/model_v5_hgb_meta.joblib" \
-                "$RUNNER_TEMP/pkg/metadata.json" \
                 "$RUNNER_TEMP/pkg/run.py"
           mkdir -p "$RUNNER_TEMP/pkg/ecup_matching/submission" "$RUNNER_TEMP/pkg/ecup_matching/ml"
           cp ecup_matching/submission/predict_v10_faststack.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
@@ -113,6 +113,16 @@ jobs:
           test -f "$RUNNER_TEMP/pkg/model_v5_contrastive/model.safetensors"
           test -f "$RUNNER_TEMP/pkg/model_v5_structured.joblib"
           test -f "$RUNNER_TEMP/pkg/ecup_matching/submission/v10_text_cache.py"
+          test -f "$RUNNER_TEMP/pkg/metadata.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          pkg=Path(os.environ['RUNNER_TEMP'])/'pkg'
+          metadata=json.loads((pkg/'metadata.json').read_text(encoding='utf-8'))
+          expected={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+          assert metadata == expected, (metadata, expected)
+          print('platform_metadata_contract_ok', metadata)
+          PY
       - name: Import and archive contract smoke
         shell: bash
         env:
@@ -144,14 +154,16 @@ jobs:
           with zipfile.ZipFile(z) as a:
             assert a.testzip() is None
             names=a.namelist(); assert len(names)==len(set(names))
-            required={'run.py','model_v5_structured.joblib','model_v5_contrastive/model.safetensors','model_v10_category_shrunk.json','model_v10_hgb_meta.joblib','NO_TEACHER_KEEPER.json','ecup_matching/submission/predict_v10_faststack.py','ecup_matching/submission/v10_text_cache.py','ecup_matching/ml/v8_graph.py'}
+            required={'metadata.json','run.py','model_v5_structured.joblib','model_v5_contrastive/model.safetensors','model_v10_category_shrunk.json','model_v10_hgb_meta.joblib','NO_TEACHER_KEEPER.json','ecup_matching/submission/predict_v10_faststack.py','ecup_matching/submission/v10_text_cache.py','ecup_matching/ml/v8_graph.py'}
             assert required <= set(names), sorted(required-set(names))
+            metadata=json.loads(a.read('metadata.json').decode('utf-8'))
+            assert metadata == {'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
             assert not any(n.startswith('model_v5_teacher/') for n in names)
             assert not any('__pycache__' in n or n.endswith('.pyc') for n in names)
             for info in a.infolist():
               p=PurePosixPath(info.filename); assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
               assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
-          report={'filename':z.name,'sha256':sha,'bytes':size,'strict_raw_oof_macro_ap':0.5931387077244183,'strict_graph_oof_macro_ap':0.5950413762943735,'target_stress_graph_mean':0.44961526826354,'candidate':'no_teacher','teacher_checkpoint_packaged':False,'cpu_gpu_overlap':True,'contrastive_only_text_cache':True,'sealed_gold_opened':False,'leaderboard_score':None,'leaderboard_score_claimed':False}
+          report={'filename':z.name,'sha256':sha,'bytes':size,'strict_raw_oof_macro_ap':0.5931387077244183,'strict_graph_oof_macro_ap':0.5950413762943735,'target_stress_graph_mean':0.44961526826354,'candidate':'no_teacher','teacher_checkpoint_packaged':False,'cpu_gpu_overlap':True,'contrastive_only_text_cache':True,'platform_metadata_contract':True,'sealed_gold_opened':False,'leaderboard_score':None,'leaderboard_score_claimed':False}
           Path('V10_BUILD_RESULT.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
           Path('SHA256SUMS.txt').write_text(f'{sha}  {z.name}\n')
           print(json.dumps(report,indent=2,sort_keys=True))
