@@ -1,6 +1,6 @@
 # E-CUP Matching — Experiment Index
 
-Canonical short registry. Detailed rationale and immutable evidence live under `ecup_matching/experiments/` and in the private artifacts.
+Canonical short registry. Detailed rationale and immutable evidence live under `ecup_matching/experiments/` and in private artifacts.
 
 ## Version summary
 
@@ -10,13 +10,14 @@ Canonical short registry. Detailed rationale and immutable evidence live under `
 | v2 | historical verified platform fallback | hidden `0.2583231811` | strongest early hidden anchor |
 | v3 | historical | hidden canonical `0.2481015189` | historical |
 | v4 | historical | hidden canonical `0.2531285195` | historical |
-| v5 | completed quality-first | strict 5-fold OOF `0.6018115534` | best retained strict local quality |
+| v5 | completed quality-first | strict 5-fold OOF `0.6018115534` | best retained strict local quality reference |
 | v6 | runtime reference | strict OOF `0.6006003615` | selective-teacher/runtime engineering family |
 | v7 | platform-scored historical candidate | owner reports leaderboard `~0.36`; strict 5-fold OOF was not completed | high fold-0 diagnostic did not transfer |
-| v8 | rejected runtime failure | exact gate70 outer wall `820.784 s` | old workflow runtime pass marker was invalid; platform timed out |
-| v9 | completed, awaiting platform score | graph strict OOF `0.5970059311`; target-stress `0.4515676235`; public/private runtime GREEN | exact gate40 keeper frozen |
+| v8 | rejected runtime failure | exact gate70 outer wall `820.784 s` | old workflow runtime pass marker invalid; platform timed out |
+| v9 old 1.25 GB | rejected-for-submission runtime risk | graph strict OOF `0.5970059311`; target-stress `0.4515676235`; platform `Container did not finish in time` | retain only as historical algorithm evidence |
+| **v9 compact** | **completed; published; awaiting platform score** | inherited graph OOF `0.5970059311`; Spearman vs old v9 `0.9999931452`; full E2E 115k/275k GREEN | **current exact keeper** |
 
-Local OOF, target-stress diagnostics and platform leaderboard scores are separate evidence axes. Sealed gold remains unopened.
+Local OOF, compact-equivalence, target-stress diagnostics and platform leaderboard scores are separate evidence axes. Sealed gold remains unopened.
 
 ## Immutable validation facts
 
@@ -31,105 +32,74 @@ Local OOF, target-stress diagnostics and platform leaderboard scores are separat
 - sealed gold opened: `false`;
 - sealed gold rows scored: `0`.
 
-## v5 retained quality reference
-
-| Step | Strict OOF Macro AP |
-|---|---:|
-| category specialists | `0.5476780661` |
-| weak specialists | `0.5514237339` |
-| sparse TF-IDF | `0.5651306839` |
-| explicit per-key attrs | `0.5683065131` |
-| supervised contrastive | `0.5662217063` |
-| four-signal equal-rank | `0.5870570848` |
-| + pair teacher | `0.5952697490` |
-| + typed explicit | `0.5975445721` |
-| category-shrunk simplex | `0.6009542418` |
-| fixed HGB stack | `0.6006290885` |
-| 50/50 category-shrunk + HGB rank fusion | `0.6018115534` |
-
-Verified v5 package SHA-256: `442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5`.
-
-## v7 platform anchor
-
-The owner reports v7 leaderboard `~0.36`. v7 also had fold-0 diagnostics around `0.70238`, but those were not honest five-fold strict OOF. v9 stores the leaderboard observation as external evidence with `used_for_fitting=false`.
-
-## v8 rejection and retained lessons
-
-v8 established retrieval/human positive-prevalence ratio `0.566880890615799` and a small consistently positive target-free graph rescore. It is rejected because exact gate70 evidence showed inner `run.py` around `731.22 s` but true outside-container wall `820.784 s`; the old workflow nevertheless declared a pass. The platform then timed out again.
-
-Binding consequence: outside-container wall is authoritative for timeout safety.
-
 ## v9 validation v2
 
-Source run `31639183423`.
-
-Frozen graph config: reciprocal-best `0`, reciprocal-top3 `0`, endpoint-rank `0.02`, ambiguity penalty `0.01`.
+Source run `31639183423`. Frozen graph config: reciprocal-best `0`, reciprocal-top3 `0`, endpoint-rank `0.02`, ambiguity penalty `0.01`.
 
 | Candidate | Teacher fraction | Strict OOF | Fold-local graph OOF | Graph delta | Target-stress mean |
 |---|---:|---:|---:|---:|---:|
 | gate25 | `0.2500227902` | `0.5947115591` | `0.5961903713` | `+0.0014788122` | `0.4507779206` |
 | gate40 | `0.4000245433` | `0.5955054274` | `0.5970059311` | `+0.0015005037` | `0.4515676235` |
 
-All five folds have positive graph delta for both candidates. Gate40 was selected before final runtime because it dominates gate25 on strict OOF, graph OOF and target stress. Gate25 was the predeclared fallback but was not activated.
+Gate40 was selected before final runtime. The compact package stores the same production model family differently; the OOF/stress values above were **not remeasured after storage compaction** and remain algorithm-selection evidence.
 
-Two zero/negligible-runtime meta experiments were rejected after held-out evaluation:
+## v9 compact package
 
-- fixed prevalence-weighted HGB: strict delta `-0.0000658754`, graph delta `-0.0000604780`, target-stress delta `-0.0000779612`;
-- cross-fitted category-specific category/HGB fusion: strict delta `-0.0005091711`, graph delta `-0.0002712630`, target-stress delta `-0.0002826191`.
+Build run `31675196422`:
 
-Neither is present in the keeper package.
+- `ecup-v9-compact-fp16storage-0.5970059311-submission.zip`;
+- `596,925,132` bytes;
+- SHA-256 `aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345`;
+- release tag `ecup-v9-compact-6ba133ce25f7`;
+- saved `654,734,829` bytes vs superseded 1.25 GB v9;
+- teacher/contrastive floating safetensors stored FP16; integer tensors preserved; structured/meta models unchanged.
 
-## v9 production and package evidence
+Private HF publication run `31677161875` verified both:
 
-Gate40 production refit run `31639692541`:
+- `submissions/v9/compact/ecup-v9-compact-fp16storage-0.5970059311-submission.zip`;
+- `submissions/v9/compact/V9_COMPACT_KEEPER.json`.
 
-- `285,210` development rows;
-- actual teacher fraction `~0.400025`;
-- elapsed `74.4 s`;
-- peak RAM `0.736 GiB`;
-- artifact `9158411928`;
-- private HF `experiments/v9/production/gate40/853a3925ac2b`;
-- sealed gold untouched.
+## Prediction-transfer evidence
 
-Exact keeper package from run `31640050373`:
+RTX equivalence run `31675338174`, 20,000 fixed pairs:
 
-- `ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip`;
-- `1,251,659,961` bytes;
-- SHA-256 `925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782`;
-- release tag `ecup-v9-gate40-final-eb2bcf18d53e`;
-- optimized complete runtime closure, FP16, cap8 and frozen graph metadata verified.
+- Spearman `0.9999931451822124`;
+- Pearson `0.9999931722281602`;
+- mean absolute delta `0.00016378653597360943`;
+- p99 `0.0019011406844106082`;
+- top-1% overlap `1.0`;
+- top-5% and top-10% overlap `0.999`;
+- output schema/order/finite-score checks pass.
 
-## v9 exact runtime evidence
+This is near-identical ranking evidence, not exact numeric equality and not a new strict OOF score.
 
-First corrected exact 275k run `MakSoS1/gpu-dispatch#31640233511` measured outside wall `637.82083456 s`, return code `0`, and produced all 275,000 rows. Its workflow red status came only from an artificial `[0,1]` probability-range validator. Diagnostic run `31641425359` proved exact schema, ID order, finite and nonconstant scores; no clipping was added because clipping would change ranking through ties.
+## End-to-end runtime evidence
 
-Final independent dual run `MakSoS1/gpu-dispatch#31641656589`, exact keeper SHA and organizer image:
+Final run `MakSoS1/gpu-dispatch#31675903851` on RTX 2060 SUPER and organizer image. Timer starts before safe ZIP extraction and ends after output validation.
 
-| Gate | Rows | Acceptance | Outer wall | Headroom | Result |
-|---|---:|---:|---:|---:|---|
-| public-size | `115,000` | `330 s` | `281.821475323 s` | `48.178524677 s` | PASS |
-| private-size | `275,000` | `700 s` | `634.766220868 s` | `65.233779132 s` | PASS |
+| Gate | Rows | Extraction | Inference | Total | Acceptance | Headroom | Result |
+|---|---:|---:|---:|---:|---:|---:|---|
+| public-size | `115,000` | `5.234229078 s` | `287.592726358 s` | `293.569452608 s` | `330 s` | `36.430547392 s` | PASS |
+| private-size | `275,000` | `5.714303003 s` | `640.236212537 s` | `646.947129008 s` | `700 s` | `53.052870992 s` | PASS |
 
-Both returned code `0`, preserved pair order and produced valid finite nonconstant scores. Evidence artifact `9159596648`.
+Evidence artifact `9171929877`. Both returned code `0` with exact pair order and valid finite nonconstant scores.
 
 ## Repository verification
 
-Final canonical verification run `31642803187` recorded **423 passed, 5 skipped**, with `scripts/memory_policy.py` **OK**. Subsequent documentation-only canonical-state changes are also covered by the hardened Memora workflow's full test and policy gate before checkpointing.
+Compact verification run `31676442849`: **425 passed, 5 skipped**, `scripts/memory_policy.py` **OK**.
 
 ## Binding lessons
 
-- infrastructure failures are not model-quality evidence;
+- infrastructure/runtime failures are not model-quality evidence;
 - production refit is not validation;
-- target-fitted layers require outer cross-fitting;
-- leaderboard, strict OOF and stress diagnostics remain separate;
+- leaderboard, strict OOF, target-stress and compact-equivalence remain separate axes;
 - sealed gold is never used to recover runtime/leaderboard gaps;
-- high single-fold diagnostics cannot substitute for strict OOF;
+- organizer-like runtime should include ZIP extraction/setup where feasible;
 - outside-container wall is authoritative for timeout safety;
-- continuous ranking scores do not need clipping to `[0,1]` unless the contract explicitly requires probabilities;
-- submission runtime closure is derived from imports, never hand-maintained;
-- mixed precision must be validated before retention;
+- mixed-precision/storage changes require direct prediction/ranking evidence;
+- continuous ranking scores need no clipping to `[0,1]` unless the contract requires probabilities;
 - do not weaken a gate to publish an archive.
 
 ## Next external measurement
 
-The technical v9 cycle is complete. Submit the exact keeper ZIP. After platform scoring, record the measured v9 leaderboard score separately without rewriting strict OOF or target-stress history.
+Submit the exact compact HF keeper. When the platform finishes, record the measured leaderboard score separately without rewriting strict OOF or target-stress history.
