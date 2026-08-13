@@ -1,6 +1,6 @@
 {
   "version": "v9",
-  "status": "completed-compact-submission-candidate",
+  "status": "completed-compact-published-awaiting-platform-score",
   "model": "v9-gate40-graph-compact-fp16-storage",
   "plan": "ecup_matching/experiments/v9/PLAN.md",
   "results": "ecup_matching/experiments/v9/RESULTS.md",
@@ -124,6 +124,14 @@
     },
     "both_passed": true
   },
+  "hf_publication": {
+    "repo": "Maksim123321/e-cup-2026-matching-private",
+    "run_id": 31677161875,
+    "archive_path": "submissions/v9/compact/ecup-v9-compact-fp16storage-0.5970059311-submission.zip",
+    "manifest_path": "submissions/v9/compact/V9_COMPACT_KEEPER.json",
+    "archive_and_manifest_relisted_after_upload": true,
+    "published_archive_sha256": "aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345"
+  },
   "verification": {
     "run_id": 31676442849,
     "tests_passed": 425,
@@ -135,5 +143,5 @@
     "cross-fitted category-specific category/HGB fusion: worse strict OOF, graph OOF and target-stress"
   ],
   "sealed_gold_evaluated": false,
-  "next_action": "Submit the exact compact keeper ZIP to the platform and record the measured v9 leaderboard score as a separate external evidence axis. Do not rewrite strict OOF or target-stress history."
+  "next_action": "Submit the exact compact keeper ZIP from private HF to the platform and record the measured v9 leaderboard score as a separate external evidence axis. Do not rewrite strict OOF or target-stress history."
 }
