@@ -1,0 +1,33 @@
+name: E-CUP v11 exact faststack transport
+on:
+  push:
+    branches: [ecup-v11-fastlex]
+    paths: ['.github/workflows/ecup-v11-faststack-transport.yml']
+permissions:
+  contents: write
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  HF_PATH: submissions/v10/candidates/0e86d6a951d4/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+  FILE: ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+  SHA: 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a
+  TAG: ecup-v11-faststack-benchmark
+jobs:
+  transport:
+    runs-on: ubuntu-24.04
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify exact candidate
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" "https://huggingface.co/datasets/$HF_REPO_ID/resolve/main/$HF_PATH?download=true" -o "$FILE"
+          echo "$SHA  $FILE" | sha256sum -c -
+          test "$(stat -c %s "$FILE")" = 480249754
+      - name: Publish temporary benchmark release
+        run: |
+          set -euo pipefail
+          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+          gh release create "$TAG" "$FILE" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "$TAG" --notes 'Exact v11 candidate transport for RTX runtime gate.'
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets,url
