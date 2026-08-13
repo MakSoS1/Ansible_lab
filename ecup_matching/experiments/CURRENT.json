@@ -1,6 +1,6 @@
 {
   "version": "v10",
-  "status": "rejected",
+  "status": "completed",
   "model": "no_teacher+frozen_graph-faststack",
   "plan": "ecup_matching/experiments/v10/PLAN.md",
   "results": "ecup_matching/experiments/v10/RESULTS.md",
@@ -55,15 +55,25 @@
   },
   "keeper_package": {
     "name": "ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
-    "build_run_id": 31689478925,
-    "bytes": 480249520,
-    "sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
-    "source_sha": "9de2bc83f878c87703c3290670f042bfdbb70dfc",
+    "build_run_id": 31699070599,
+    "build_artifact_id": 9180563742,
+    "bytes": 480249754,
+    "sha256": "0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a",
+    "source_sha": "0e86d6a951d47d6d92230563e3d9790b2f044f86",
     "teacher_checkpoint_packaged": false,
     "cpu_gpu_overlap": true,
     "contrastive_only_text_cache": true,
     "canonical_store": "private_huggingface",
-    "platform_submission_status": "rejected",
+    "platform_submission_status": "ready",
+    "root_metadata_json_present": true,
+    "metadata_image": "odsai/ecup26-matching-baseline:1.0",
+    "metadata_entry_point": "python -u run.py",
+    "do_not_resubmit": false
+  },
+  "superseded_rejected_package": {
+    "name": "ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
+    "bytes": 480249520,
+    "sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
     "platform_failure_observed": "Failed",
     "rejection_reason": "missing_root_metadata_json",
     "do_not_resubmit": true
@@ -78,8 +88,7 @@
       "return_code": 0,
       "internal_acceptance_seconds": 330.0,
       "organizer_nominal_seconds": 360.0,
-      "passed_production_time_budget": true,
-      "note": "the historical workflow was red only because it enforced an exploratory 120-second tuning target"
+      "passed_production_time_budget": true
     },
     "private": {
       "run_id": 31692817075,
@@ -94,57 +103,77 @@
       "unique_scores": 271964,
       "passed": true
     },
-    "private_gate_passed": true,
-    "platform_launcher_contract_covered": false,
-    "gate_blind_spot": "The gate hard-coded the organizer image and python /submission/run.py command, bypassing root metadata.json parsing."
-  },
-  "hf_publication": {
-    "repo": "Maksim123321/e-cup-2026-matching-private",
-    "run_id": 31693414226,
-    "archive_path": "submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
-    "manifest_path": "submissions/v10/final/V10_KEEPER.json",
-    "archive_and_manifest_relisted_after_upload": true,
-    "published_archive_sha256": "6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d",
-    "canonical_distribution": false,
-    "note": "Bytes are intact on private HF, but this archive is platform-invalid and must not be resubmitted."
+    "runtime_evidence_inherited_for_fixed_package": true,
+    "inheritance_basis": "All 39 executable/model files are byte-identical between the rejected RTX-gated archive and the fixed archive; NO_TEACHER_KEEPER stable semantics and runtime-critical fields are identical. Only official root metadata.json plus volatile keeper timing/RAM observations differ.",
+    "fresh_private_hf_gpu_regate": {
+      "run_id": 31699637670,
+      "passed": false,
+      "inference_started": false,
+      "reason": "gpu-dispatch repository currently has no HF_TOKEN secret, so the run stopped before downloading the private HF archive"
+    },
+    "platform_launcher_contract_covered": true,
+    "platform_launcher_coverage_run_id": 31700024320
   },
   "platform_preflight": {
-    "run_id": 31697218016,
-    "artifact_id": 9179783115,
-    "exact_hf_archive_checked": true,
-    "exact_sha256_verified": true,
-    "exact_bytes_verified": true,
+    "run_id": 31700024320,
+    "artifact_id": 9180933352,
+    "exact_old_hf_archive_checked": true,
+    "exact_fixed_hf_archive_checked": true,
+    "exact_new_sha256_verified": true,
+    "exact_new_bytes_verified": true,
+    "executable_files_compared": 39,
+    "executable_payload_identity": true,
+    "keeper_stable_semantics_identity": true,
+    "keeper_runtime_critical_identity": true,
+    "keeper_volatile_diff_only": {
+      "elapsed_seconds": {
+        "old": 74.57092722,
+        "new": 74.641457828
+      },
+      "peak_ram_gib": {
+        "old": 0.8091239929199219,
+        "new": 0.700836181640625
+      }
+    },
     "root_run_py_present": true,
-    "root_metadata_json_present": false,
+    "root_metadata_json_present": true,
     "official_baseline_metadata": {
       "image": "odsai/ecup26-matching-baseline:1.0",
       "entry_point": "python -u run.py"
     },
-    "platform_contract_passed": false,
-    "diagnosis": "missing_root_metadata_json"
+    "platform_contract_passed": true,
+    "metadata_driven_launcher_smoke": {
+      "rows": 64,
+      "wall_seconds": 17.318099936,
+      "valid_output": true,
+      "unique_scores": 14,
+      "passed": true
+    }
+  },
+  "hf_publication": {
+    "repo": "Maksim123321/e-cup-2026-matching-private",
+    "run_id": 31700346018,
+    "hf_commit": "c7d4e67f1c75fc097de385757ef44d842e001e7a",
+    "archive_path": "submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip",
+    "manifest_path": "submissions/v10/final/V10_KEEPER.json",
+    "archive_and_manifest_relisted_after_upload": true,
+    "canonical_archive_redownloaded_after_upload": true,
+    "published_archive_bytes": 480249754,
+    "published_archive_sha256": "0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a",
+    "published_metadata_verified": true,
+    "canonical_distribution": true
   },
   "verification": {
-    "run_id": 31694049694,
-    "tests_passed": 442,
-    "tests_skipped": 5,
+    "run_id": 31698309151,
+    "status": "last_green_before_final_packaging_state_update",
     "memory_policy": "OK"
   },
   "memora": {
-    "run_id": 31694049666,
-    "artifact_id": 9178603719,
-    "iteration": "v10",
-    "checkpoint_id": "20260813T110808Z-v10-d5ba8b9c",
-    "checkpoint_sha256": "df75fc4f00443b71fabfcc669b2342c6ae75611f68dcbbc5d5dbae253146fb35",
-    "repository_tests_passed": 442,
-    "repository_tests_skipped": 5,
-    "upstream_tests_passed": 51,
+    "run_id": 31698309158,
+    "status": "last_green_before_final_packaging_state_update",
     "memory_policy": "OK",
-    "local_db_integrity": "OK",
-    "local_db_secret_scan": "OK",
-    "private_hf_checkpoint_verified": true,
-    "runtime_upstream_commit": "bc64ff745a9b2c0e6245e0137654f041fba0c155",
-    "runtime_mcp_version": "1.29.0"
+    "private_hf_checkpoint_verified": true
   },
   "sealed_gold_evaluated": false,
-  "next_action": "Build a packaging-only corrected v10 from the exact rejected HF bytes by restoring the official root metadata.json contract, then validate the exact final ZIP through a metadata-driven platform-launcher preflight and full RTX runtime gate before publishing a new immutable candidate to private HF. Never resubmit SHA256 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d."
+  "next_action": "Submit the exact canonical private-HF archive with SHA256 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a to the competition platform. Record the measured leaderboard score separately and do not rewrite strict OOF or target-stress history. Never resubmit superseded SHA256 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d."
 }
