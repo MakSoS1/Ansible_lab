@@ -25,6 +25,19 @@ GRAPH_CONFIG = dict(
 )
 
 
+def official_pair_categories(items: pd.DataFrame, pairs: pd.DataFrame) -> np.ndarray:
+    category_by_id = items.set_index("id")["category"].astype(str)
+    left = pairs["id1"].map(category_by_id)
+    right = pairs["id2"].map(category_by_id)
+    if left.isna().any() or right.isna().any():
+        raise RuntimeError("failed to attach official pair categories")
+    left_values = left.astype(str).to_numpy()
+    right_values = right.astype(str).to_numpy()
+    if not np.array_equal(left_values, right_values):
+        raise RuntimeError("pair endpoints disagree on official category")
+    return left_values
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--matches", type=Path, required=True)
@@ -47,11 +60,13 @@ def main() -> None:
     target = dev["target"].to_numpy(np.int8)
     needed_ids = pd.unique(pd.concat([dev["id1"], dev["id2"]], ignore_index=True))
     items = select_items_by_ids(args.items, needed_ids, include_attributes=True)
+    official_categories = official_pair_categories(items, dev[["id1", "id2"]])
     t_load = time.perf_counter() - started
     print(f"[v11-oof] rows={len(dev):,} items={len(items):,} load={t_load:.3f}s", flush=True)
 
     t = time.perf_counter()
     features = build_fast_pair_features(items, dev[["id1", "id2"]])
+    features["category"] = official_categories
     fast_seconds = time.perf_counter() - t
     print(f"[v11-oof] fastlex={fast_seconds:.3f}s", flush=True)
 
@@ -65,7 +80,7 @@ def main() -> None:
     base = crossfit_hgb_scores(features, target, folds, min_local_rows=1200, local_blend=0.35)
     fit_seconds = time.perf_counter() - t
     work = dev[["id1", "id2", "target"]].copy()
-    work["category"] = features["category"].astype(str).to_numpy()
+    work["category"] = official_categories
     base_report = macro_ap_report(work, base, strict_official=True)
     base_ap = float(base_report["macro_average_precision"])
     print(f"[v11-oof] base_ap={base_ap:.12f} fit={fit_seconds:.3f}s", flush=True)
