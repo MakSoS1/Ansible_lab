@@ -1,0 +1,140 @@
+name: E-CUP v9 compact build and release
+
+on:
+  push:
+    branches: [ecup-v9-compact]
+    paths:
+      - ecup_matching/submission/build_submission_v9_compact.py
+      - ecup_matching/tests/test_build_submission_v9_compact.py
+      - .github/workflows/ecup-v9-compact-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SOURCE_NAME: ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip
+      SOURCE_URL: https://github.com/MakSoS1/Ansible_lab/releases/download/ecup-v9-gate40-final-eb2bcf18d53e/ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip
+      SOURCE_SHA: 925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782
+      SOURCE_BYTES: '1251659961'
+      FINAL_NAME: ecup-v9-compact-fp16storage-0.5970059311-submission.zip
+      MAX_BYTES: '734003200'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.11'}
+
+      - name: Install compact build dependencies
+        run: python -m pip install pytest numpy safetensors
+
+      - name: Re-run compact contract tests
+        run: python -m pytest -q ecup_matching/tests/test_build_submission_v9_compact.py
+
+      - name: Download exact immutable v9 keeper
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 20 --retry-all-errors "$SOURCE_URL" -o "$SOURCE_NAME"
+          test "$(stat -c '%s' "$SOURCE_NAME")" = "$SOURCE_BYTES"
+          echo "$SOURCE_SHA  $SOURCE_NAME" | sha256sum -c --strict
+
+      - name: Build compact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.submission.build_submission_v9_compact \
+            --source-zip "$SOURCE_NAME" \
+            --output-zip "$FINAL_NAME" \
+            --report-json BUILD_RESULT.json
+          size="$(stat -c '%s' "$FINAL_NAME")"
+          test "$size" -le "$MAX_BYTES"
+          sha256sum "$FINAL_NAME" | tee SHA256SUMS.txt
+          echo "FINAL_BYTES=$size" >> "$GITHUB_ENV"
+          echo "FINAL_SHA=$(sha256sum "$FINAL_NAME" | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Verify archive structure and compact metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          z=Path('ecup-v9-compact-fp16storage-0.5970059311-submission.zip')
+          with zipfile.ZipFile(z) as a:
+              bad=a.testzip()
+              assert bad is None, bad
+              names=a.namelist()
+              assert len(names)==len(set(names))
+              required={
+                  'run.py','model_v5_structured.joblib',
+                  'model_v5_teacher/model.safetensors',
+                  'model_v5_contrastive/model.safetensors',
+                  'model_v6_hgb_meta.joblib','model_v6_gate_metadata.json',
+                  'v9_metadata.json','v9_compact_metadata.json',
+                  'ecup_matching/submission/predict_v6.py',
+                  'ecup_matching/ml/v8_submission_graph.py',
+              }
+              assert required <= set(names), sorted(required-set(names))
+              assert not any('__pycache__' in n or n.endswith('.pyc') for n in names)
+              for info in a.infolist():
+                  p=PurePosixPath(info.filename)
+                  assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
+                  assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
+              meta=json.loads(a.read('v9_compact_metadata.json'))
+              assert meta['version']=='v9-compact-fp16-storage'
+              assert meta['source_archive_sha256']=='925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782'
+              assert meta['leaderboard_score'] is None and meta['leaderboard_score_claimed'] is False
+              assert meta['sealed_gold_opened'] is False and meta['gold_rows_scored']==0
+          print('compact_zip_verified')
+          PY
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Publish immutable prerelease candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA:0:12}"
+          tag="ecup-v9-compact-${short}"
+          printf 'RELEASE_TAG=%s\n' "$tag" >> "$GITHUB_ENV"
+          gh release create "$tag" \
+            "$FINAL_NAME" BUILD_RESULT.json SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "E-CUP v9 compact candidate ${short}" \
+            --notes "FP16 checkpoint-storage compact candidate built from exact v9 keeper. Validation evidence is inherited only; leaderboard score is not claimed. Must pass original-vs-compact equivalence and full end-to-end RTX gate before submission." \
+            --prerelease
+
+      - name: Write release locator
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result=json.loads(Path('BUILD_RESULT.json').read_text())
+          result.update({
+              'release_tag': os.environ['RELEASE_TAG'],
+              'release_asset': os.environ['FINAL_NAME'],
+              'release_asset_url': f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{os.environ['RELEASE_TAG']}/{os.environ['FINAL_NAME']}",
+          })
+          Path('FINAL_COMPACT_BUILD.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(result,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload compact build evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v9-compact-build-${{ github.run_id }}
+          path: |
+            BUILD_RESULT.json
+            FINAL_COMPACT_BUILD.json
+            SHA256SUMS.txt
+          retention-days: 14
