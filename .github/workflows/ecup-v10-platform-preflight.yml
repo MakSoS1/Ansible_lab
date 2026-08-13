@@ -1,4 +1,4 @@
-name: E-CUP v10 exact HF platform preflight
+name: E-CUP v10 fixed exact HF platform preflight
 
 on:
   push:
@@ -12,15 +12,19 @@ permissions:
 
 env:
   HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
-  HF_ARCHIVE_PATH: submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
-  EXPECTED_SHA256: 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d
-  EXPECTED_BYTES: '480249520'
+  OLD_ARCHIVE_PATH: submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+  OLD_SHA256: 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d
+  OLD_BYTES: '480249520'
+  NEW_ARCHIVE_PATH: submissions/v10/candidates/0e86d6a951d4/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+  NEW_SHA256: 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a
+  NEW_BYTES: '480249754'
   OFFICIAL_LIGHT_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matching-baseline-lightweight.zip
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
 
 jobs:
   preflight:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
@@ -30,31 +34,35 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.11'
-      - name: Download exact final keeper from private HF
+
+      - name: Download exact rejected and fixed archives from private HF
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q 'huggingface_hub>=1.0,<2'
+          python -m pip install -q 'huggingface_hub>=1.0,<2' 'pandas<3' 'pyarrow<24' 'numpy<3'
           mkdir -p "$RUNNER_TEMP/preflight"
           python - <<'PY'
           import os, shutil
           from huggingface_hub import hf_hub_download
-          src=hf_hub_download(
-              repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
-              filename=os.environ['HF_ARCHIVE_PATH'], token=os.environ['HF_TOKEN'])
-          dst=os.path.join(os.environ['RUNNER_TEMP'],'preflight','keeper.zip')
-          shutil.copyfile(src,dst)
-          print(dst)
+          root=os.path.join(os.environ['RUNNER_TEMP'],'preflight')
+          for env_name,out_name in [('OLD_ARCHIVE_PATH','old.zip'),('NEW_ARCHIVE_PATH','new.zip')]:
+              src=hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=os.environ[env_name],token=os.environ['HF_TOKEN'])
+              shutil.copyfile(src,os.path.join(root,out_name))
+              print(env_name,src)
           PY
-          test "$(stat -c '%s' "$RUNNER_TEMP/preflight/keeper.zip")" = "$EXPECTED_BYTES"
-          test "$(sha256sum "$RUNNER_TEMP/preflight/keeper.zip" | awk '{print $1}')" = "$EXPECTED_SHA256"
-      - name: Download official lightweight submission contract
+          test "$(stat -c '%s' "$RUNNER_TEMP/preflight/old.zip")" = "$OLD_BYTES"
+          test "$(sha256sum "$RUNNER_TEMP/preflight/old.zip" | awk '{print $1}')" = "$OLD_SHA256"
+          test "$(stat -c '%s' "$RUNNER_TEMP/preflight/new.zip")" = "$NEW_BYTES"
+          test "$(sha256sum "$RUNNER_TEMP/preflight/new.zip" | awk '{print $1}')" = "$NEW_SHA256"
+
+      - name: Download official lightweight platform contract
         shell: bash
         run: |
           set -euo pipefail
           curl -fL --retry 10 --retry-all-errors "$OFFICIAL_LIGHT_URL" -o "$RUNNER_TEMP/preflight/official.zip"
           test -s "$RUNNER_TEMP/preflight/official.zip"
-      - name: Compare exact archive root with official contract
+
+      - name: Prove fixed payload is byte-identical except metadata.json
         shell: bash
         run: |
           set -euo pipefail
@@ -62,53 +70,116 @@ jobs:
           import hashlib, json, os, stat, zipfile
           from pathlib import Path, PurePosixPath
           root=Path(os.environ['RUNNER_TEMP'])/'preflight'
-          keeper=root/'keeper.zip'; official=root/'official.zip'
+          old=root/'old.zip'; new=root/'new.zip'; official=root/'official.zip'
+
           def inspect(path):
+              hashes={}
               with zipfile.ZipFile(path) as z:
                   assert z.testzip() is None
-                  names=z.namelist()
-                  assert len(names)==len(set(names))
+                  names=z.namelist(); assert len(names)==len(set(names))
                   for info in z.infolist():
                       p=PurePosixPath(info.filename)
                       assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
                       assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
-                  return names
-          kn=inspect(keeper); on=inspect(official)
-          with zipfile.ZipFile(official) as z:
-              official_meta=json.loads(z.read('metadata.json'))
-          keeper_meta=None
-          if 'metadata.json' in kn:
-              with zipfile.ZipFile(keeper) as z:
-                  keeper_meta=json.loads(z.read('metadata.json'))
+                      if not info.is_dir(): hashes[info.filename]=hashlib.sha256(z.read(info.filename)).hexdigest()
+              return hashes
+
+          old_h=inspect(old); new_h=inspect(new); off_h=inspect(official)
           expected_meta={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
-          report={
-              'archive':'ecup-v10-no-teacher-graph-0.5950413763-submission.zip',
-              'bytes':keeper.stat().st_size,
-              'sha256':hashlib.sha256(keeper.read_bytes()).hexdigest(),
-              'root_run_py_present':'run.py' in kn,
-              'root_metadata_json_present':'metadata.json' in kn,
-              'keeper_metadata':keeper_meta,
-              'official_metadata':official_meta,
-              'expected_metadata':expected_meta,
-              'official_contract_matches_expected':official_meta==expected_meta,
-              'platform_contract_passed':keeper_meta==expected_meta and 'run.py' in kn,
-              'diagnosis':None,
-          }
-          if keeper_meta is None:
-              report['diagnosis']='missing_root_metadata_json'
-          elif keeper_meta != expected_meta:
-              report['diagnosis']='invalid_root_metadata_json'
-          elif 'run.py' not in kn:
-              report['diagnosis']='missing_root_run_py'
-          Path('V10_PLATFORM_PREFLIGHT.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
-          print('PREFLIGHT='+json.dumps(report,sort_keys=True))
-          # This is a diagnostic workflow. A proven mismatch is the expected finding,
-          # so keep the job green and expose it in the report rather than masking it as CI infra failure.
+          assert 'metadata.json' not in old_h
+          assert 'metadata.json' in new_h and 'run.py' in new_h
+          with zipfile.ZipFile(new) as z: new_meta=json.loads(z.read('metadata.json'))
+          with zipfile.ZipFile(official) as z: official_meta=json.loads(z.read('metadata.json'))
           assert official_meta==expected_meta
+          assert new_meta==expected_meta
+          old_payload=dict(old_h)
+          new_payload={k:v for k,v in new_h.items() if k!='metadata.json'}
+          assert old_payload==new_payload, {
+              'removed':sorted(set(old_payload)-set(new_payload)),
+              'added':sorted(set(new_payload)-set(old_payload)),
+              'changed':sorted(k for k in old_payload.keys()&new_payload.keys() if old_payload[k]!=new_payload[k])[:20],
+          }
+          report={
+              'old_sha256':hashlib.sha256(old.read_bytes()).hexdigest(),
+              'new_sha256':hashlib.sha256(new.read_bytes()).hexdigest(),
+              'old_bytes':old.stat().st_size,
+              'new_bytes':new.stat().st_size,
+              'payload_files_compared':len(old_payload),
+              'payload_identity_except_metadata':True,
+              'new_root_run_py_present':True,
+              'new_root_metadata_json_present':True,
+              'new_metadata':new_meta,
+              'official_metadata':official_meta,
+              'platform_contract_passed':True,
+              'sealed_gold_opened':False,
+          }
+          Path('V10_FIXED_PLATFORM_PREFLIGHT.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          print('PREFLIGHT='+json.dumps(report,sort_keys=True))
           PY
-      - name: Upload diagnostic evidence only
+
+      - name: Prepare metadata-driven 64-row smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/preflight/submission" "$RUNNER_TEMP/preflight/data" "$RUNNER_TEMP/preflight/out"
+          unzip -q "$RUNNER_TEMP/preflight/new.zip" -d "$RUNNER_TEMP/preflight/submission"
+          curl -fL --retry 10 --retry-all-errors "$BASE_URL/matches.parquet" -o "$RUNNER_TEMP/preflight/matches-full.parquet"
+          curl -fL --retry 10 --retry-all-errors "$BASE_URL/items_human.parquet" -o "$RUNNER_TEMP/preflight/items-full.parquet"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import pandas as pd
+          root=Path(os.environ['RUNNER_TEMP'])/'preflight'
+          metadata=json.loads((root/'submission'/'metadata.json').read_text())
+          assert metadata=={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+          pairs=pd.read_parquet(root/'matches-full.parquet',columns=['id1','id2']).head(64).copy().reset_index(drop=True)
+          ids=set(pairs.id1.tolist())|set(pairs.id2.tolist())
+          items=pd.read_parquet(root/'items-full.parquet',columns=['id','name','attributes','category'])
+          items=items[items.id.isin(ids)].copy(); assert ids <= set(items.id.tolist())
+          pairs.to_parquet(root/'data'/'matches.parquet',index=False)
+          items.to_parquet(root/'data'/'items.parquet',index=False)
+          with Path(os.environ['GITHUB_ENV']).open('a') as f:
+              f.write('PLATFORM_IMAGE='+metadata['image']+'\n')
+              f.write('PLATFORM_ENTRY='+metadata['entry_point']+'\n')
+          PY
+          chmod -R a+rX "$RUNNER_TEMP/preflight/submission" "$RUNNER_TEMP/preflight/data"
+          chmod 0777 "$RUNNER_TEMP/preflight/out"
+
+      - name: Exact organizer-image metadata-driven smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image inspect "$PLATFORM_IMAGE" >/dev/null 2>&1 || docker pull "$PLATFORM_IMAGE"
+          start="$(date +%s%N)"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --pids-limit 512 --memory 10g --memory-swap 10g --shm-size 2g --tmpfs /tmp:rw,nosuid,nodev,size=4g \
+            --env PYTHONDONTWRITEBYTECODE=1 --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1 \
+            --workdir /submission \
+            --volume "$RUNNER_TEMP/preflight/submission:/submission:ro" \
+            --volume "$RUNNER_TEMP/preflight/data:/data:ro" \
+            --volume "$RUNNER_TEMP/preflight/out:/out:rw" \
+            "$PLATFORM_IMAGE" bash -lc "$PLATFORM_ENTRY --output_path /out/submit.csv --items_path /data/items.parquet --matches_path /data/matches.parquet"
+          end="$(date +%s%N)"
+          python - "$RUNNER_TEMP/preflight" "$start" "$end" <<'PY'
+          import json,sys
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          root=Path(sys.argv[1]); seconds=(int(sys.argv[3])-int(sys.argv[2]))/1e9
+          expected=pd.read_parquet(root/'data'/'matches.parquet',columns=['id1','id2']).reset_index(drop=True)
+          actual=pd.read_csv(root/'out'/'submit.csv')
+          assert list(actual.columns)==['id1','id2','predict'] and len(actual)==len(expected)==64
+          assert actual[['id1','id2']].equals(expected[['id1','id2']])
+          score=actual.predict.to_numpy(float); assert np.isfinite(score).all() and len(np.unique(score))>1
+          result={'rows':64,'seconds':seconds,'valid':True,'unique_scores':int(len(np.unique(score))),'metadata_driven_launcher':True,'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+          Path('V10_METADATA_LAUNCHER_SMOKE.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+          print('SMOKE='+json.dumps(result,sort_keys=True))
+          PY
+
+      - name: Upload fixed preflight evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: v10-platform-preflight-${{ github.run_id }}
-          path: V10_PLATFORM_PREFLIGHT.json
+          name: v10-fixed-platform-preflight-${{ github.run_id }}
+          path: |
+            V10_FIXED_PLATFORM_PREFLIGHT.json
+            V10_METADATA_LAUNCHER_SMOKE.json
           retention-days: 14
