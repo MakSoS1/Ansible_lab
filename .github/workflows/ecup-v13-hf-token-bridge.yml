@@ -1,0 +1,69 @@
+name: E-CUP v13 one-time HF token RSA bridge
+
+on:
+  push:
+    branches: [ecup-v12-puregpu-main]
+    paths:
+      - 'ecup_matching/experiments/v13/V13_HF_BRIDGE_REQUEST.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  encrypt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Validate request and public key only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,hashlib,json
+          from pathlib import Path
+          p=json.load(open('ecup_matching/experiments/v13/V13_HF_BRIDGE_REQUEST.json'))
+          required={'version','algorithm','public_pem_b64','public_key_sha256','final_archive_sha256'}
+          assert set(p)==required and p['version']=='v13-hf-rsa-bridge-v1' and p['algorithm']=='RSA-2048-OAEP-SHA256'
+          assert len(p['public_key_sha256'])==64 and len(p['final_archive_sha256'])==64
+          data=base64.b64decode(p['public_pem_b64'],validate=True)
+          assert b'BEGIN PUBLIC KEY' in data and b'PRIVATE KEY' not in data
+          assert hashlib.sha256(data).hexdigest()==p['public_key_sha256']
+          Path('public.pem').write_bytes(data)
+          PY
+          openssl pkey -pubin -in public.pem -text -noout | grep -q 'Public-Key: (2048 bit)'
+          test -n "$HF_TOKEN"
+      - name: Encrypt HF secret with RSA-OAEP-SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$HF_TOKEN" > hf_token.tmp
+          openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in hf_token.tmp -out token.enc
+          test "$(stat -c %s token.enc)" = 256
+          mkdir -p v13-hf-bridge-ciphertext
+          base64 -w0 token.enc > v13-hf-bridge-ciphertext/ciphertext.b64
+          printf '\n' >> v13-hf-bridge-ciphertext/ciphertext.b64
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          req=json.load(open('ecup_matching/experiments/v13/V13_HF_BRIDGE_REQUEST.json'))
+          cipher=Path('token.enc').read_bytes()
+          Path('v13-hf-bridge-ciphertext/manifest.json').write_text(json.dumps({
+              'version':'v13-hf-rsa-ciphertext-v1','algorithm':'RSA-2048-OAEP-SHA256','ciphertext_bytes':len(cipher),
+              'ciphertext_sha256':hashlib.sha256(cipher).hexdigest(),'public_key_sha256':req['public_key_sha256'],
+              'final_archive_sha256':req['final_archive_sha256'],'plaintext_exported':False,
+          },indent=2,sort_keys=True)+'\n')
+          PY
+          rm -f hf_token.tmp token.enc public.pem
+          echo V13_HF_TOKEN_ENCRYPTED
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v13-hf-ciphertext-${{ github.run_id }}
+          path: v13-hf-bridge-ciphertext
+          retention-days: 1
+          if-no-files-found: error
