@@ -1,0 +1,32 @@
+name: E-CUP v12 encrypted HF token bridge
+
+on:
+  push:
+    branches: [ecup-v12-puregpu-main]
+    paths:
+      - .github/workflows/ecup-v12-hf-token-bridge.yml
+      - ecup_matching/experiments/v12/V12_HF_BRIDGE_REQUEST.json
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PUBLIC_PEM_B64: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUExVHk5dm53a2l6SGFBYkZSQlpJYgpNNjNxMUxhSzBLc0lsUCtWQmtadmtWc1JTL05DT1B6QTYxSHBxSFp2U1VwRy81OHJrejFvMWFFc0xMZ2VuSFpUCk1GY0VHWWIzbEY4ZXYwblR0dHB6ai9JS1owZzlYRE84T0gvT2V4MEY1K3QvZThvQzExVTNFQVc1bXpmRHlLcEYKcUR1SENLMmluREJvMFdqZGV6UDkvS1BhdnN4UUVBejN4R3BJTUNIaURMcGdWNkpXTFdIYzA4SEVrblJRa3MzMgoyYnlKenQzKzRlRUtUREpBQ3BjdCthKzZFTGNadUhUUFdKSnpGNlJkdCtRY1RXUmNjT0ttR3BXZ2xodzNZcGhrCkJZdHhiZDZFcTZQd2NoMUsvR2tNUG44eDJwTENrTDA4SWtJUTJRTUc4S25tdXpuSW9GRmQwVDhVc3VmTmY3S0MKbFFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==
+    steps:
+      - name: Encrypt HF token for the private RTX runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          printf '%s' "$PUBLIC_PEM_B64" | base64 -d > /tmp/public.pem
+          openssl pkey -pubin -in /tmp/public.pem -noout >/dev/null
+          printf '%s' "$HF_TOKEN" | openssl pkeyutl -encrypt -pubin -inkey /tmp/public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 > /tmp/token.enc
+          printf 'V12_HF_TOKEN_CIPHERTEXT_B64='
+          base64 -w0 /tmp/token.enc
+          printf '\n'
+          rm -f /tmp/token.enc /tmp/public.pem
