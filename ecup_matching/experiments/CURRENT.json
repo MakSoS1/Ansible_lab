@@ -1,6 +1,7 @@
 {
   "version": "v13",
-  "status": "public_lb_candidate_ready",
+  "status": "in_progress",
+  "stage": "public_lb_candidate_ready",
   "model": "v13b-groupweak-single-rubert-crossencoder",
   "plan": "ecup_matching/experiments/v13/PLAN.md",
   "results": "ecup_matching/experiments/v13/RESULTS.md",

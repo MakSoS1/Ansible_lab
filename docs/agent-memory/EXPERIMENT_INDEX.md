@@ -15,7 +15,7 @@ Updated: **2026-08-15**. This index separates historical local metrics, external
 | v9 | teacher/contrastive/structured/graph stack | OOF ~`0.597` | timeout family | too heavy |
 | v10/v11 | parallelized structured/TF-IDF/graph runtime | OOF ~`0.595`; v11 local 115k `161.9 s`, 275k `379.2 s` | platform timeout | architecture closed; benchmark fixture was unrepresentative |
 | v12 | v7 runtime + stronger weak supervision | fold0 `0.7059297810` | **`0.3798116204`** | current observed Public-LB best |
-| **v13 B** | preserve weak retrieval-anchor groups/topology | fold0 **`0.7086611386`**; frozen p05 **`0.5690974845`**, mean **`0.6869505675`** | **pending** | next Public-LB candidate; package verified |
+| v13 | B/groupweak: preserve weak retrieval-anchor groups/topology | fold0 **`0.7086611386`**; frozen p05 **`0.5690974845`**, mean **`0.6869505675`** | **pending** | next Public-LB candidate; package verified |
 
 ## High-value research results
 
