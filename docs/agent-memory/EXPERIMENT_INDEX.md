@@ -1,61 +1,88 @@
 # E-CUP Matching — Experiment Index
 
-Short registry; detailed evidence is in each experiment `RESULTS.md`.
+Canonical short registry. Detailed rationale and rejected branches live in `DECISIONS.md`, `ecup_matching/experiments/v*/RESULTS.md`, plans/specs and private OOF artifacts.
 
-| Version | Status | Core idea | Validation | Macro AP | Interpretation |
-|---|---|---|---|---:|---|
-| v1 | completed / historical | structured lexical HGB | old 73,131 item-disjoint holdout | local 0.4961654895; hidden 0.2345852292 | historical |
-| v2 | completed / **production anchor** | product-aware structured + weak curriculum | old holdout | local 0.5010008995; **hidden 0.2583231811** | immutable hidden fallback |
-| v3 | completed / historical | v2b + `rubert-tiny2` blend | old holdout | local 0.5254642646; hidden 0.2481015189 | historical |
-| v4 | completed / historical | cross-fitted regularized category routing | old holdout | local OOF 0.5276431099; hidden 0.2531285195 | historical |
-| v5 | **in progress** | immutable sealed CV + category/weak/sparse/neural/explicit-key ladder | **285,210 dev / 80,444 sealed gold / 5 folds / 0 overlap**, SHA `aae58f...eb55b` | **current dev best 0.5683065131 OOF** | continue honest ladder; gold unopened; v2 remains production fallback |
+## Version summary
 
-## v5 ladder — canonical snapshot
+| Version | Status | Validation | Best evidence | Interpretation |
+|---|---|---|---:|---|
+| v1 | historical | old item-disjoint holdout | hidden `0.2345852292` | historical |
+| v2 | historical verified platform fallback | old holdout | hidden `0.2583231811` | previous production anchor |
+| v3 | historical | old holdout | hidden canonical `0.2481015189` | historical |
+| v4 | historical | old holdout/cross-fit | hidden canonical `0.2531285195` | historical |
+| **v5** | **current verified production** | **285,210 dev / 80,444 sealed gold / 5 folds / zero item overlap**, SHA `aae58f...eb55b` | **strict OOF `0.6018115534`** | **submit verified category-shrunk + HGB package** |
 
-| Step | Status | OOF Macro AP | Delta | Fold evidence |
-|---|---|---:|---:|---|
-| human structured audit | BASE | 0.5315527709 | — | stable folds 0.52939–0.53751 |
-| category-specialist HGB | **KEEP** | 0.5476780661 | +0.0161252953 vs audit | all 5 improve |
-| direct attribute likelihood shift | **REJECT** | 0.5232189037 | -0.0083338672 vs audit | all 5 regress |
-| pretrained multilingual bi-encoder | insufficient standalone | 0.5318080650 | +0.0002552942 vs audit | tiny positive only |
-| fold-weighted category specialists | diagnostic OOF input only | 0.5498696732 | +0.0021916070 vs category | folds 2/3 regress |
-| leakage-safe weak category specialists | **KEEP** | 0.5514237339 | +0.0037456677 vs category | all 5 improve |
-| cross-fitted category+weighted+pretrained combo | **KEEP intermediate** | 0.5595125314 | +0.0118344653 vs category | all 5 improve |
-| strict train-only sparse TF-IDF specialists | **KEEP** | 0.5651306839 | +0.0174526177 vs category | all 5 improve |
-| supervised contrastive item-space stack | **KEEP** | 0.5662217063 | +0.0185436401 vs category | all 5 improve |
-| explicit per-key attribute specialists | **CURRENT DEV BEST / KEEP** | **0.5683065131** | **+0.0206284470 vs category** | **all 5 improve** |
-| first `ruBert-base` pair teacher | integration FAIL before metrics | — | — | stale helper API; not model REJECT |
-| field-aware weak ranking teacher | running | — | — | run `31486298300`; no metric claimed |
+The old v2 hidden result must no longer be reported as “current production best”: v5 now has a fully organizer-smoked submission artifact. Platform Public/Private score for v5 is still unknown until submission.
 
-## Current dev-best fold AP
+## v5 retained ladder
 
-Explicit attribute specialists:
+| Step | Status | Strict OOF Macro AP | Key interpretation |
+|---|---|---:|---|
+| human structured audit | BASE | `0.5315527709` | immutable v5 baseline |
+| category specialists | KEEP | `0.5476780661` | category structure matters |
+| weak specialists | KEEP | `0.5514237339` | leakage-safe weak labels help |
+| sparse TF-IDF specialists | KEEP signal | `0.5651306839` | rare SKU/model tokens are strong |
+| supervised contrastive | KEEP signal | `0.5662217063` | task supervision beats pretrained-only embeddings |
+| explicit per-key attributes | KEEP signal | `0.5683065131` | explicit key identity helps |
+| 4-signal equal-rank | KEEP intermediate | `0.5870570848` | heterogeneous signals combine strongly |
+| + pair teacher | KEEP signal | `0.5952697490` | teacher improves every fold |
+| + typed explicit = six-signal | VERIFIED FALLBACK | `0.5975445721` | first stable six-signal package |
+| outer-cross-fitted global simplex | KEEP intermediate | `0.5992720660` | honest learned weighting helps |
+| fully nested category logistic | reject standalone | `0.5988060044` | diversity only |
+| frozen global-meta + logistic equal-rank | KEEP intermediate | `0.5995921710` | label-free diversity fusion helps |
+| fixed category-shrunk simplex | VERIFIED FALLBACK | `0.6009542418` | first honest crossing of 0.60 |
+| fixed nonlinear HGB meta stack | complementary | `0.6006290885` | nonlinear category interactions help |
+| **frozen category-shrunk + HGB equal-rank** | **CURRENT BEST / VERIFIED SUBMISSION** | **`0.6018115534`** | **all 5 folds improve vs category-shrunk** |
 
-- fold 0 `0.5706378464826163`, delta `+0.02018836532922219`;
-- fold 1 `0.5682631251392076`, delta `+0.020426888153363132`;
-- fold 2 `0.5754313094571646`, delta `+0.021253276885868533`;
-- fold 3 `0.5633705139683869`, delta `+0.01798425865636577`;
-- fold 4 `0.5731185912680369`, delta `+0.02304479442014251`.
+## Current best fold AP
 
-Run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, metrics artifact `9100228112`, artifact digest `6417c94041c3443f03acf85227dceb94e65abea668d1b33bc6dc477f41f5a8fb`.
+Final frozen 50/50 rank fusion:
 
-## Important v5 evidence locations
+- fold 0: `0.600317954001536`;
+- fold 1: `0.6073630562662657`;
+- fold 2: `0.6122052716465903`;
+- fold 3: `0.5973819202189384`;
+- fold 4: `0.6105222735923926`.
 
-- validation audit: run `31479778679`, source `93e4396330997c41bfb309f449f1dcb79a5e4db6`, private `experiments/v5/validation/93e439633099`;
-- category base: private `experiments/v5/category/e885961388d1`;
-- weighted: run `31483353777`, artifact `9098324849`;
-- weak: run `31484641329`, source `319993a469cfa37770d66cfaf1b2203515dc9841`, artifact `9099098118`;
-- combo: run `31485240666`, source `7a1c1764a2bdda8f007b9bfea7d088911623e7f0`, artifact `9098856613`;
-- contrastive: run `31483288887`, source `b30821f613bf7051da51c42b64c7f79361d5619c`, private `experiments/v5/contrastive-sprint/b30821f613bf/aggregate`, artifact `9099713308`;
-- sparse: run `31485396599`, source `634ee66890c39ad97c0fa725135b1b00e56ac126`, artifact `9099873750`;
-- explicit attributes: run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, artifact `9100228112`;
-- first ruBERT teacher: run `31485127564`, integration failure before OOF.
+Research evidence:
 
-## Required interpretation
+- run `31525549063`;
+- artifact `9114783508`, digest `cca521d4c402fbd9d1aa9bce17902a1499d97b8fac97d681190c5365098ef8e0`;
+- private HF `experiments/v5/category-hgb-fusion/79de99434912`.
 
-- Production best = v2 by observed hidden leaderboard; development best = v5 explicit attributes by honest OOF. Never merge them.
-- Split SHA `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b` is immutable for v5 development.
-- Sealed gold: `80,444` rows, **unopened**, `0` scored; one-shot post-freeze gate only.
-- Target `0.60` must be reached honestly on dev OOF; remaining gap from current best is `0.0316934868759934`.
-- Infrastructure/integration failures are not model-quality rejections.
-- Private data, models, OOF predictions, learned weights, submission ZIPs and Memora DB stay out of public Git.
+## Current verified production submission
+
+- ZIP: `ecup-v5-category-hgb-fusion-0.6018115534-submission.zip`;
+- SHA-256: `442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5`;
+- private HF: `submissions/v5/0.6018115534`;
+- final workflow run `31526323018`, job `93895429369`;
+- Actions artifact `9116032675`, digest `fc6a72f63146df414c5ff4de4aef62a4568e516a12d465830492941348824a46`;
+- exact organizer-image offline smoke: passed;
+- HGB joblib organizer-image load: passed;
+- full tests after smoke: `230 passed, 1 warning`.
+
+Verified fallbacks:
+
+- category-shrunk `0.6009542418`: HF `submissions/v5/0.6009542418`, Actions `9114889240`;
+- six-signal `0.5975445721`: HF `submissions/v5/0.5975445721`, Actions `9112337546`.
+
+## Immutable validation facts
+
+- metric: unweighted mean of sklearn `average_precision_score` over exactly 20 official categories;
+- split SHA: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`;
+- development rows: `285,210`;
+- sealed gold rows: `80,444`;
+- item/component overlap across splits: `0`;
+- sealed gold opened: **false**;
+- sealed gold rows scored: **0**.
+
+`0.6018115534` is strict local OOF, not a Public/Private leaderboard claim. Record platform results as a separate evidence axis after the exact verified ZIP is submitted.
+
+## Important rejected/failure lessons
+
+- direct attribute likelihood shift regressed to `0.5232189037`; use explicit estimator features instead;
+- pretrained multilingual bi-encoder alone was near baseline (`0.5318080650`); supervised contrastive was the useful neural signal;
+- first ruBERT teacher attempt was an integration failure before metrics, not a model-quality rejection;
+- OOM/runner/API failures are infrastructure evidence, never metric evidence;
+- learned meta layers require outer cross-fitting; full-development production refit scores are not validation;
+- do not tune post-result fusion weights on the same OOF labels unless an additional nested layer is used.

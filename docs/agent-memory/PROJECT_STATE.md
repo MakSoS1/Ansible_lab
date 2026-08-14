@@ -4,145 +4,172 @@ Updated: 2026-08-11
 
 ## Objective
 
-Score strongly in ODS E-CUP 2026 Ozon product matching while keeping model selection honest for unseen products, final submission reproducible/offline-compatible, and competition artifacts private.
+Maximize E-CUP 2026 product-matching Macro AP while keeping validation honest for unseen products, submission runtime reproducible/offline-compatible, and competition artifacts private.
 
-## Fixed facts
+## Current state — read this first
 
-- 20 categories; official metric is unweighted category Macro Average Precision.
-- Human labels: `365,654`; soft LLM labels: `>11M`.
-- Hidden test contains unseen products; item leakage is unacceptable.
-- Organizer image: `odsai/ecup26-matching-baseline:1.0`.
-- Public Git contains code/source-backed docs only. Raw data, models, OOF predictions, Memora DBs and submission ZIPs stay private.
-- Private artifact/data repo: `Maksim123321/e-cup-2026-matching-private`.
+- **Current honest development best:** `0.6018115534135564` strict OOF Macro AP.
+- **Current verified production submission:** `v5-category-shrunk-hgb-equal-rank-fusion`.
+- Competition ZIP: `ecup-v5-category-hgb-fusion-0.6018115534-submission.zip`.
+- Competition ZIP SHA-256: `442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5`.
+- Private HF: `Maksim123321/e-cup-2026-matching-private`, prefix `submissions/v5/0.6018115534`.
+- Final production workflow: run `31526323018`, job `93895429369`.
+- Actions artifact: ID `9116032675`, digest `fc6a72f63146df414c5ff4de4aef62a4568e516a12d465830492941348824a46`.
+- Exact organizer-image offline smoke: **passed**.
+- HGB joblib load inside organizer image before packaging: **passed**.
+- Full repository tests after smoke: **230 passed, 1 warning**.
+- Sealed gold: **unopened**, `0` rows scored.
+- Public/private leaderboard score: **unknown until the exact verified ZIP is submitted to the platform**.
 
-## Never merge these two meanings of “best”
+Do not regress this state to the old `0.5683065` explicit-only best, the `0.5975446` six-signal fallback, or the historical v2 hidden anchor when answering “current best”. They remain history/fallbacks only.
 
-### Production / hidden anchor
+## Official metric and validation comparability
 
-Observed hidden Macro AP: v1 `0.23458522924335687`, v2 **`0.2583231811423486`**, v3 noncanonical `0.2583231811423486`, v3 canonical `0.24810151893254498`, v4 canonical `0.2531285194869718`.
+- Competition metric is `sklearn.metrics.average_precision_score` separately for each of the 20 official categories, then the unweighted mean.
+- Local strict metric uses the same formula and requires exactly the official 20 categories and both classes.
+- Human labels: `365,654` rows.
+- Connected item components: `345,654`.
+- Development rows: `285,210`.
+- Sealed-gold rows: `80,444`.
+- Five immutable development folds.
+- Cross-split item overlap: `0`.
+- Split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
 
-**v2 remains the immutable production/leaderboard fallback while v5 is developed.** Old v3/v4 local gains are historical and did not transfer monotonically to hidden evaluation.
+The component-disjoint split is deliberately stricter than random pair splitting: one item/component cannot occur in both meta-train and held fold. Local absolute AP may differ from Public/Private due to distribution shift, but deltas under this protocol are meaningful and the metric definition is organizer-compatible.
 
-### Current development best
+## Retained v5 ladder
 
-Current honest v5 development best is **explicit per-key attribute category specialists**:
+| Stage | Strict OOF Macro AP | Decision |
+|---|---:|---|
+| audit baseline | `0.5315527708634168` | baseline |
+| category specialists | `0.5476780661335778` | keep |
+| weak specialists | `0.5514237338676234` | keep |
+| sparse specialists | `0.5651306838802859` | keep signal |
+| supervised contrastive | `0.5662217062664492` | keep signal |
+| explicit attributes | `0.5683065131240066` | keep signal |
+| four-signal equal-rank | `0.5870570848443828` | keep intermediate |
+| + pair teacher | `0.5952697490140912` | keep signal |
+| + typed explicit, six-signal equal-rank | `0.5975445721449741` | verified fallback |
+| outer-cross-fitted global simplex | `0.5992720660193247` | keep intermediate |
+| nested category logistic | `0.5988060044248327` | reject standalone, retain diversity |
+| global-meta + logistic frozen 50/50 rank | `0.5995921709945611` | keep intermediate |
+| fixed category-shrunk simplex | `0.60095424180184` | verified fallback, first honest `>0.60` |
+| fixed HGB meta stack | `0.6006290884983169` | complementary source |
+| **category-shrunk + HGB frozen 50/50 rank** | **`0.6018115534135564`** | **current dev + production best** |
 
-- OOF Macro AP: **`0.5683065131240066`**;
-- audit baseline: `0.5315527708634168`;
-- delta vs audit: `+0.036753742260589806`;
-- category base: `0.5476780661335778`;
-- delta vs category base: **`+0.02062844699042876`**;
-- held-fold AP: `0.5706378464826163`, `0.5682631251392076`, `0.5754313094571646`, `0.5633705139683869`, `0.5731185912680369`;
-- all five folds improve;
-- run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`;
-- metrics artifact ID `9100228112`, artifact digest `6417c94041c3443f03acf85227dceb94e65abea668d1b33bc6dc477f41f5a8fb`.
+## Current best architecture
 
-This is development evidence only. No v5 submission is retained and sealed gold remains unopened.
+The six underlying production signals are unchanged from the verified `0.5975446` package:
 
-## Immutable v5 validation
+1. weak category specialist;
+2. sparse TF-IDF specialist;
+3. explicit per-key attribute specialist;
+4. supervised contrastive item score;
+5. pair-teacher score;
+6. typed/canonicalized explicit specialist.
 
-- human rows `365,654`;
-- item components `345,654`;
-- development rows `285,210`;
-- sealed gold rows **`80,444`**;
-- five development folds;
-- cross-split item overlap **`0`**;
-- split SHA-256 **`aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`**;
-- gold metric opened **false**; gold rows scored **0**.
+All six are converted target-free to percentile ranks.
 
-Rules:
+Two complementary meta components are fit on development OOF evidence:
 
-1. Never use sealed-gold labels for model choice/calibration/features/mining/blend weights.
-2. Do not use sealed-gold items for representation adaptation or hard/weak mining during development.
-3. Freeze candidate/config/preprocessing/artifact hashes before one-shot gold.
-4. `0.60` means honest OOF on this immutable development protocol, not a repeatedly tuned holdout.
+### A. Fixed category-shrunk simplex
 
-Audit: run `31479778679`, source `93e4396330997c41bfb309f449f1dcb79a5e4db6`, private `experiments/v5/validation/93e439633099`.
+- global nonnegative simplex optimized for Macro AP on outer-train;
+- local simplex per official category on outer-train;
+- fixed shrinkage prior `8000`, frozen before result:
+  `(support * local + 8000 * global) / (support + 8000)`;
+- strict OOF `0.60095424180184`.
 
-## Retained v5 development ladder
+### B. Fixed nonlinear HGB meta stack
 
-### Category specialists — KEEP
+- six percentile ranks + official category categorical feature;
+- `HistGradientBoostingClassifier` with parameters frozen before result;
+- no HPO on the observed OOF result;
+- strict OOF `0.6006290884983169`.
 
-OOF **`0.5476780661335778`**, delta `+0.016125295270161044` vs audit, all folds improve. Private `experiments/v5/category/e885961388d1`. This remains the structured base used for incremental comparisons.
+### Final retained fusion
 
-### Leakage-safe weak category specialists — KEEP
+Frozen before its result was inspected:
 
-OOF **`0.5514237338676234`**, delta `+0.00374566773404561` vs category base, all folds improve. Run `31484641329`, source `319993a469cfa37770d66cfaf1b2203515dc9841`, private `experiments/v5/weak-specialists/319993a469cf/aggregate`. Weak input `11,187,780`; presample `250,000`; final weak `150,000` per fold; held and gold items excluded.
+`0.5 * percentile_rank(category_shrunk_score) + 0.5 * percentile_rank(hgb_score)`
 
-### Cross-fitted category + weighted + pretrained combo — KEEP intermediate
+Strict OOF: **`0.6018115534135564`**.
 
-OOF **`0.559512531439709`**, delta `+0.011834465306131192` vs category base, all folds improve by about `+0.012`. Run `31485240666`, source `7a1c1764a2bdda8f007b9bfea7d088911623e7f0`, private `experiments/v5/combo/7a1c1764a2bd`. The meta layer is itself cross-fitted.
+It improved category-shrunk alone on **all five outer folds**:
 
-### Strict train-only sparse TF-IDF specialists — KEEP
+- fold 0: `0.600317954001536`;
+- fold 1: `0.6073630562662657`;
+- fold 2: `0.6122052716465903`;
+- fold 3: `0.5973819202189384`;
+- fold 4: `0.6105222735923926`.
 
-OOF **`0.5651306838802859`**, delta `+0.017452617746708032` vs category base, all folds improve. Run `31485396599`, source `634ee66890c39ad97c0fa725135b1b00e56ac126`, artifact `9099873750`. Vocabulary/IDF fit only on outer-train items; held items only `transform()`.
+Evidence run `31525549063`; metrics artifact `9114783508`; private HF `experiments/v5/category-hgb-fusion/79de99434912`.
 
-### Supervised contrastive item-space stack — KEEP
+## Why this OOF is honest
 
-OOF **`0.5662217062664492`**, delta `+0.018543640132871353` vs category base, raw semantic cosine `0.40597111640267125`, all folds improve. Run `31483288887`, source `b30821f613bf7051da51c42b64c7f79361d5619c`, private `experiments/v5/contrastive-sprint/b30821f613bf/aggregate`, artifact `9099713308`.
+- Every target-fitted meta component predicts an outer fold using parameters fit without labels from that fold.
+- Leakage tests explicitly mutate a held fold's labels and require its predictions/weights to remain unchanged.
+- The category-logistic branch selected regularization by inner OOF only inside outer-train.
+- Category-shrinkage prior `8000`, HGB hyperparameters, and final 50/50 fusion were frozen before inspecting their respective real OOF result.
+- Full-development production refits are explicitly marked **not validation**.
+- Sealed gold remains unopened; no gold item/label was used for feature learning, mining, meta fitting, or model choice.
 
-Initial physical batch 96 caused MPS OOM; successful run preserved effective batch 96 via microbatch 24 + accumulation 4. This was infrastructure failure, not model rejection.
+## Verified production package
 
-### Explicit per-key attribute specialists — CURRENT DEV BEST / KEEP
+The final package reuses the byte-verified six-signal production models and changes only the retained final meta fusion/artifacts.
 
-Explicit fold-trained key features let each category model see separate match/conflict/missing information for selected attributes rather than only aggregate agreement/conflict ratios.
+Final run `31526323018` verified:
 
-- OOF **`0.5683065131240066`**;
-- delta vs category base **`+0.02062844699042876`**;
-- folds: `0.5706378464826163`, `0.5682631251392076`, `0.5754313094571646`, `0.5633705139683869`, `0.5731185912680369`;
-- fold deltas: `+0.02018836532922219`, `+0.020426888153363132`, `+0.021253276885868533`, `+0.01798425865636577`, `+0.02304479442014251`;
-- all five folds improve;
-- run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, artifact `9100228112`.
+1. exact CI/organizer sklearn version compatibility (`1.9.0`);
+2. immutable fusion evidence `0.6018115534135564`;
+3. deterministic full-development category/HGB production refits;
+4. HGB joblib deserialization inside `odsai/ecup26-matching-baseline:1.0`;
+5. base fallback inner ZIP SHA before patching;
+6. final ZIP integrity and `<5GB` size;
+7. full `run.py` execution in organizer image with `--network none`, read-only filesystem, 64-pair smoke;
+8. output columns exactly `id1,id2,predict`, all finite, all 64 predictions nonconstant;
+9. full tests: `230 passed, 1 warning`;
+10. exact final ZIP upload to private HF;
+11. exact same final package retained as GitHub Actions artifact.
 
-This demonstrates that key identity (`size`, `memory`, `model`, etc.) contains useful information lost by aggregate attribute ratios.
+Final ZIP size: `1,144,877,898` bytes.
 
-## Rejected / diagnostic / failed branches
+## Verified fallbacks
 
-### Direct attribute likelihood shift — REJECT
+### Category-shrunk only — `0.6009542418`
 
-OOF `0.523218903672764`, delta `-0.008333867190652766` vs audit, every fold regressed. Do not rescue with a scalar tuned on the same folds; key-specific evidence should enter as estimator features instead.
+- ZIP: `ecup-v5-category-shrunk-0.6009542418-submission.zip`;
+- SHA-256: `3a5341c42346727793ab8877ee6bc8f07e3ac4f18f97c32a9d39d76b5e0609c1`;
+- HF: `submissions/v5/0.6009542418`;
+- Actions artifact `9114889240`;
+- organizer smoke passed; `225 passed, 1 warning`.
 
-### Fold-weighted category specialists — diagnostic OOF input only
+### Six-signal — `0.5975445721`
 
-OOF `0.5498696731704964`, delta `+0.0021916070369185636`; folds 2/3 regress slightly. Do not promote standalone; may only survive as already-OOF input to another cross-fitted layer.
+- ZIP: `ecup-v5-six-signal-0.5975445721-submission.zip`;
+- SHA-256: `ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e`;
+- HF: `submissions/v5/0.5975445721`;
+- Actions artifact `9112337546`;
+- organizer smoke passed.
 
-### Pretrained multilingual bi-encoder — insufficient standalone
+## Rejected/diagnostic branches worth remembering
 
-OOF `0.5318080650341337`, only `+0.0002552941707169021`; raw cosine `~0.3120`. Ready-made item embeddings alone are insufficient; supervised item-space produced the real neural gain.
+- Direct attribute likelihood score shift: `0.523218903672764`, reject. Explicit estimator features are useful; unconditional score shifts are not.
+- Pretrained bi-encoder alone: `0.5318080650341337`, insufficient. Supervised contrastive item-space is materially better.
+- First ruBERT teacher run failed integration before metrics due stale helper call; it was not evidence against the model family.
+- Nested category logistic `0.5988060044248327` is not standalone best but its diversity previously helped a frozen fusion.
+- Do not interpret infrastructure failures/OOM/API mismatches as model-quality evidence.
 
-### First `ruBert-base` pair teacher — INTEGRATION FAIL, not model REJECT
+## Memora policy
 
-Run `31485127564`, source `00cc48dca806752d92496fa79f703a9ce3bcce63`, failed before comparable OOF. Exact error: `build_reranker_examples() missing 1 required positional argument: 'attribute_importance'`. The runner used a stale helper call. Fix and integration-test the composed path before rerunning; never invent a teacher score.
+- Memora pin: `bc64ff745a9b2c0e6245e0137654f041fba0c155`.
+- Local SQLite/TF-IDF only; LLM/graph/auto-capture disabled.
+- Canonical sources include `PROJECT_STATE.md`, `EXPERIMENT_INDEX.md`, `DECISIONS.md`, `CURRENT.json`, plans/specs/results and `SAFE_METRICS.json`.
+- Checkpoint only from GREEN repository state.
+- Machine-readable `CURRENT.json` and `SAFE_METRICS.json` are mandatory memory sources so semantic retrieval cannot silently regress to an old narrative state.
 
-## Active branch at this snapshot
+## Next action
 
-- field-aware weak ranking teacher: run `31486298300`, source `411a5349fe731506757fdc1a3c8857a370225fb8` — **in progress**.
+**Submit exactly** `ecup-v5-category-hgb-fusion-0.6018115534-submission.zip` from private HF `submissions/v5/0.6018115534` to the E-CUP platform.
 
-No metric is claimed until the aggregate completes.
-
-## Debugging / implementation lessons
-
-- >11M weak rows: deterministic PyArrow streaming/bounded sampling only; never full-table pandas before Transformer load.
-- Physical MPS batch 96 can OOM; distinguish resource failure from model evidence and preserve effective batch with accumulation when appropriate.
-- TF-IDF tests verify unseen transform/symmetry/finite-bounded behavior, not a hand-written OOV ranking.
-- Read exact failing test before blaming the latest code; an apparent serializer failure was the next intentionally RED embedding test.
-- Weak rows must exclude held-fold and sealed-gold items.
-- Heavy workflow helper composition needs integration tests; first ruBERT teacher is the canonical failure example.
-- Direct attribute likelihood addition is harmful; explicit attribute features are beneficial. Do not conflate the two approaches.
-
-## Memora operational state and audit findings
-
-- Hardened Memora pin: `bc64ff745a9b2c0e6245e0137654f041fba0c155`; SQLite + TF-IDF local only; LLM/graph/auto-capture disabled.
-- Earlier v5 memory runs `31481012401` and `31482891498` failed before ingest because docs-triggering commits landed during intentionally RED TDD. In `31482891498`, collection failed on missing `v5_weighted_specialists`; later GREEN code did not retroactively checkpoint.
-- Do not weaken Memora test gates. Checkpoint only from GREEN state.
-- A memory audit found `scripts/memory_ingest.py` omitted machine-readable `experiments/CURRENT.json` and `v*/SAFE_METRICS.json`; a regression test now requires both as canonical sources.
-
-## Current action
-
-- production fallback: **v2**, hidden `0.2583231811423486`;
-- current honest dev best: **explicit attributes `0.5683065131240066`**;
-- target gap: `0.0316934868759934` to `0.60`;
-- sealed gold: `80,444`, unopened;
-- v5 submit: not retained.
-
-Continue only on the immutable split; do not open gold to guide the next experiment. A v5 submission can be promoted only after candidate/config/preprocessing freeze, one-shot sealed-gold evaluation and organizer runtime/package gates.
+After platform evaluation, record Public/Private score separately. Do not overwrite strict local OOF with leaderboard AP and do not claim local `0.6018115534` is the Public/Private score.

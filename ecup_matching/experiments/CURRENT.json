@@ -1,15 +1,10 @@
 {
   "version": "v5",
-  "status": "in_progress",
-  "model": "v5-leakage-safe-development-ladder",
+  "status": "production_verified",
+  "model": "v5-category-shrunk-hgb-equal-rank-fusion",
   "plan": "ecup_matching/experiments/v5/PLAN.md",
   "results": "ecup_matching/experiments/v5/RESULTS.md",
   "safe_metrics": "ecup_matching/experiments/v5/SAFE_METRICS.json",
-  "production_anchor": {
-    "version": "v2",
-    "hidden_macro_average_precision": 0.2583231811423486,
-    "reason": "best observed hidden leaderboard Macro AP among submitted v1-v4 candidates"
-  },
   "validation_protocol": {
     "human_rows": 365654,
     "development_rows": 285210,
@@ -18,57 +13,87 @@
     "cross_split_item_overlap": 0,
     "connected_components": 345654,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "metric": "unweighted mean of sklearn average_precision_score over exactly 20 official categories",
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
   "development_baseline_macro_average_precision": 0.5315527708634168,
   "development_best": {
-    "name": "v5-explicit-attribute-category-specialists",
-    "macro_average_precision": 0.5683065131240066,
-    "delta_vs_development_baseline": 0.036753742260589806,
-    "delta_vs_category_specialists": 0.02062844699042876,
+    "name": "v5-category-shrunk-hgb-equal-rank-fusion",
+    "macro_average_precision": 0.6018115534135564,
+    "delta_vs_six_signal": 0.004266981268582252,
+    "delta_vs_category_shrunk": 0.000857311611716427,
     "fold_macro_average_precision": [
-      0.5706378464826163,
-      0.5682631251392076,
-      0.5754313094571646,
-      0.5633705139683869,
-      0.5731185912680369
+      0.600317954001536,
+      0.6073630562662657,
+      0.6122052716465903,
+      0.5973819202189384,
+      0.6105222735923926
     ],
-    "all_folds_improved_vs_category_base": true,
-    "workflow_run_id": 31485990777,
-    "source_commit": "cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57",
-    "metrics_artifact_id": 9100228112,
+    "all_folds_improved_vs_category_shrunk": true,
+    "workflow_run_id": 31525549063,
+    "metrics_artifact_id": 9114783508,
+    "metrics_artifact_digest": "cca521d4c402fbd9d1aa9bce17902a1499d97b8fac97d681190c5365098ef8e0",
+    "private_hf_prefix": "experiments/v5/category-hgb-fusion/79de99434912",
+    "fully_outer_cross_fitted_components": true,
+    "post_result_weight_tuning": false,
     "retained_for_development": true,
-    "retained_as_submission": false
+    "retained_as_submission": true
   },
+  "production_best": {
+    "name": "v5-category-shrunk-hgb-equal-rank-fusion",
+    "strict_selection_oof_macro_average_precision": 0.6018115534135564,
+    "competition_zip": "ecup-v5-category-hgb-fusion-0.6018115534-submission.zip",
+    "competition_zip_sha256": "442769bd2c92d43730d7034fb91d8a83e596a8445ae3c3f887783890e90284d5",
+    "workflow_run_id": 31526323018,
+    "actions_artifact_id": 9116032675,
+    "actions_artifact_digest": "fc6a72f63146df414c5ff4de4aef62a4568e516a12d465830492941348824a46",
+    "private_hf_repo": "Maksim123321/e-cup-2026-matching-private",
+    "private_hf_prefix": "submissions/v5/0.6018115534",
+    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
+    "organizer_image_smoke_passed": true,
+    "hgb_joblib_loaded_in_organizer_image": true,
+    "full_test_suite": "230 passed, 1 warning",
+    "verified_at_commit": "695ea6ec38e47048007b58389d15c611899bdfe5"
+  },
+  "verified_submission_fallbacks": [
+    {
+      "name": "v5-category-shrunk-0.6009542418",
+      "strict_selection_oof_macro_average_precision": 0.60095424180184,
+      "competition_zip_sha256": "3a5341c42346727793ab8877ee6bc8f07e3ac4f18f97c32a9d39d76b5e0609c1",
+      "actions_artifact_id": 9114889240,
+      "private_hf_prefix": "submissions/v5/0.6009542418",
+      "organizer_image_smoke_passed": true
+    },
+    {
+      "name": "v5-six-signal-0.5975445721",
+      "strict_selection_oof_macro_average_precision": 0.5975445721449741,
+      "competition_zip_sha256": "ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e",
+      "actions_artifact_id": 9112337546,
+      "private_hf_prefix": "submissions/v5/0.5975445721",
+      "organizer_image_smoke_passed": true
+    }
+  ],
   "retained_development_steps": {
-    "category_specialists": {"macro_average_precision": 0.5476780661335778, "all_folds_improved": true},
-    "weak_category_specialists": {"macro_average_precision": 0.5514237338676234, "all_folds_improved": true},
-    "cross_fitted_combo": {"macro_average_precision": 0.559512531439709, "all_folds_improved": true},
-    "sparse_category_specialists": {"macro_average_precision": 0.5651306838802859, "all_folds_improved": true},
-    "supervised_contrastive": {"macro_average_precision": 0.5662217062664492, "all_folds_improved": true},
-    "explicit_attribute_specialists": {"macro_average_precision": 0.5683065131240066, "all_folds_improved": true}
-  },
-  "rejected_or_diagnostic_steps": {
-    "direct_attribute_likelihood": {"macro_average_precision": 0.523218903672764, "decision": "reject"},
-    "pretrained_biencoder": {"macro_average_precision": 0.5318080650341337, "decision": "insufficient standalone"},
-    "weighted_category_specialists": {"macro_average_precision": 0.5498696731704964, "decision": "diagnostic OOF input only"},
-    "rubert_teacher_outer_cv": {
-      "workflow_run_id": 31485127564,
-      "decision": "integration failure before metrics, not model rejection",
-      "failure": "build_reranker_examples called without required attribute_importance argument"
-    }
-  },
-  "active_experiments": {
-    "field_aware_weak_teacher": {
-      "workflow_run_id": 31486298300,
-      "source_commit": "411a5349fe731506757fdc1a3c8857a370225fb8",
-      "status": "in_progress"
-    }
+    "category_specialists": 0.5476780661335778,
+    "weak_category_specialists": 0.5514237338676234,
+    "sparse_category_specialists": 0.5651306838802859,
+    "explicit_attribute_specialists": 0.5683065131240066,
+    "supervised_contrastive": 0.5662217062664492,
+    "four_signal_equal_rank": 0.5870570848443828,
+    "five_signal_plus_teacher_equal_rank": 0.5952697490140912,
+    "six_signal_equal_rank": 0.5975445721449741,
+    "global_simplex_meta": 0.5992720660193247,
+    "global_meta_plus_category_logistic_equal_rank": 0.5995921709945611,
+    "category_shrunk_simplex": 0.60095424180184,
+    "fixed_hgb_meta_stack": 0.6006290884983169,
+    "category_shrunk_plus_hgb_equal_rank": 0.6018115534135564
   },
   "stretch_target_development_oof_macro_average_precision": 0.6,
-  "remaining_gap_to_target": 0.0316934868759934,
-  "v5_submission_retained": false,
+  "remaining_gap_to_target": 0.0,
+  "target_exceeded_by": 0.0018115534135563916,
+  "v5_submission_retained": true,
   "sealed_gold_evaluated": false,
-  "next_action": "Continue leakage-safe development on the immutable split. Do not open sealed gold. Preserve v2 as production fallback until a frozen v5 candidate passes one-shot gold plus runtime/package gates."
+  "leaderboard_result_known": false,
+  "next_action": "Upload exactly the verified competition ZIP from private HF submissions/v5/0.6018115534 to the E-CUP platform. Record Public/Private results separately from strict local OOF. Keep sealed gold unopened unless a separately frozen one-shot gate is explicitly chosen."
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import importlib
+import json
 from pathlib import Path
 import sys
 import time
@@ -18,7 +19,7 @@ from ecup_matching.ml.v5_explicit_attributes import (
     build_explicit_attribute_features,
     build_explicit_leaf_cache,
 )
-from ecup_matching.ml.v5_production import final_six_rank_fusion
+from ecup_matching.ml.v5_production import category_shrunk_hgb_equal_rank_fusion
 
 
 def _load_legacy_modules(root: Path):
@@ -196,6 +197,8 @@ def predict_to_csv_v5(
     structured_model_path: Path,
     contrastive_model_dir: Path,
     teacher_model_dir: Path,
+    category_model_path: Path,
+    hgb_model_path: Path,
     runtime_root: Path,
     output_path: Path,
 ) -> pd.DataFrame:
@@ -210,6 +213,8 @@ def predict_to_csv_v5(
         raise RuntimeError("failed to attach pair category")
 
     structured = joblib.load(structured_model_path)
+    category_model = json.loads(category_model_path.read_text(encoding="utf-8"))
+    hgb_bundle = joblib.load(hgb_model_path)
     legacy_features, legacy_features_v2, legacy_textnorm, legacy_item_text, legacy_sparse = _load_legacy_modules(runtime_root)
 
     print(f"[v5] pairs={len(pairs):,} items={len(items):,}", flush=True)
@@ -255,7 +260,7 @@ def predict_to_csv_v5(
         items, pairs, teacher_model_dir, legacy_textnorm, legacy_item_text
     )
 
-    final = final_six_rank_fusion(
+    final = category_shrunk_hgb_equal_rank_fusion(
         {
             "weak": weak,
             "sparse": sparse,
@@ -263,7 +268,10 @@ def predict_to_csv_v5(
             "contrastive": contrastive,
             "teacher": teacher,
             "typed_explicit": typed_explicit,
-        }
+        },
+        pairs["category"].astype(str).to_numpy(),
+        category_model,
+        hgb_bundle,
     )
     if len(final) != len(pairs) or not np.isfinite(final).all():
         raise RuntimeError("v5 final score is incomplete or non-finite")

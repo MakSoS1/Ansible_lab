@@ -30,6 +30,8 @@ def main() -> int:
         structured_model_path=root / "model_v5_structured.joblib",
         contrastive_model_dir=root / "model_v5_contrastive",
         teacher_model_dir=root / "model_v5_teacher",
+        category_model_path=root / "model_v5_category_shrunk.json",
+        hgb_model_path=root / "model_v5_hgb_meta.joblib",
         runtime_root=root,
         output_path=args.output_path,
     )
