@@ -249,3 +249,23 @@
 **Evidence:** the first production attempt inherited the recomputing manifest builder and died with `immutable split SHA mismatch: expected=aae58fb4..., actual=d1b31023...`. That guard is the reason a production model was not silently trained against a different fold assignment than every v7 diagnostic used.
 
 **Bonus:** loading the frozen manifest also removes a rebuild of pair features over all `365,654` human rows, which is several minutes of single-threaded work with no GPU activity.
+
+## D044 — Local fold-0 does not estimate the leaderboard; two anchors now bound the gap
+
+**Decision:** Treat local fold-0 Macro AP as a development signal only. Record every external leaderboard result as a separate evidence axis and never fit one to the other with a coefficient derived from two points.
+
+**Evidence:** v7 local `0.7023802626` scored `0.3655833314`; v12 local `0.7059297810` scored `0.3798116204`. Local moved `+0.0035495184`, the leaderboard moved `+0.0142282890`, a ratio of `4.0085`. The gap itself shrank by `0.0106787706`, which is consistent with more weak supervision helping the retrieval distribution more than the human one — but it is one observation.
+
+**Consequence:** a proxy gated on "rank v12 above v7" is a coin flip: two anchors `0.0142` apart, and iterating until it passes fits the proxy to a single bit. Spread anchors are required before any proxy can be trusted, and the cheapest informative one is v8 hard-negative, which is known worse locally by `0.0468` — thirteen times the v7→v12 delta.
+
+## D045 — The retrieval prevalence ratio is an assumption, not a measurement
+
+**Decision:** Measure per-category positive rates in the human and weak pools before any further target-stress work.
+
+**Evidence:** `0.566880890615799` is hard-coded as `RETRIEVAL_PREVALENCE_RATIO` in at least five workflows and every stress figure since inherits it. Average Precision has its floor at the positive rate and the official metric is an unweighted mean over 20 categories, so a single global ratio cannot be right even in principle.
+
+## D046 — Runtime fixtures must not be built from the head of the training table
+
+**Decision:** Runtime fixtures use the full item universe and multiple workload profiles, never `matches.head(N)` with `items_human.parquet`.
+
+**Evidence:** v11 measured `161.9s` at 115k and `379.2s` at 275k against `360s`/`780s` limits and still timed out on the platform. CPU cost in the serialization branch scales with unique items, not pairs, and training rows are grouped by connected component — so the fixture understated exactly the quantity that was over budget. Two further factors were never accounted for: a server core is typically much slower than a desktop core for pure-Python work, and v10/v11 never ran the 1000-row/60s Check at all, where cost is dominated by fixed model-load rather than pair count. Whether those timeouts happened at Check rather than at 115k is still untested and changes which runtime rule the evidence supports.
