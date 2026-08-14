@@ -1,61 +1,54 @@
 # E-CUP Matching — Experiment Index
 
-Short registry; detailed evidence is in each experiment `RESULTS.md`.
+Updated: **2026-08-15**. This index separates historical local metrics, external leaderboard evidence and runtime/package evidence.
 
-| Version | Status | Core idea | Validation | Macro AP | Interpretation |
-|---|---|---|---|---:|---|
-| v1 | completed / historical | structured lexical HGB | old 73,131 item-disjoint holdout | local 0.4961654895; hidden 0.2345852292 | historical |
-| v2 | completed / **production anchor** | product-aware structured + weak curriculum | old holdout | local 0.5010008995; **hidden 0.2583231811** | immutable hidden fallback |
-| v3 | completed / historical | v2b + `rubert-tiny2` blend | old holdout | local 0.5254642646; hidden 0.2481015189 | historical |
-| v4 | completed / historical | cross-fitted regularized category routing | old holdout | local OOF 0.5276431099; hidden 0.2531285195 | historical |
-| v5 | **in progress** | immutable sealed CV + category/weak/sparse/neural/explicit-key ladder | **285,210 dev / 80,444 sealed gold / 5 folds / 0 overlap**, SHA `aae58f...eb55b` | **current dev best 0.5683065131 OOF** | continue honest ladder; gold unopened; v2 remains production fallback |
+| Version | Core idea | Local / proxy evidence | Public / platform evidence | Decision |
+|---|---|---|---|---|
+| v1 | structured lexical HGB | local `0.4961654895` on old holdout | `0.2345852292` | historical |
+| v2 | structured + weak curriculum | local `0.5010008995` old holdout | `0.2583231811` | historical external anchor |
+| v3 | v2 + tiny ruBERT blend | local `0.5254642646` old holdout | canonical `0.2481015189` | historical |
+| v4 | cross-fitted category routing | OOF `0.5276431099` | `0.2531285195` | historical |
+| v5 | six-signal / category-shrunk / HGB development ladder | strict OOF reached `0.6018115534` | no reliable comparable LB retained here | proved extra signals useful but inference became heavy |
+| v6 | runtime engineering of structured stack | strict OOF `0.6006003615` | — | CPU bottleneck identified |
+| v7 | one ruBERT CrossEncoder | fold0 ~`0.70238` | **`0.3655833314`** | reliable fast external anchor |
+| v8 | hard-negative training | fold0 `0.6555648876`, worse than v7 | calibration submission not recorded | hard-negative policy rejected locally; useful spread anchor candidate |
+| v9 | teacher/contrastive/structured/graph stack | OOF ~`0.597` | timeout family | too heavy |
+| v10/v11 | parallelized structured/TF-IDF/graph runtime | OOF ~`0.595`; v11 local 115k `161.9 s`, 275k `379.2 s` | platform timeout | architecture closed; benchmark fixture was unrepresentative |
+| v12 | v7 runtime + stronger weak supervision | fold0 `0.7059297810` | **`0.3798116204`** | current observed Public-LB best |
+| **v13 B** | preserve weak retrieval-anchor groups/topology | fold0 **`0.7086611386`**; frozen p05 **`0.5690974845`**, mean **`0.6869505675`** | **pending** | next Public-LB candidate; package verified |
 
-## v5 ladder — canonical snapshot
+## High-value research results
 
-| Step | Status | OOF Macro AP | Delta | Fold evidence |
-|---|---|---:|---:|---|
-| human structured audit | BASE | 0.5315527709 | — | stable folds 0.52939–0.53751 |
-| category-specialist HGB | **KEEP** | 0.5476780661 | +0.0161252953 vs audit | all 5 improve |
-| direct attribute likelihood shift | **REJECT** | 0.5232189037 | -0.0083338672 vs audit | all 5 regress |
-| pretrained multilingual bi-encoder | insufficient standalone | 0.5318080650 | +0.0002552942 vs audit | tiny positive only |
-| fold-weighted category specialists | diagnostic OOF input only | 0.5498696732 | +0.0021916070 vs category | folds 2/3 regress |
-| leakage-safe weak category specialists | **KEEP** | 0.5514237339 | +0.0037456677 vs category | all 5 improve |
-| cross-fitted category+weighted+pretrained combo | **KEEP intermediate** | 0.5595125314 | +0.0118344653 vs category | all 5 improve |
-| strict train-only sparse TF-IDF specialists | **KEEP** | 0.5651306839 | +0.0174526177 vs category | all 5 improve |
-| supervised contrastive item-space stack | **KEEP** | 0.5662217063 | +0.0185436401 vs category | all 5 improve |
-| explicit per-key attribute specialists | **CURRENT DEV BEST / KEEP** | **0.5683065131** | **+0.0206284470 vs category** | **all 5 improve** |
-| first `ruBert-base` pair teacher | integration FAIL before metrics | — | — | stale helper API; not model REJECT |
-| field-aware weak ranking teacher | running | — | — | run `31486298300`; no metric claimed |
+### Validation and distribution
 
-## Current dev-best fold AP
+- Immutable split: `285,210` development + `80,444` sealed gold, 5 component-disjoint folds, SHA `aae58f...eb55b`, gold unopened.
+- v7 `0.70238 local -> 0.36558 LB`; v12 `0.70593 local -> 0.37981 LB`. Local score magnitude is not calibrated to LB.
+- Canonical distribution run `31788445849`: `365,654` human rows, `11,187,780` weak rows; human prevalence ~`0.25677`, weak target mean ~`0.24356`. Retrieval degree/hardness, not prevalence alone, is the primary shift.
+- Validation v3 uses human truth and deterministic category-local retrieval-hard stress; it is for candidate ordering, not LB prediction.
 
-Explicit attribute specialists:
+### Runtime
 
-- fold 0 `0.5706378464826163`, delta `+0.02018836532922219`;
-- fold 1 `0.5682631251392076`, delta `+0.020426888153363132`;
-- fold 2 `0.5754313094571646`, delta `+0.021253276885868533`;
-- fold 3 `0.5633705139683869`, delta `+0.01798425865636577`;
-- fold 4 `0.5731185912680369`, delta `+0.02304479442014251`.
+- Historical v11 exact full-item Check forensic run `31789001358`: `60.033 s` timeout before valid output.
+- v13 binding supplied-item Check: `26.1353473 s / 60 s`, valid output, return code 0.
+- v13 stricter full-item diagnostic: `60.0049954 s` timeout. Diagnostic-only under the current supplied-item subset contract.
+- Graph transform runtime is cheap (~`1.29 s / 275k`) but graph was rejected for quality instability.
 
-Run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, metrics artifact `9100228112`, artifact digest `6417c94041c3443f03acf85227dceb94e65abea668d1b33bc6dc477f41f5a8fb`.
+### v13 causal ladder
 
-## Important v5 evidence locations
+- **B / groupweak KEEP as next external candidate:** preserve complete retrieval-anchor groups/orientation; fold0 `0.7086611385531062`.
+- **C2 / equal-exposure ListNet REJECT:** more complex group ranking did not beat B on the frozen diagnostics.
+- Ambiguous all-soft/ListNet work remains research evidence, not a reason to alter the already packaged B candidate without a clean selection win.
 
-- validation audit: run `31479778679`, source `93e4396330997c41bfb309f449f1dcb79a5e4db6`, private `experiments/v5/validation/93e439633099`;
-- category base: private `experiments/v5/category/e885961388d1`;
-- weighted: run `31483353777`, artifact `9098324849`;
-- weak: run `31484641329`, source `319993a469cfa37770d66cfaf1b2203515dc9841`, artifact `9099098118`;
-- combo: run `31485240666`, source `7a1c1764a2bdda8f007b9bfea7d088911623e7f0`, artifact `9098856613`;
-- contrastive: run `31483288887`, source `b30821f613bf7051da51c42b64c7f79361d5619c`, private `experiments/v5/contrastive-sprint/b30821f613bf/aggregate`, artifact `9099713308`;
-- sparse: run `31485396599`, source `634ee66890c39ad97c0fa725135b1b00e56ac126`, artifact `9099873750`;
-- explicit attributes: run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, artifact `9100228112`;
-- first ruBERT teacher: run `31485127564`, integration failure before OOF.
+## Exact v13 artifact identity
 
-## Required interpretation
+- `ecup-v13-groupweak-v7runtime-submission.zip`
+- bytes `663760087`
+- SHA-256 `f4b7aad36c8d293a3939d9fb2ce7f91cff1bd8381c870015b2f16ea65a17badb`
+- production run `31828844182`
+- packaging run `31829720888`
+- HF roundtrip run `31843423348`
+- packaging source commit `4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1`
 
-- Production best = v2 by observed hidden leaderboard; development best = v5 explicit attributes by honest OOF. Never merge them.
-- Split SHA `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b` is immutable for v5 development.
-- Sealed gold: `80,444` rows, **unopened**, `0` scored; one-shot post-freeze gate only.
-- Target `0.60` must be reached honestly on dev OOF; remaining gap from current best is `0.0316934868759934`.
-- Infrastructure/integration failures are not model-quality rejections.
-- Private data, models, OOF predictions, learned weights, submission ZIPs and Memora DB stay out of public Git.
+## Interpretation rule
+
+The current best *observed external* result is v12. v13 B is only the next candidate until ODS returns a score. Never relabel fold0/p05/mean as Public LB, and never label a successful package/runtime test as a quality win.

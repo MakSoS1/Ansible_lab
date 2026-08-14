@@ -1,148 +1,102 @@
-# E-CUP Matching — Canonical Project State
+# E-CUP Matching — Project State
 
-Updated: 2026-08-11
+Updated: **2026-08-15**
 
-## Objective
+## Executive state
 
-Score strongly in ODS E-CUP 2026 Ozon product matching while keeping model selection honest for unseen products, final submission reproducible/offline-compatible, and competition artifacts private.
+The project has moved far beyond the v5 snapshot that previously lived in Memora. The current observed Public-LB best is **v12 = `0.3798116204`**. A new **v13 B / groupweak** candidate has been built, organizer-checked and byte-for-byte round-trip verified in private Hugging Face, but has **not yet received a platform score**. It is therefore the next external calibration candidate, not a claimed final keeper.
 
-## Fixed facts
+## External leaderboard anchors
 
-- 20 categories; official metric is unweighted category Macro Average Precision.
-- Human labels: `365,654`; soft LLM labels: `>11M`.
-- Hidden test contains unseen products; item leakage is unacceptable.
-- Organizer image: `odsai/ecup26-matching-baseline:1.0`.
-- Public Git contains code/source-backed docs only. Raw data, models, OOF predictions, Memora DBs and submission ZIPs stay private.
-- Private artifact/data repo: `Maksim123321/e-cup-2026-matching-private`.
+| Candidate | Comparable local diagnostic | Public LB | Meaning |
+|---|---:|---:|---|
+| v7 one-epoch | `0.7023802626` (`0.7023556010` original probe) | `0.3655833314` | first reliable single-CrossEncoder anchor |
+| v12 weak-0.35 | `0.7059297810` | **`0.3798116204`** | current observed Public-LB best |
+| v13 B groupweak | `0.7086611386` | pending | next candidate; retrieval topology preserved |
 
-## Never merge these two meanings of “best”
+Correct v7→v12 arithmetic: `ΔLB=+0.0142282890`; comparable local delta `+0.0035495184`; local→LB gap improved by `0.0106787706`. Local values are not calibrated estimates of leaderboard AP.
 
-### Production / hidden anchor
+## Immutable validation / safety state
 
-Observed hidden Macro AP: v1 `0.23458522924335687`, v2 **`0.2583231811423486`**, v3 noncanonical `0.2583231811423486`, v3 canonical `0.24810151893254498`, v4 canonical `0.2531285194869718`.
+- Human rows: `365,654`.
+- Development rows: `285,210`.
+- Sealed gold: `80,444` rows.
+- Five component-disjoint development folds; cross-split item overlap `0`.
+- Split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
+- Sealed gold remains unopened; `0` rows scored.
 
-**v2 remains the immutable production/leaderboard fallback while v5 is developed.** Old v3/v4 local gains are historical and did not transfer monotonically to hidden evaluation.
+Validation v3 is a retrieval-hard stress proxy using human binary truth, category-local prevalence/hardness/degree strata and deterministic stress replicas. It is a directional selector, not a leaderboard-score calculator.
 
-### Current development best
+## Distribution research
 
-Current honest v5 development best is **explicit per-key attribute category specialists**:
+Canonical measurement run `31788445849` measured all `365,654` human rows and `11,187,780` weak rows.
 
-- OOF Macro AP: **`0.5683065131240066`**;
-- audit baseline: `0.5315527708634168`;
-- delta vs audit: `+0.036753742260589806`;
-- category base: `0.5476780661335778`;
-- delta vs category base: **`+0.02062844699042876`**;
-- held-fold AP: `0.5706378464826163`, `0.5682631251392076`, `0.5754313094571646`, `0.5633705139683869`, `0.5731185912680369`;
-- all five folds improve;
-- run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`;
-- metrics artifact ID `9100228112`, artifact digest `6417c94041c3443f03acf85227dceb94e65abea668d1b33bc6dc477f41f5a8fb`.
+- human binary prevalence: `0.2567727961406138`;
+- weak soft-target mean: `0.2435606726464766`;
+- weak candidate lists have materially greater degree/hardness than human pairs.
 
-This is development evidence only. No v5 submission is retained and sealed gold remains unopened.
+Conclusion: the large local→LB gap is not explained by a simple class-balance shift. Candidate-list topology and confusable retrieval negatives are central.
 
-## Immutable v5 validation
+## Runtime research
 
-- human rows `365,654`;
-- item components `345,654`;
-- development rows `285,210`;
-- sealed gold rows **`80,444`**;
-- five development folds;
-- cross-split item overlap **`0`**;
-- split SHA-256 **`aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`**;
-- gold metric opened **false**; gold rows scored **0**.
+Historical v10/v11 local benchmarks were misleading because they used `pairs.head(N)`-style training fixtures and did not test the exact 1,000-row Check stage. A forensic rerun of historical v11 (`31789001358`) used the organizer image and full canonical 4.1-GB item universe; it timed out at `60.033 s` before valid output. Fixed startup/item scanning can therefore kill a submission even when large-N throughput appears acceptable.
 
-Rules:
+The retained runtime rule is one CrossEncoder / one tokenizer / one checkpoint. Structured/TF-IDF/large multi-model inference branches stay out of the submission.
 
-1. Never use sealed-gold labels for model choice/calibration/features/mining/blend weights.
-2. Do not use sealed-gold items for representation adaptation or hard/weak mining during development.
-3. Freeze candidate/config/preprocessing/artifact hashes before one-shot gold.
-4. `0.60` means honest OOF on this immutable development protocol, not a repeatedly tuned holdout.
+Graph post-processing was reopened independently and benchmarked at ~`1.29 s / 275k`, but was rejected on quality stability: no predeclared variant improved v7, v8 and v12 simultaneously.
 
-Audit: run `31479778679`, source `93e4396330997c41bfb309f449f1dcb79a5e4db6`, private `experiments/v5/validation/93e439633099`.
+## Why v13 B exists
 
-## Retained v5 development ladder
+Source audit found two problems in v7/v12 weak training:
 
-### Category specialists — KEEP
+1. weak rows were sampled individually, splitting original retrieval candidate lists;
+2. canonical pair ordering discarded original retrieval-anchor orientation.
 
-OOF **`0.5476780661335778`**, delta `+0.016125295270161044` vs audit, all folds improve. Private `experiments/v5/category/e885961388d1`. This remains the structured base used for incremental comparisons.
+In addition, v12 excluded ambiguous weak targets in `0.30–0.70` entirely. v13 decomposed fixes into causal ablations rather than changing everything at once.
 
-### Leakage-safe weak category specialists — KEEP
+**B / groupweak** changes only retrieval topology/orientation: preserve `_retrieval_anchor` and complete candidate groups while keeping v12 weak exposure/model/runtime. Probe run `31791177120` achieved fold0 **`0.7086611385531062`**, +`0.0027313575222363` over v12.
 
-OOF **`0.5514237338676234`**, delta `+0.00374566773404561` vs category base, all folds improve. Run `31484641329`, source `319993a469cfa37770d66cfaf1b2203515dc9841`, private `experiments/v5/weak-specialists/319993a469cf/aggregate`. Weak input `11,187,780`; presample `250,000`; final weak `150,000` per fold; held and gold items excluded.
+Frozen Validation-v3 for the packaged B candidate: p05 **`0.5690974845`**, mean **`0.6869505675`**. Controlled C2/ListNet equal-exposure testing was rejected because it regressed the relevant diagnostics. More complicated objectives therefore did not automatically replace B.
 
-### Cross-fitted category + weighted + pretrained combo — KEEP intermediate
+## v13 submission evidence
 
-OOF **`0.559512531439709`**, delta `+0.011834465306131192` vs category base, all folds improve by about `+0.012`. Run `31485240666`, source `7a1c1764a2bdda8f007b9bfea7d088911623e7f0`, private `experiments/v5/combo/7a1c1764a2bd`. The meta layer is itself cross-fitted.
+Candidate: `v13b-groupweak`.
 
-### Strict train-only sparse TF-IDF specialists — KEEP
+- production refit run: `31828844182`;
+- packaging run: `31829720888`;
+- private-HF upload/roundtrip run: `31843423348`;
+- exact public source used by packager: `4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1`;
+- filename: `ecup-v13-groupweak-v7runtime-submission.zip`;
+- size: `663,760,087` bytes;
+- SHA-256: `f4b7aad36c8d293a3939d9fb2ce7f91cff1bd8381c870015b2f16ea65a17badb`;
+- model SHA-256: `9ae7676f96818a367eb348f8648d503b56c86e3d0c62f665f030b4c29bcde0a5`;
+- private HF path: `submissions/v13/candidates/b-groupweak/ecup-v13-groupweak-v7runtime-submission.zip`;
+- runtime: single `ai-forever/ruBert-base` CrossEncoder, max length 256, inference batch 64;
+- sealed gold unopened.
 
-OOF **`0.5651306838802859`**, delta `+0.017452617746708032` vs category base, all folds improve. Run `31485396599`, source `634ee66890c39ad97c0fa725135b1b00e56ac126`, artifact `9099873750`. Vocabulary/IDF fit only on outer-train items; held items only `transform()`.
+### Binding Check
 
-### Supervised contrastive item-space stack — KEEP
+Organizer-shaped supplied-item subset, 1,000 pairs / 1,999 materialized items:
 
-OOF **`0.5662217062664492`**, delta `+0.018543640132871353` vs category base, raw semantic cosine `0.40597111640267125`, all folds improve. Run `31483288887`, source `b30821f613bf7051da51c42b64c7f79361d5619c`, private `experiments/v5/contrastive-sprint/b30821f613bf/aggregate`, artifact `9099713308`.
+- ZIP extraction `2.9943 s`;
+- wall `26.1353473 s / 60 s`;
+- return code `0`;
+- output valid;
+- `881` unique scores;
+- acceptance: **PASS**.
 
-Initial physical batch 96 caused MPS OOM; successful run preserved effective batch 96 via microbatch 24 + accumulation 4. This was infrastructure failure, not model rejection.
+### Stricter diagnostic
 
-### Explicit per-key attribute specialists — CURRENT DEV BEST / KEEP
+The same 1,000 pairs while scanning the entire canonical `items.parquet` (`4,104,103,411` bytes) reached `60.0049954 s` and timed out. The packaging workflow marks this explicitly diagnostic-only and still accepts the candidate because the closed-test contract supplies the relevant item subset. Do not erase this result; it is residual-risk evidence if the platform contract changes.
 
-Explicit fold-trained key features let each category model see separate match/conflict/missing information for selected attributes rather than only aggregate agreement/conflict ratios.
+### Transport integrity
 
-- OOF **`0.5683065131240066`**;
-- delta vs category base **`+0.02062844699042876`**;
-- folds: `0.5706378464826163`, `0.5682631251392076`, `0.5754313094571646`, `0.5633705139683869`, `0.5731185912680369`;
-- fold deltas: `+0.02018836532922219`, `+0.020426888153363132`, `+0.021253276885868533`, `+0.01798425865636577`, `+0.02304479442014251`;
-- all five folds improve;
-- run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, artifact `9100228112`.
+HF upload run `31843423348` uploaded the exact candidate, downloaded it back to `canonical.zip`, checked the exact byte count and SHA-256, and printed both `canonical.zip: OK` and `V13_CANDIDATE_HF_ROUNDTRIP_VERIFIED`. One-time credential material was deleted afterward.
 
-This demonstrates that key identity (`size`, `memory`, `model`, etc.) contains useful information lost by aggregate attribute ratios.
+## Source branch provenance
 
-## Rejected / diagnostic / failed branches
+The current `ecup-matching-2026` tip was later repurposed for the one-time HF bridge and diverges from the 176-commit research/source line that contains `4e83294…`. Do not silently treat current branch-tip source as the source of the already built candidate. Artifact/runtime reproduction is bound to the exact packaging source commit.
 
-### Direct attribute likelihood shift — REJECT
+## Immediate next action
 
-OOF `0.523218903672764`, delta `-0.008333867190652766` vs audit, every fold regressed. Do not rescue with a scalar tuned on the same folds; key-specific evidence should enter as estimator features instead.
-
-### Fold-weighted category specialists — diagnostic OOF input only
-
-OOF `0.5498696731704964`, delta `+0.0021916070369185636`; folds 2/3 regress slightly. Do not promote standalone; may only survive as already-OOF input to another cross-fitted layer.
-
-### Pretrained multilingual bi-encoder — insufficient standalone
-
-OOF `0.5318080650341337`, only `+0.0002552941707169021`; raw cosine `~0.3120`. Ready-made item embeddings alone are insufficient; supervised item-space produced the real neural gain.
-
-### First `ruBert-base` pair teacher — INTEGRATION FAIL, not model REJECT
-
-Run `31485127564`, source `00cc48dca806752d92496fa79f703a9ce3bcce63`, failed before comparable OOF. Exact error: `build_reranker_examples() missing 1 required positional argument: 'attribute_importance'`. The runner used a stale helper call. Fix and integration-test the composed path before rerunning; never invent a teacher score.
-
-## Active branch at this snapshot
-
-- field-aware weak ranking teacher: run `31486298300`, source `411a5349fe731506757fdc1a3c8857a370225fb8` — **in progress**.
-
-No metric is claimed until the aggregate completes.
-
-## Debugging / implementation lessons
-
-- >11M weak rows: deterministic PyArrow streaming/bounded sampling only; never full-table pandas before Transformer load.
-- Physical MPS batch 96 can OOM; distinguish resource failure from model evidence and preserve effective batch with accumulation when appropriate.
-- TF-IDF tests verify unseen transform/symmetry/finite-bounded behavior, not a hand-written OOV ranking.
-- Read exact failing test before blaming the latest code; an apparent serializer failure was the next intentionally RED embedding test.
-- Weak rows must exclude held-fold and sealed-gold items.
-- Heavy workflow helper composition needs integration tests; first ruBERT teacher is the canonical failure example.
-- Direct attribute likelihood addition is harmful; explicit attribute features are beneficial. Do not conflate the two approaches.
-
-## Memora operational state and audit findings
-
-- Hardened Memora pin: `bc64ff745a9b2c0e6245e0137654f041fba0c155`; SQLite + TF-IDF local only; LLM/graph/auto-capture disabled.
-- Earlier v5 memory runs `31481012401` and `31482891498` failed before ingest because docs-triggering commits landed during intentionally RED TDD. In `31482891498`, collection failed on missing `v5_weighted_specialists`; later GREEN code did not retroactively checkpoint.
-- Do not weaken Memora test gates. Checkpoint only from GREEN state.
-- A memory audit found `scripts/memory_ingest.py` omitted machine-readable `experiments/CURRENT.json` and `v*/SAFE_METRICS.json`; a regression test now requires both as canonical sources.
-
-## Current action
-
-- production fallback: **v2**, hidden `0.2583231811423486`;
-- current honest dev best: **explicit attributes `0.5683065131240066`**;
-- target gap: `0.0316934868759934` to `0.60`;
-- sealed gold: `80,444`, unopened;
-- v5 submit: not retained.
-
-Continue only on the immutable split; do not open gold to guide the next experiment. A v5 submission can be promoted only after candidate/config/preprocessing freeze, one-shot sealed-gold evaluation and organizer runtime/package gates.
+Upload **exactly** the SHA-verified v13 B ZIP to the competition platform and record its Public LB. Until that score exists, v12 (`0.3798116204`) remains the best observed external anchor and v13 B remains a candidate.

@@ -1,23 +1,10 @@
 # Official E-CUP Matching Submission Contract
 
-Verified on 2026-08-10 by downloading and inspecting the organizer archives on a GitHub Actions Ubuntu runner.
+Updated: 2026-08-15.
 
-## Required archive metadata
+## Archive metadata and CLI
 
-The lightweight baseline contains `metadata.json` at archive root:
-
-```json
-{
-    "image": "odsai/ecup26-matching-baseline:1.0",
-    "entry_point": "python -u run.py"
-}
-```
-
-Our submission keeps these values unchanged.
-
-## Entrypoint CLI
-
-Organizer `run.py` accepts exactly:
+The organizer baseline uses `metadata.json` and the offline image `odsai/ecup26-matching-baseline:1.0`. Entrypoint accepts:
 
 ```text
 --output_path <csv path>
@@ -25,46 +12,61 @@ Organizer `run.py` accepts exactly:
 --matches_path <matches parquet path>
 ```
 
-The new `run.py` must accept the same underscore-style argument names and write the result to `--output_path`.
-
-## Output schema
-
-CSV with exactly these columns in input-pair order:
+Output must preserve input pair order and contain exactly:
 
 ```text
 id1,id2,predict
 ```
 
-`predict` is a continuous numeric matching score/probability.
+`predict` is continuous numeric score/probability. Submission inference must not require network access.
 
-## Lightweight baseline archive tree
+## Current v13 runtime contract
 
-The official lightweight ZIP has files at archive root (plus ignorable macOS metadata):
+The retained v13 submission runtime is deliberately simple:
 
-```text
-metadata.json
-run.py
-src/utils.py
-baseline_logreg_l12.joblib
-```
+- one `ai-forever/ruBert-base` pair CrossEncoder;
+- one tokenizer;
+- one `.safetensors` checkpoint;
+- max sequence length `256`;
+- inference batch size `64` with existing safe fallback behavior;
+- no structured/TF-IDF/graph/second-model inference branch.
 
-The full example additionally contains a local transformer under `models/cross-encoder-ms-marco-MiniLM-L12-v2/` and wraps the solution files in a `matching-baseline-submit/` directory. For our generated archive we use the lightweight/root layout because it is the minimal organizer-provided valid template and avoids ambiguous extra directory nesting.
+The exact packaged candidate was built from source commit `4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1` in packaging run `31829720888`.
 
-## Runtime packages proven by official source
+## Check semantics — do not conflate two tests
 
-The organizer baseline imports and therefore the baseline image is expected to provide at least:
+### Binding organizer-shaped supplied-item Check
 
-- pandas
-- numpy
-- joblib
-- scikit-learn (`StandardScaler`, `LogisticRegression`, `MLPClassifier`, `Pipeline`)
-- torch
-- sentence-transformers
-- transformers
-- tqdm
+For the v13 B candidate, the Check fixture contains 1,000 pairs and only the 1,999 referenced items, matching the supplied-item subset contract used by the packaging gate.
 
-No assumption is made that CatBoost, LightGBM or RapidFuzz are installed. First submission v1 therefore uses a scikit-learn model and standard-library text similarity code only. Later submissions may bundle additional compatible runtime artifacts after explicit container verification.
+Evidence:
 
-## Performance reference
+- ZIP extraction `2.9942763 s`;
+- total wall `26.1353473 s / 60 s`;
+- return code `0`;
+- output valid;
+- 1,000 rows in order;
+- 881 unique prediction values;
+- `accepted=true`.
 
-The organizer full baseline performs pairwise transformer inference with max sequence length 256 and batch size 512. Our v1 performs only CPU structured/string feature extraction plus a compact sklearn classifier, giving substantial runtime headroom. Neural reranking can therefore be added later only where it improves the quality/runtime Pareto frontier.
+This is the binding runtime acceptance used to mark the candidate ready for private-HF publication.
+
+### Conservative full-item diagnostic
+
+A separate diagnostic exposes the complete canonical `items.parquet` (`4,104,103,411` bytes) to the same 1,000-pair workload. It timed out at `60.0049954 s` and produced no valid output.
+
+The workflow explicitly marks this `full_item_stress_is_diagnostic_only=true` and describes it as stricter than the closed-test subset contract. Keep this result as residual-risk evidence if organizer semantics ever change; do not report it as the binding Check result.
+
+## Artifact identity
+
+Current next Public-LB candidate:
+
+- `ecup-v13-groupweak-v7runtime-submission.zip`;
+- `663760087` bytes;
+- SHA-256 `f4b7aad36c8d293a3939d9fb2ce7f91cff1bd8381c870015b2f16ea65a17badb`.
+
+Private-HF upload run `31843423348` downloaded the exact candidate back and revalidated size and SHA (`canonical.zip: OK`). Therefore upload/storage corruption has been explicitly checked.
+
+## Runtime lesson from v11
+
+Historical v11 had no exact Check gate and used unrepresentative `pairs.head(N)` training fixtures. Forensic run `31789001358` showed that a full-item Check can hit `60.033 s` before valid output. Startup/item-scan cost is therefore a first-class failure mode. Future inference additions are rejected by default unless they independently clear the Check contract with substantial headroom.

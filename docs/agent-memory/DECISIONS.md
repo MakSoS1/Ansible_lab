@@ -1,133 +1,86 @@
 # E-CUP Matching — Durable Decisions
 
-## D001 — Item-disjoint validation is the primary offline gate
+This file is a compact durable decision log. Detailed historical evidence remains in iteration RESULTS files and Git history.
 
-**Decision:** Human validation groups connected components of product IDs so no item ID appears in both train and validation.
+## D001–D027 — Foundational rules retained
 
-## D002 — Optimize official category Macro AP
+- Primary validation is item/component-disjoint; official metric is unweighted Macro AP across 20 categories.
+- Competition data/models/OOF/submission ZIPs and Memora DB stay private; public Git contains source and aggregate evidence only.
+- Hardened Memora is local SQLite/TF-IDF with pinned upstream commit; private HF is persistence.
+- Public source never executes directly on the home RTX runner; GPU execution goes through private `gpu-dispatch`.
+- Infrastructure failures are not model-quality failures.
+- v5 immutable split is `285,210` dev + `80,444` sealed gold, 5 folds, zero item overlap, SHA `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
+- Sealed gold remains one-shot and unopened during development.
+- Weak, sparse, supervised-contrastive and explicit per-key signals all produced real leakage-safe local gains; direct unconditional attribute-likelihood shifts were rejected.
+- Target-fitted meta layers must be genuinely outer-cross-fitted.
+- Memora checkpoints are created only from GREEN repository state, and `CURRENT.json` plus every `SAFE_METRICS.json` are first-class memory sources.
 
-**Decision:** Report AP per category and their unweighted mean. Threshold accuracy/F1 is diagnostic only.
+## D028 — v5 six-signal evidence is useful but runtime cost matters
 
-## D003 — v1 uses organizer-proven sklearn HGB
+The six-signal stack reached strict OOF `0.5975445721`; later category-shrunk/meta variants crossed `0.60`, including category-shrunk + HGB equal-rank fusion `0.6018115534`. These experiments prove additional structured/sparse/neural signals contain information, but they do not justify paying their full cost at submission inference.
 
-**Decision:** First anchor uses dependencies known to exist in the organizer image.
+## D029 — Runtime optimization must preserve prediction semantics
 
-## D004 — Long-term architecture is a noise-aware hybrid cascade
+Parallelization/cache changes are acceptable only with feature/prediction equivalence evidence. Large-N workload measurements, not tiny smoke tests, are required for runtime claims.
 
-**Decision:** Combine deterministic normalization, structured lexical/attribute features, weak-label curriculum/hard negatives and compact neural signals while keeping runtime explicit.
+## D030 — v10/v11 runtime architecture is closed
 
-## D005 — Competition artifacts remain private
+The structured/TF-IDF/multi-model branch remained CPU/startup sensitive and ultimately timed out on platform. The historical local fixture used training `pairs.head(N)`-style data and never exercised an exact Check-sized stage, so its apparent headroom was not reliable.
 
-**Decision:** Raw parquet, models, submit ZIPs, OOF predictions and Memora DB never enter public Git. Durable binary artifacts use private HF `Maksim123321/e-cup-2026-matching-private`.
+## D031 — Exact Check-stage startup cost is a first-class gate
 
-## D006 — Memora is local-only; HF is persistence
+Forensic run `31789001358` used historical v11 with organizer image and full 4.1-GB item universe. It reached `60.033 s` without a valid output. Heavy item scans/deserialization can therefore fail before per-pair throughput matters.
 
-**Decision:** Pin Memora to `bc64ff745a9b2c0e6245e0137654f041fba0c155`, use local SQLite/TF-IDF only, and checkpoint through repository-controlled HF scripts.
+## D032 — One CrossEncoder is the default submission architecture
 
-## D007 — Agents recover from repository state, not hidden chat memory
+Starting from v7, keep one tokenizer + one compact ruBERT pair CrossEncoder + one checkpoint. Structured/contrastive/LLM/teacher complexity should be moved offline into training/distillation unless an added inference branch independently clears conservative runtime gates.
 
-**Decision:** Root `AGENTS.md` is mandatory. Every retained experiment updates PLAN/RESULTS/index/state and Memora.
+## D033 — External leaderboard evidence overrides local-score storytelling
 
-## D008 — v2 exploits weak labels before increasing inference complexity
+Authoritative anchors: v7 Public LB `0.3655833314`, v12 Public LB `0.3798116204`. `ΔLB=+0.0142282890`; comparable local fold0 delta `+0.0035495184`. Local fold0/OOF magnitude is not a leaderboard estimate.
 
-**Decision:** Test filtered/confidence-weighted LLM labels and hard negatives on the fast structured anchor before Transformer inference.
+## D034 — Validation v3 is directional, retrieval-hard and human-truth-only
 
-## D009 — Keep weak confidence curriculum; reject static hard-negative reweighting
+Use component-disjoint human truth, category-local prevalence/hardness/degree strata and deterministic stress replicas. LLM extreme pseudo-labels may be diagnostics but are not validation truth. Do not fit a linear local→LB calibration from two anchors.
 
-**Decision:** v2 retains `v2b-weak-curriculum` (`0.5010008995`) and rejects v2c static hard-negative reweighting (`0.4957263069`).
+## D035 — Prevalence alone does not explain the local→LB gap
 
-## D010 — Do not fabricate neural evidence when infrastructure fails
+Canonical distribution run `31788445849` measured `365,654` human and `11,187,780` weak rows. Human prevalence `0.2567727961` and weak soft-target mean `0.2435606726` are too similar to explain the gap. Weak candidate degree/hardness is materially different and becomes a primary validation/training axis.
 
-**Decision:** Implemented neural paths remain unretained until a real accelerator run produces comparable metrics.
+## D036 — Graph post-processing is rejected on quality, not runtime
 
-## D011 — Runtime optimizations must be feature-equivalent
+Predeclared target-free graph variants were backtested on aligned v7/v8/v12 fold0 predictions. Best variant changed AP by v7 `-0.00018495`, v8 `+0.00010880`, v12 `-0.00014803`. Runtime (~`1.29 s / 275k`) is safe, but quality stability is absent. Do not tune graph weights post hoc to v12.
 
-**Decision:** Optimize preprocessing/inference only with regression evidence that retained semantics are unchanged.
+## D037 — Preserve retrieval-anchor topology before changing the loss
 
-## D012 — Public source executes only through private isolated GPU dispatch
+Source audit found v7/v12 weak sampling split candidate groups and canonical pair ordering destroyed the original retrieval-anchor orientation. v13 B therefore changes only data topology/orientation while preserving model, weak exposure and runtime.
 
-**Decision:** Home RTX runner belongs only to private `MakSoS1/gpu-dispatch`, never directly to public `Ansible_lab`.
+## D038 — Groupweak B is locally positive but is not yet a leaderboard keeper
 
-## D013 — Historical v4 retains cross-fitted category routing
+Run `31791177120`: fold0 `0.7086611385531062` versus v12 `0.7059297810308699`, delta `+0.0027313575222363`. This is sufficient to package B as the next external candidate, not sufficient to claim Public-LB improvement.
 
-**Decision:** v4 historical OOF `0.5276431099433088`; canonical SHA `b29e4d9fb066810e22838eddf04887aba845b0141d503f5716db714000e35849`. Later hidden evidence supersedes it as production-selection evidence.
+## D039 — More sophisticated ranking loss must earn its place
 
-## D014 — Hidden evidence makes v2 the production anchor during v5
+Controlled equal-exposure C2/ListNet regressed the relevant diagnostics and was rejected. Complexity is not retained by default. Ambiguous all-soft/listwise experiments remain separate causal ablations.
 
-**Decision:** Until v5 passes sealed evaluation, v2 is production/leaderboard fallback.
+## D040 — Runtime acceptance distinguishes binding subset Check from full-item stress
 
-**Evidence:** hidden AP: v1 `0.23458522924335687`, v2 `0.2583231811423486`, v3 noncanonical `0.2583231811423486`, v3 canonical `0.24810151893254498`, v4 canonical `0.2531285194869718`.
+For v13 B, the binding organizer-shaped supplied-item Check (1,000 rows, 1,999 materialized items) passed in `26.135347286995966 s`, with valid output and return code 0. A deliberately stricter diagnostic that scans the entire `4,104,103,411`-byte item universe timed out at `60.004995396971935 s`.
 
-**Consequence:** Production best and development best are separate concepts.
+The first result is the binding candidate acceptance under the current closed-test subset contract; the second remains an explicit residual-risk diagnostic. Never quote one as the other.
 
-## D015 — v5 uses one immutable five-fold development split plus sealed gold
+## D041 — Artifact identity is cryptographic
 
-**Decision:** Freeze `285,210` dev rows, `80,444` sealed-gold rows, 5 folds, zero overlap, SHA `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
+The exact v13 B candidate is `ecup-v13-groupweak-v7runtime-submission.zip`, `663760087` bytes, SHA-256 `f4b7aad36c8d293a3939d9fb2ce7f91cff1bd8381c870015b2f16ea65a17badb`. Friendly version names are insufficient for submission provenance.
 
-**Rules:** No gold labels/items during development; freeze candidate/config/preprocessing before one-shot gold.
+## D042 — Private-HF publication requires download-back verification
 
-## D016 — Category-specific HGB is the retained v5 structured base
+HF run `31843423348` uploaded the candidate, downloaded the exact path back, checked bytes and SHA, and produced `canonical.zip: OK` plus `V13_CANDIDATE_HF_ROUNDTRIP_VERIFIED`. GitHub Releases are not part of the final artifact path.
 
-**Evidence:** audit `0.5315527708634168`; category specialists `0.5476780661335778`, +`0.016125295270161044`, all folds improve.
+## D043 — v13 B remains a candidate until platform evidence exists
 
-## D017 — Reject direct attribute likelihood score shifts
+`strict_five_fold_confirmed=false` and `strict_final_keeper_claimed=false` are deliberate. v12 `0.3798116204` remains the best observed Public-LB anchor until the exact v13 B archive receives a platform score.
 
-**Evidence:** OOF `0.523218903672764`, -`0.008333867190652766`, all folds regress.
+## D044 — Package reproduction is bound to exact source provenance
 
-**Consequence:** Key-specific attribute knowledge should enter as estimator features, not unconditional score shifts.
-
-## D018 — Pretrained item embeddings alone are insufficient
-
-**Evidence:** stack `0.5318080650341337`, only +`0.0002552941707169021`; raw cosine ~`0.3120`.
-
-## D019 — Leakage-safe weak category specialists are retained
-
-**Evidence:** OOF `0.5514237338676234`, +`0.00374566773404561` vs category base, all folds improve; held/gold items excluded. Run `31484641329`.
-
-## D020 — Cross-fitted stacking may use weak standalone signals only with honest OOF gain
-
-**Evidence:** category+weighted+pretrained combo `0.559512531439709`, +`0.011834465306131192`, all folds improve.
-
-## D021 — Memora checkpoints are created only from GREEN repository state
-
-**Decision:** Full tests and memory policy remain hard gates before ingest/checkpoint.
-
-**Incident:** runs `31481012401` and `31482891498` failed before ingest because memory-triggering commits landed during intentionally RED TDD; later GREEN code did not retroactively checkpoint.
-
-## D022 — Infrastructure failures are not model-quality failures
-
-**Examples:** contrastive physical batch 96 MPS OOM; historical RTX exit 137. Diagnose/fix before interpreting model quality.
-
-## D023 — Supervised contrastive item-space is retained
-
-**Evidence:** OOF `0.5662217062664492`, +`0.018543640132871353` vs category base; all 5 folds improve; raw semantic cosine `0.40597111640267125`. Run `31483288887`.
-
-**Consequence:** Task supervision, not merely pretrained embeddings, creates material semantic value.
-
-## D024 — Strict train-only sparse TF-IDF is retained
-
-**Evidence:** OOF `0.5651306838802859`, +`0.017452617746708032`, all folds improve. Run `31485396599`.
-
-**Consequence:** Rare model/SKU token weighting is a strong orthogonal signal; vocabulary/IDF must remain outer-train-only.
-
-## D025 — Heavy workflow helper APIs require integration tests
-
-**Decision:** First ruBERT teacher run `31485127564` is not a model rejection.
-
-**Evidence:** all folds failed before predictions because `build_reranker_examples` was called without required `attribute_importance`.
-
-**Consequence:** Fix the composed integration call and test it before rerun; never fabricate a teacher AP from failure.
-
-## D026 — Machine-readable current/safe metrics are first-class Memora sources
-
-**Decision:** `ecup_matching/experiments/CURRENT.json` and `ecup_matching/experiments/v*/SAFE_METRICS.json` must be part of `scripts.memory_ingest.py::canonical_sources()`.
-
-**Reason:** Before this audit those files could be correct in Git but invisible to semantic Memora retrieval. A regression test requires their inclusion.
-
-## D027 — Explicit per-key attribute features are retained and are current v5 dev best
-
-**Decision:** Keep fold-trained explicit per-key attribute match/conflict/missing features inside category specialists. This is distinct from rejected direct likelihood score shifting: the estimator decides when a key matters instead of receiving an unconditional logit correction.
-
-**Evidence:** OOF **`0.5683065131240066`** vs category base `0.5476780661335778`, delta **`+0.02062844699042876`**. Held folds: `0.5706378464826163`, `0.5682631251392076`, `0.5754313094571646`, `0.5633705139683869`, `0.5731185912680369`; every fold improves. Run `31485990777`, source `cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57`, metrics artifact `9100228112`.
-
-**Consequence:** Current honest development benchmark becomes `0.5683065131240066`. Future combinations should treat explicit attribute identity as a retained strong signal and should not collapse it back to only aggregate agreement/conflict ratios.
+The package builder used public source commit `4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1`. The later `ecup-matching-2026` branch tip diverged while being used for the one-time HF bridge. Reproduce the packaged runtime from the exact source SHA; do not silently substitute current branch-tip code.

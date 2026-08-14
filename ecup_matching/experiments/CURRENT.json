@@ -1,14 +1,25 @@
 {
-  "version": "v5",
-  "status": "in_progress",
-  "model": "v5-leakage-safe-development-ladder",
-  "plan": "ecup_matching/experiments/v5/PLAN.md",
-  "results": "ecup_matching/experiments/v5/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v5/SAFE_METRICS.json",
-  "production_anchor": {
-    "version": "v2",
-    "hidden_macro_average_precision": 0.2583231811423486,
-    "reason": "best observed hidden leaderboard Macro AP among submitted v1-v4 candidates"
+  "version": "v13",
+  "status": "public_lb_candidate_ready",
+  "model": "v13b-groupweak-single-rubert-crossencoder",
+  "plan": "ecup_matching/experiments/v13/PLAN.md",
+  "results": "ecup_matching/experiments/v13/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v13/SAFE_METRICS.json",
+  "observed_public_leaderboard_best": {
+    "version": "v12",
+    "macro_average_precision": 0.3798116204,
+    "previous_v7": 0.3655833314,
+    "delta_v12_minus_v7": 0.014228289
+  },
+  "current_candidate": {
+    "name": "v13b-groupweak",
+    "submission_stage": "next-public-lb-candidate",
+    "public_lb": null,
+    "probe_fold0_macro_ap": 0.7086611385531062,
+    "validation_v3_p05": 0.5690974845,
+    "validation_v3_mean": 0.6869505675,
+    "strict_five_fold_confirmed": false,
+    "strict_final_keeper_claimed": false
   },
   "validation_protocol": {
     "human_rows": 365654,
@@ -16,59 +27,52 @@
     "sealed_gold_rows": 80444,
     "development_folds": 5,
     "cross_split_item_overlap": 0,
-    "connected_components": 345654,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
-  "development_baseline_macro_average_precision": 0.5315527708634168,
-  "development_best": {
-    "name": "v5-explicit-attribute-category-specialists",
-    "macro_average_precision": 0.5683065131240066,
-    "delta_vs_development_baseline": 0.036753742260589806,
-    "delta_vs_category_specialists": 0.02062844699042876,
-    "fold_macro_average_precision": [
-      0.5706378464826163,
-      0.5682631251392076,
-      0.5754313094571646,
-      0.5633705139683869,
-      0.5731185912680369
-    ],
-    "all_folds_improved_vs_category_base": true,
-    "workflow_run_id": 31485990777,
-    "source_commit": "cb350b4e7ba6bb4a6d283f91bae4d6ea13235d57",
-    "metrics_artifact_id": 9100228112,
-    "retained_for_development": true,
-    "retained_as_submission": false
+  "distribution_measurement": {
+    "weak_rows": 11187780,
+    "human_binary_prevalence": 0.2567727961406138,
+    "weak_soft_target_mean": 0.2435606726464766,
+    "conclusion": "prevalence alone does not explain local-to-LB gap; retrieval degree/hardness is a primary stress axis"
   },
-  "retained_development_steps": {
-    "category_specialists": {"macro_average_precision": 0.5476780661335778, "all_folds_improved": true},
-    "weak_category_specialists": {"macro_average_precision": 0.5514237338676234, "all_folds_improved": true},
-    "cross_fitted_combo": {"macro_average_precision": 0.559512531439709, "all_folds_improved": true},
-    "sparse_category_specialists": {"macro_average_precision": 0.5651306838802859, "all_folds_improved": true},
-    "supervised_contrastive": {"macro_average_precision": 0.5662217062664492, "all_folds_improved": true},
-    "explicit_attribute_specialists": {"macro_average_precision": 0.5683065131240066, "all_folds_improved": true}
-  },
-  "rejected_or_diagnostic_steps": {
-    "direct_attribute_likelihood": {"macro_average_precision": 0.523218903672764, "decision": "reject"},
-    "pretrained_biencoder": {"macro_average_precision": 0.5318080650341337, "decision": "insufficient standalone"},
-    "weighted_category_specialists": {"macro_average_precision": 0.5498696731704964, "decision": "diagnostic OOF input only"},
-    "rubert_teacher_outer_cv": {
-      "workflow_run_id": 31485127564,
-      "decision": "integration failure before metrics, not model rejection",
-      "failure": "build_reranker_examples called without required attribute_importance argument"
+  "runtime": {
+    "shape": "single-rubert-pair-crossencoder-v7-compatible",
+    "binding_check": {
+      "rows": 1000,
+      "supplied_items": 1999,
+      "wall_seconds": 26.135347286995966,
+      "limit_seconds": 60,
+      "passed": true,
+      "output_valid": true,
+      "unique_scores": 881
+    },
+    "full_item_diagnostic": {
+      "rows": 1000,
+      "full_items_bytes": 4104103411,
+      "wall_seconds": 60.004995396971935,
+      "limit_seconds": 60,
+      "timed_out": true,
+      "passed": false,
+      "binding": false
     }
   },
-  "active_experiments": {
-    "field_aware_weak_teacher": {
-      "workflow_run_id": 31486298300,
-      "source_commit": "411a5349fe731506757fdc1a3c8857a370225fb8",
-      "status": "in_progress"
-    }
+  "artifact": {
+    "filename": "ecup-v13-groupweak-v7runtime-submission.zip",
+    "bytes": 663760087,
+    "sha256": "f4b7aad36c8d293a3939d9fb2ce7f91cff1bd8381c870015b2f16ea65a17badb",
+    "model_sha256": "9ae7676f96818a367eb348f8648d503b56c86e3d0c62f665f030b4c29bcde0a5",
+    "private_hf_path": "submissions/v13/candidates/b-groupweak/ecup-v13-groupweak-v7runtime-submission.zip",
+    "hf_roundtrip_verified": true,
+    "hf_upload_run_id": 31843423348,
+    "packaging_run_id": 31829720888,
+    "production_run_id": 31828844182,
+    "probe_run_id": 31791177120
   },
-  "stretch_target_development_oof_macro_average_precision": 0.6,
-  "remaining_gap_to_target": 0.0316934868759934,
-  "v5_submission_retained": false,
-  "sealed_gold_evaluated": false,
-  "next_action": "Continue leakage-safe development on the immutable split. Do not open sealed gold. Preserve v2 as production fallback until a frozen v5 candidate passes one-shot gold plus runtime/package gates."
+  "source_provenance": {
+    "packaging_source_commit": "4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1",
+    "note": "current memory branch tip later diverged for the one-time HF bridge; reproduce packaged runtime from the exact source commit"
+  },
+  "next_action": "Submit the exact SHA-verified v13 B archive to ODS, record Public LB, then use it as an external anchor. Do not promote it to strict final keeper before platform evidence exists."
 }
