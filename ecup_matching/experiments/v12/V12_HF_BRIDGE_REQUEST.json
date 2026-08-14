@@ -1,0 +1,5 @@
+{
+  "purpose": "encrypt existing repository HF_TOKEN for the private RTX v12 uploader",
+  "archive_sha256": "a189eb9eaf97ad74c323ef446759c4b42e392f09df8d65327f938b582d01dac1",
+  "nonce": "2026-08-14T07:39Z-retry2"
+}
