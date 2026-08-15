@@ -15,6 +15,7 @@ Updated: **2026-08-15**. Historical metrics, external evidence, runtime evidence
 | v9–v11 | teacher/contrastive/structured/graph stacks | ~`0.595–0.597` | timeout family | inference architecture closed |
 | v12 | v7 runtime + stronger weak supervision | fold0 `0.7059297810` | **`0.3798116204`** | best measured external result |
 | v13 B | preserve weak retrieval-anchor groups | fold0 **`0.7086611386`** | `0.3783781653` | measured negative anchor; local ordering inverted |
+| v14 | genuinely new item-centric compressed pair-conditioned architecture | A0/A1/A3 rejected; A5/A8 active | not submitted | **in progress; legacy residual is fallback only** |
 | v14 legacy fallback | v12 + human-only category-gated residual | fold0 `0.7065769714`; runtime `28.81 s` | pending | superseded technical fallback, not current new architecture |
 | v14 A0 | item encoder + SupCon + MaxSim | **`0.5486140975`** | — | rejected |
 | v14 A1 | A0 + human hard-negative repeats | **`0.5422162763`** | — | rejected |
@@ -23,7 +24,7 @@ Updated: **2026-08-15**. Historical metrics, external evidence, runtime evidence
 | v14 A5 | ruBERT item encoder + cached 12 slots + compressed bidirectional cross-attention | active fold0 run `31891601603` | — | in progress |
 | v14 A8 | Granite-97M retrieval encoder + same compressed cross interaction | eager-path retry queued | — | in progress |
 | v14 A12 | A8 + fold-safe typed `features_v2` fusion | queued reserve | — | pending |
-| v14 A6 | LLM-free teacher distillation into compressed-cross student | implementation ready | — | pending |
+| v14 A6 | LLM-free teacher distillation into compressed-cross student | teacher-data queued | — | pending |
 
 ## Validation / distribution facts
 
