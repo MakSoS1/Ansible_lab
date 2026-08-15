@@ -67,7 +67,7 @@ Controlled equal-exposure C2/ListNet regressed the relevant diagnostics and was 
 
 For v13 B, the binding organizer-shaped supplied-item Check (1,000 rows, 1,999 materialized items) passed in `26.135347286995966 s`, with valid output and return code 0. A deliberately stricter diagnostic that scans the entire `4,104,103,411`-byte item universe timed out at `60.004995396971935 s`.
 
-The first result is the binding candidate acceptance under the current closed-test subset contract; the second remains an explicit residual-risk diagnostic. Never quote one as the other.
+The first result is the binding candidate acceptance under the current supplied-item subset contract; the second remains an explicit residual-risk diagnostic. Never quote one as the other.
 
 ## D041 — Artifact identity is cryptographic
 
@@ -84,3 +84,37 @@ HF run `31843423348` uploaded the candidate, downloaded the exact path back, che
 ## D044 — Package reproduction is bound to exact source provenance
 
 The package builder used public source commit `4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1`. The later `ecup-matching-2026` branch tip diverged while being used for the one-time HF bridge. Reproduce the packaged runtime from the exact source SHA; do not silently substitute current branch-tip code.
+
+## D045 — v13 is a measured negative external anchor
+
+The exact v13 B archive returned Public LB `0.3783781653`, below v12 `0.3798116204` by `0.0014334551`, despite v13 fold0 `0.7086611385531062` being above v12 `0.7059297810308699`. This is a real local/external ordering inversion. Validation-v3/fold0 may remain diagnostics, but they cannot by themselves promote near-neighbour candidates.
+
+## D046 — Historical split identity is the row map, not a newly recomputed hash
+
+Rebuilding the split in the current environment produced a different manifest hash. v14 therefore recovered the original development/sealed/fold row map from historical strict OOF artifact `9175469673` / run `31680767570` and pinned it by SHA-256 `00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f`.
+
+The recovered map was applied to the current `matches.parquet` and independently verified to have zero dev↔sealed item overlap and zero train↔held item overlap in all five folds. Never silently accept a recomputed replacement split as "the same" validation.
+
+## D047 — The historical LLM weak stream is not admitted without ground-truth overlap
+
+`matches_llm.parquet` contains `11,187,780` rows but exact pair overlap with human truth is `0`. Positive/negative precision therefore cannot be measured on controlled human labels. Confidence or target extremeness is not a substitute for an audited label stream. v14 uses zero LLM-labelled rows.
+
+## D048 — Expensive A2 research is not a quality rejection
+
+The v14 item-centric / late-interaction A2 branch fixed two engineering issues: endpoint-only-as-`id2` component closure and canonical split wiring. A complete new-Transformer five-fold was stopped after projected multi-hour RTX cost. Record A2 as unfinished architectural research, not as a failed-quality candidate.
+
+## D049 — Residual promotion must be cross-fit and decision-rule-consistent
+
+The scalar v1 residual was rejected: fold0 delta `+0.0001070251`, cross-fit mean `+0.0002866901`, only 11/20 categories non-negative.
+
+The first category-gated v2 aggregate evaluator had a bug: it applied opposite-half alpha even to categories that the category gate later rejected. That evaluator was corrected so rejected categories remain exactly at v12 base. Promotion thresholds were not loosened.
+
+Corrected run `31882322590` passed the frozen rule with fold0 `0.7065769713851786`, delta `+0.0006471903543086022`, side deltas `+0.000437006267165585` / `+0.000734831086673049`, cross-fit mean `+0.000585918676919317`, six admitted categories, and 20/20 full-fold categories non-negative.
+
+## D050 — v14 final keeps the measured v12 neural parent and adds only gated human residuals
+
+The v14 runtime contains one v12 ruBERT checkpoint plus a small category-specific six-feature lexical residual trained on human development labels only. The residual is active only for six categories proven by item-disjoint cross-fit; all other categories preserve v12 base scores exactly.
+
+Exact final artifact: `ecup-v14-v12-category-gated-residual-submission.zip`, `663770301` bytes, SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`.
+
+Binding organizer-shaped Check on the exact final bytes passed in `28.810029840000425 s / 60 s`, return code 0, valid output, `910` unique scores. This makes the package submission-ready, not a claim of a particular Public LB. v12 remains the measured external best until v14 is submitted.
