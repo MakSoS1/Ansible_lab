@@ -1,54 +1,61 @@
 {
-  "version": "v14",
+  "version": "v15",
   "status": "in_progress",
-  "stage": "new_architecture_human_only_validation",
-  "model": "v14-item-centric-late-interaction",
-  "plan": "ecup_matching/experiments/v14/PLAN.md",
-  "results": "ecup_matching/experiments/v14/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v14/SAFE_METRICS.json",
+  "stage": "field_aware_crossencoder_tdd_and_fold0_screens",
+  "model": "v15-field-aware-pair-crossencoder",
+  "plan": "ecup_matching/experiments/v15/PLAN.md",
+  "results": "ecup_matching/experiments/v15/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v15/SAFE_METRICS.json",
+  "manifest": "ecup_matching/experiments/v15/MANIFEST.json",
   "observed_public_leaderboard": {
     "v7": 0.3655833314,
-    "v12": 0.3798116204,
-    "v13b": 0.3783781653,
+    "v12": 0.379811620418641,
+    "v13b": 0.37837816527590995,
     "best": "v12",
-    "v13_delta_vs_v12": -0.0014334551
+    "target": 0.5,
+    "v13_delta_vs_v12": -0.00143345514273105
   },
   "v13_external_conclusion": {
     "candidate": "v13b-groupweak",
     "fold0_macro_ap": 0.7086611385531062,
-    "validation_v3_p05": 0.5690974845479824,
-    "validation_v3_mean": 0.6869505675096532,
-    "public_lb": 0.3783781653,
+    "public_lb": 0.37837816527590995,
     "decision": "rejected_external_vs_v12",
-    "lesson": "fold0 and Validation-v3 both ranked v13 above v12 while Public LB ranked v12 above v13; Validation-v3 is historical and cannot be a near-neighbour promotion gate"
+    "lesson": "small local gains did not preserve Public ordering; fold0 is a screen only"
   },
-  "v14_architecture": {
-    "trusted_labels_initially": "human_only",
-    "llm_labels": "quarantined_pending_human_truth_audit",
-    "base_encoder": "ai-forever/ruBert-base",
-    "max_length": 128,
-    "projection_dim": 192,
-    "item_vectors": ["global", "title", "attributes"],
-    "pair_head": "strictly_symmetric_late_interaction",
-    "component_supervision": true,
-    "unknown_pairs_as_negatives": false
+  "v15_architecture": {
+    "family": "pair_crossencoder",
+    "trusted_labels": "human_authoritative",
+    "legacy_llm_target": "quarantined",
+    "weak_pair_topology": "allowed_as_unlabelled_id1_id2_candidate_source",
+    "field_aware_serialization": true,
+    "typed_pair_features_fused_in_neural_head": true,
+    "category_specialization": "lightweight_optional_after_shared_pair_encoder",
+    "offline_teacher": "allowed_train_time_only_after_human_truth_quality_gate",
+    "final_inference": "one_tokenizer_one_pair_transformer_one_checkpoint"
   },
   "validation_protocol": {
-    "name": "Validation-v4",
+    "name": "Validation-v5",
     "human_rows": 365654,
     "development_rows": 285210,
     "sealed_gold_rows": 80444,
     "development_folds": 5,
     "cross_split_item_overlap": 0,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "canonical_rowmap_sha256": "00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f",
     "gold_metric_opened": false,
     "gold_rows_scored": 0,
-    "external_anchor_order_required": ["v12", "v13b", "v7"]
+    "fold0_is_screen_only": true,
+    "strict_oof_rows_required": 285210
   },
-  "active_runs": {
-    "llm_audit": 31879091964,
-    "a0_fold0": 31879107056
+  "parallel_v14_runs": {
+    "policy": "do_not_cancel_or_mutate; record results after completion",
+    "a17_run_id": 31902830418
+  },
+  "tdd": {
+    "public_red_source_sha": "1dc1f9b19f3160175ec4a523dcd683e9f4d3e52f",
+    "private_red_run_id": 31910982161,
+    "red_status_at_record_time": "queued"
   },
   "artifact": null,
-  "next_action": "Finish the human-only v14 architecture ladder, strict validation and runtime gate; admit LLM labels only if the independent audit passes its frozen floors."
+  "next_action": "Confirm TDD RED, implement v15 modules to GREEN, freeze exact source SHA, then queue causal A0/A1/A2 fold0 screens without touching v14 runs."
 }
