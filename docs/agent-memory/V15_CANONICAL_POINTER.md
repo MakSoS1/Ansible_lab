@@ -1,0 +1,1 @@
+Canonical experiment: `ecup_matching/experiments/v15/PLAN.md`. Canonical design: `docs/superpowers/specs/2026-08-16-ecup-v15-field-aware-distillation-design.md`.
