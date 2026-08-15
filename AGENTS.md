@@ -2,42 +2,83 @@
 
 Mandatory entry point for agents working on `ecup-matching-2026`.
 
-## Current verified state — 2026-08-15 — v14
+## Current verified state — 2026-08-15 — v14 new architecture in progress
 
 - Competition: ODS E-CUP 2026 Ozon product matching; metric is unweighted Macro Average Precision over 20 categories.
 - Historical canonical split: `365,654` human rows; `285,210` development rows; `80,444` sealed-gold rows; 5 component-disjoint folds; split SHA-256 `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
-- The historical row map was recovered from strict OOF evidence and pinned by SHA-256 `00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f`; current-data dev↔sealed and train↔held item overlap are both `0`.
+- Historical row map SHA-256: `00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f`; dev↔sealed and every train↔held item overlap are `0`.
 - Sealed gold remains unopened: `gold_metric_opened=false`, `gold_rows_scored=0`.
 - Best measured Public-LB anchor remains **v12 = `0.3798116204`**.
-- v13 B is now a measured negative external anchor: fold0 `0.7086611385531062`, Public LB `0.3783781653`, so local ordering inverted relative to v12.
-- Current submission-ready candidate is **v14 / `v14-v12-category-gated-residual`**.
-- v14 parent is the exact measured v12 one-CrossEncoder model; new work uses a human-only category-gated six-feature lexical residual.
-- `matches_llm.parquet` has `11,187,780` rows but exact human-pair overlap `0`; v14 admits **zero** LLM-labelled rows.
-- v14 corrected cross-fit probe run `31882322590` passed the frozen promotion rule:
-  - v12 fold0 `0.7059297810308699`;
-  - v14 diagnostic fold0 `0.7065769713851786`;
-  - delta `+0.0006471903543086022`;
-  - cross-fit side deltas `+0.000437006267165585` / `+0.000734831086673049`;
-  - cross-fit mean `+0.000585918676919317`;
-  - six admitted categories;
-  - 20/20 full-fold categories non-negative vs v12.
-- Exact final file: `ecup-v14-v12-category-gated-residual-submission.zip`.
-- Exact final size: `663770301` bytes.
-- Exact final SHA-256: `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`.
-- Packaging/runtime run: `31882572941`.
-- Binding organizer-shaped Check on **exact final bytes**: `28.810029840000425 s / 60 s`, return code 0, valid output, `910` unique scores, PASS.
-- Runtime still contains exactly one v12 ruBERT safetensors checkpoint; the added residual is lightweight and category-gated.
-- v14 Public LB is **not measured yet**. Do not claim `>0.5` or even `>v12` externally until ODS returns the score.
+- v13 B is a measured negative external anchor: fold0 `0.7086611385531062`, Public LB `0.3783781653`, below v12 despite the better local score.
+- The historical `v14-v12-category-gated-residual` ZIP is a **superseded technical fallback/reference only**. It is not the current requested v14 architecture and must not be submitted as the active v14 while new-architecture research is running.
+- `matches_llm.parquet` has `11,187,780` rows but exact human-pair overlap `0`; current v14 architecture screens admit **zero LLM-labelled rows**.
 
-## What changed from v13
+## New architecture direction
 
-1. v13 proved that local near-neighbour ordering can invert externally; fold0/Validation-v3 alone no longer promotes a candidate.
-2. The historical split is now represented by an explicit recovered row map, not by silently recomputing a new manifest in a changed environment.
-3. The historical LLM weak stream was audited before reuse and rejected because no controlled human overlap exists.
-4. A2 item-centric / MaxSim research fixed split and endpoint-direction bugs but was not completed through a multi-hour strict Transformer cycle; it is unfinished research, not a quality rejection.
-5. Fast v12 residual v1 was rejected by cross-fit.
-6. Category-gated v2 found an evaluator bug; after fixing only the evaluator and leaving thresholds unchanged, corrected v2 passed the frozen gate.
-7. Final packaging reuses the exact v12 neural parent and adds corrections only in categories with opposite-half item-disjoint evidence.
+The active inference hypothesis is:
+
+```text
+unique item -> shared encoder -> reusable token/item representation -> learned compact slots
+            -> tiny pair-conditioned bidirectional cross-attention -> symmetric score
+```
+
+The expensive Transformer runs independently per unique item and can be cached. Pair-specific reasoning is restored only after compression; this is not the old concatenated pair CrossEncoder.
+
+Measured controls:
+
+- A0 item-centric LateInteraction: `0.5486140975180157` fold0 — REJECTED.
+- A1 + human hard-negative repeats: `0.5422162762826607` — REJECTED.
+- A2 component closure: cancelled without quality metric after A0/A1 made sampler-only continuation non-credible.
+- A3 LateInteraction + category MoE/ranking: `0.3222800376478955` — REJECTED.
+
+Active / queued screens in private `gpu-dispatch` branch `ecup-v14-active`:
+
+1. **A5** — ruBERT cached 12-slot compressed cross-attention + category expert/ranking. Run `31891601603` is the current long fold0 job.
+2. **A8** — pinned Granite-97M multilingual retrieval encoder + same compressed cross block. ModernBERT implicit compilation is disabled with `reference_compile=false`.
+3. **A5c** — causal control: same compressed cross-attention but no category expert residual and ranking weight `0`.
+4. **A12** — Granite compressed cross + fold-train-only typed product `features_v2` fusion.
+5. **A6** — LLM-free retrieval-domain distillation; weak parquet contributes only `id1,id2`, never the legacy `target`; soft targets come from fold-safe human-trained teachers.
+6. **A10** — multilingual-E5-base compressed-cross reserve with exact-model preflight.
+
+## Frozen fold0 promotion rule
+
+This rule was fixed before the A5 result:
+
+- fold0 `<0.64`: architectural REJECT;
+- `0.64 <= fold0 < 0.68`: research-only, no strict OOF;
+- fold0 `>=0.68`: credible strict-OOF region; compare screened candidates before promotion;
+- v12 fold0 `0.7059297810308699` is the reference, not a Public-LB calibration.
+
+Never claim a Public-LB improvement from local scores.
+
+## Completion contract for a promoted new architecture
+
+A candidate is not submission-ready after fold0. Required sequence:
+
+1. exact five-fold component-disjoint OOF over all `285210` development rows;
+2. exact coverage once, no duplicates/missing rows, zero train/held overlap, zero sealed-gold scoring;
+3. full-development production refit;
+4. one-checkpoint offline ZIP, no raw competition data and no network;
+5. exact organizer-shaped supplied-item Check `<60 s` on the final ZIP bytes with valid `id1,id2,predict` and continuous finite scores;
+6. private Hugging Face upload and download-back exact size/SHA verification;
+7. canonical docs/Memora updated and latest hardened memory workflow GREEN.
+
+Private dispatcher has separate final-only workflows so a research checkpoint cannot be packaged without strict selection evidence:
+
+- `ecup-v14-final-production.yml`
+- `ecup-v14-final-package.yml`
+- `ecup-v14-final-upload-hf.yml`
+
+## Legacy residual fallback identity
+
+Retain only as fallback/reference:
+
+- `ecup-v14-v12-category-gated-residual-submission.zip`
+- bytes `663770301`
+- SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`
+- organizer-shaped Check `28.810029840000425 s / 60 s` PASS.
+
+Do not call it the active v14 final. Durable decision D051 supersedes the old final interpretation of D050.
 
 ## Mandatory reading order
 
@@ -53,7 +94,7 @@ Mandatory entry point for agents working on `ecup-matching-2026`.
 10. `ecup_matching/SOLUTION_RESEARCH.md`
 11. `ecup_matching/BASELINE_CONTRACT.md`
 
-Historical v1–v13 files remain evidence but do not redefine v14 state.
+Historical v1–v13 and residual-v14 files remain evidence but do not redefine current v14 state.
 
 ## Non-negotiable invariants
 
@@ -66,6 +107,7 @@ Historical v1–v13 files remain evidence but do not redefine v14 state.
 - A local quality gain is not a Public-LB claim.
 - Final artifact identity is filename + exact byte count + SHA-256.
 - Runtime acceptance is based on the organizer-shaped supplied-item Check on the exact final ZIP; full-item stress is a distinct diagnostic.
+- Current architecture screens use no legacy LLM target labels.
 
 ## Persistent memory protocol
 
@@ -84,4 +126,4 @@ The branch workflow `.github/workflows/ecup-memora-memory.yml` performs the same
 
 ## Immediate next action
 
-Submit **exactly** `ecup-v14-v12-category-gated-residual-submission.zip` with SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e` to ODS and record its measured Public LB. Until then, v12 `0.3798116204` remains the best observed external anchor.
+Finish A5 run `31891601603`, apply the frozen fold0 promotion rule, then continue A8 → A5c → A12 → A6 → A10 only as required. Do not start strict OOF or package a new architecture below the promotion threshold. v12 `0.3798116204` remains the best measured external result until a new exact archive receives a platform score.
