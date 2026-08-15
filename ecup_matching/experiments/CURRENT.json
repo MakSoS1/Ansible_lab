@@ -1,8 +1,8 @@
 {
   "version": "v14",
   "status": "in_progress",
-  "stage": "new_architecture_fold0_screening",
-  "model": "item-centric-compressed-cross-interaction",
+  "stage": "setwise_and_clean_pair_conditioned_screening",
+  "model": "new-architecture-screening",
   "plan": "ecup_matching/experiments/v14/PLAN.md",
   "results": "ecup_matching/experiments/v14/RESULTS.md",
   "safe_metrics": "ecup_matching/experiments/v14/SAFE_METRICS.json",
@@ -31,12 +31,13 @@
     "a1": {"macro_ap": 0.5422162762826607, "status": "rejected", "reason": "human hard-negative repeats regressed A0"},
     "a2": {"macro_ap": null, "status": "rejected", "reason": "cancelled after A0/A1 made sampler-only continuation non-credible"},
     "a3": {"macro_ap": 0.3222800376478955, "status": "rejected", "reason": "category-MoE plus ranking on plain LateInteraction collapsed quality"},
-    "a5": {"macro_ap": 0.3701278186124241, "status": "rejected", "architecture": "ruBERT item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891601603, "artifact_id": 9249392211, "reason": "completed far below the predeclared 0.64 hard-reject gate; no strict OOF"},
-    "a5c": {"macro_ap": null, "status": "queued", "architecture": "same compressed cross interaction, category experts disabled, ranking weight 0; causal control for A3-derived training additions", "run_id": 31893697194},
-    "a8": {"macro_ap": null, "status": "in_progress", "architecture": "Granite-97M multilingual item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891817294, "note": "technical ModernBERT implicit-compile failure fixed by forcing reference_compile=false; quality retry is training"},
-    "a12": {"macro_ap": null, "status": "queued", "architecture": "Granite compressed-cross + fold-train-only typed product features"},
-    "a6": {"macro_ap": null, "status": "teacher_queued", "architecture": "A5 compressed student + LLM-free fold-safe retrieval teacher distillation"},
-    "a10": {"macro_ap": null, "status": "queued_reserve", "architecture": "multilingual-E5-base compressed-cross; self-contained exact-model preflight"}
+    "a5": {"macro_ap": 0.3701278186124241, "status": "rejected", "architecture": "ruBERT item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891601603, "artifact_id": 9249392211, "reason": "below predeclared 0.64 hard-reject gate; no strict OOF"},
+    "a8": {"macro_ap": 0.3450728413820783, "status": "rejected", "architecture": "Granite-97M item encoder + cached 12 slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891817294, "artifact_id": 9249911397, "reason": "exact Granite backbone also failed below 0.64; compressed-slot/MoE/ranking family rejected independently of backbone"},
+    "setwise": {"macro_ap": null, "status": "queued", "architecture": "typed features_v2 + lexical + category one-hot + permutation-equivariant candidate-set Transformer with bidirectional edge aggregation", "run_id": 31896370680, "label_policy": "human-only-no-llm"},
+    "a5c": {"macro_ap": null, "status": "queued_after_setwise", "architecture": "compressed cross interaction + global symmetric head, experts disabled, ranking weight 0; still inherits category-local batching", "run_id": 31896434079},
+    "a12": {"macro_ap": null, "status": "deprioritized", "architecture": "Granite compressed-cross + fold-train-only typed product features + same rejected MoE/ranking regime", "reason": "do not promote without new causal evidence"},
+    "a6": {"macro_ap": null, "status": "teacher_data_in_progress", "architecture": "LLM-free fold-safe retrieval teacher data; current running job is data/teacher construction, not student promotion", "run_id": 31892229544},
+    "a10": {"macro_ap": null, "status": "deprioritized_reserve", "architecture": "multilingual-E5-base compressed-cross + same rejected MoE/ranking regime; self-contained exact-model preflight retained"}
   },
   "validation_protocol": {
     "human_rows": 365654,
@@ -55,7 +56,7 @@
     "llm_human_pair_overlap": 0,
     "llm_admitted": false,
     "llm_rows_used_by_current_candidates": 0,
-    "current_label_source": "human-only-development"
+    "current_label_source": "human-only-development; retrieval topology may be read without target"
   },
   "fold0_promotion_gate": {
     "hard_reject_below": 0.64,
@@ -65,5 +66,5 @@
     "fixed_before_a5_result": true
   },
   "promotion_policy": "A completed fold0 below 0.64 is rejected. Scores from 0.64 up to but not including 0.68 remain research-only and do not trigger strict OOF. A score >=0.68 enters the credible promotion region; then compare screened candidates before exact five-fold OOF. Any final archive still requires strict OOF, production refit, organizer-shaped runtime Check and private-HF SHA roundtrip.",
-  "next_action": "Finish A8. If it misses the fixed gate, run A5c to isolate category-MoE/ranking, then A12/A6/A10 as required; package nothing below the gate."
+  "next_action": "Finish LLM-free teacher-data job already occupying the runner, then run contextual setwise screen. Use its pairwise-vs-setwise delta to decide whether candidate-set context is worth distillation. Do not spend strict OOF on A5/A8 or unchanged MoE/ranking descendants."
 }
