@@ -1,26 +1,39 @@
 {
-  "version": "v13",
-  "status": "in_progress",
-  "stage": "public_lb_candidate_ready",
-  "model": "v13b-groupweak-single-rubert-crossencoder",
-  "plan": "ecup_matching/experiments/v13/PLAN.md",
-  "results": "ecup_matching/experiments/v13/RESULTS.md",
-  "safe_metrics": "ecup_matching/experiments/v13/SAFE_METRICS.json",
+  "version": "v14",
+  "status": "completed",
+  "stage": "submission_ready_runtime_verified",
+  "model": "v12-single-rubert-crossencoder-plus-category-gated-human-residual",
+  "plan": "ecup_matching/experiments/v14/PLAN.md",
+  "results": "ecup_matching/experiments/v14/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v14/SAFE_METRICS.json",
   "observed_public_leaderboard_best": {
     "version": "v12",
     "macro_average_precision": 0.3798116204,
-    "previous_v7": 0.3655833314,
-    "delta_v12_minus_v7": 0.014228289
+    "v13b": 0.3783781653,
+    "delta_v12_minus_v13b": 0.0014334551
+  },
+  "measured_negative_anchor": {
+    "version": "v13b-groupweak",
+    "public_lb": 0.3783781653,
+    "fold0_macro_ap": 0.7086611385531062,
+    "conclusion": "v13 improved local fold0 while regressing Public LB; near-neighbour local model selection was inverted"
   },
   "current_candidate": {
-    "name": "v13b-groupweak",
-    "submission_stage": "next-public-lb-candidate",
+    "name": "v14-v12-category-gated-residual",
+    "submission_stage": "ready-for-platform-submission",
     "public_lb": null,
-    "probe_fold0_macro_ap": 0.7086611385531062,
-    "validation_v3_p05": 0.5690974845,
-    "validation_v3_mean": 0.6869505675,
-    "strict_five_fold_confirmed": false,
-    "strict_final_keeper_claimed": false
+    "parent_v12_public_lb": 0.3798116204,
+    "parent_v12_fold0_macro_ap": 0.7059297810308699,
+    "diagnostic_fold0_macro_ap": 0.7065769713851786,
+    "diagnostic_delta_vs_v12": 0.0006471903543086022,
+    "crossfit_side0_delta": 0.000437006267165585,
+    "crossfit_side1_delta": 0.000734831086673049,
+    "crossfit_mean_delta": 0.000585918676919317,
+    "admitted_category_count": 6,
+    "categories_nonnegative_vs_v12": 20,
+    "promotion_gate_passed": true,
+    "strict_five_fold_new_model_confirmed": false,
+    "note": "category-gated residual is cross-fit validated inside canonical fold0; the neural parent remains the measured v12 model"
   },
   "validation_protocol": {
     "human_rows": 365654,
@@ -28,52 +41,44 @@
     "sealed_gold_rows": 80444,
     "development_folds": 5,
     "cross_split_item_overlap": 0,
+    "max_fold_item_overlap": 0,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "canonical_rowmap_sha256": "00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f",
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
-  "distribution_measurement": {
-    "weak_rows": 11187780,
-    "human_binary_prevalence": 0.2567727961406138,
-    "weak_soft_target_mean": 0.2435606726464766,
-    "conclusion": "prevalence alone does not explain local-to-LB gap; retrieval degree/hardness is a primary stress axis"
+  "label_policy": {
+    "llm_rows_available": 11187780,
+    "llm_human_pair_overlap": 0,
+    "llm_admitted": false,
+    "llm_rows_used_by_v14": 0,
+    "residual_label_source": "human-only-development"
   },
   "runtime": {
-    "shape": "single-rubert-pair-crossencoder-v7-compatible",
+    "shape": "single-rubert-v12-crossencoder-plus-lightweight-category-residual",
     "binding_check": {
       "rows": 1000,
       "supplied_items": 1999,
-      "wall_seconds": 26.135347286995966,
-      "limit_seconds": 60,
+      "extract_seconds": 3.4397788900005253,
+      "wall_seconds": 28.810029840000425,
+      "limit_seconds": 60.0,
+      "return_code": 0,
+      "timed_out": false,
       "passed": true,
       "output_valid": true,
-      "unique_scores": 881
-    },
-    "full_item_diagnostic": {
-      "rows": 1000,
-      "full_items_bytes": 4104103411,
-      "wall_seconds": 60.004995396971935,
-      "limit_seconds": 60,
-      "timed_out": true,
-      "passed": false,
-      "binding": false
+      "unique_scores": 910
     }
   },
   "artifact": {
-    "filename": "ecup-v13-groupweak-v7runtime-submission.zip",
-    "bytes": 663760087,
-    "sha256": "f4b7aad36c8d293a3939d9fb2ce7f91cff1bd8381c870015b2f16ea65a17badb",
-    "model_sha256": "9ae7676f96818a367eb348f8648d503b56c86e3d0c62f665f030b4c29bcde0a5",
-    "private_hf_path": "submissions/v13/candidates/b-groupweak/ecup-v13-groupweak-v7runtime-submission.zip",
-    "hf_roundtrip_verified": true,
-    "hf_upload_run_id": 31843423348,
-    "packaging_run_id": 31829720888,
-    "production_run_id": 31828844182,
-    "probe_run_id": 31791177120
+    "filename": "ecup-v14-v12-category-gated-residual-submission.zip",
+    "bytes": 663770301,
+    "sha256": "fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e",
+    "model_sha256": "b137761de29dd17b5ac058bc51a4cd5d113f3531a1d60071a91a3ae058ac55e6",
+    "parent_v12_sha256": "a189eb9eaf97ad74c323ef446759c4b42e392f09df8d65327f938b582d01dac1",
+    "probe_run_id": 31882322590,
+    "probe_artifact_id": 9246360741,
+    "packaging_run_id": 31882572941,
+    "ready_for_submission": true
   },
-  "source_provenance": {
-    "packaging_source_commit": "4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1",
-    "note": "current memory branch tip later diverged for the one-time HF bridge; reproduce packaged runtime from the exact source commit"
-  },
-  "next_action": "Submit the exact SHA-verified v13 B archive to ODS, record Public LB, then use it as an external anchor. Do not promote it to strict final keeper before platform evidence exists."
+  "next_action": "Submit the exact SHA-verified v14 archive to ODS and record its Public LB. Do not claim >0.5 before platform evidence exists."
 }
