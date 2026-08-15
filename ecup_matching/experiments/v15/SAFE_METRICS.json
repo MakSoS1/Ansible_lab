@@ -1,0 +1,23 @@
+{
+  "version": "v15",
+  "status": "in_progress",
+  "public_leaderboard": {
+    "v7": 0.3655833314,
+    "v12": 0.379811620418641,
+    "v13b": 0.37837816527590995,
+    "best": "v12",
+    "target": 0.5
+  },
+  "validation": {
+    "human_rows": 365654,
+    "development_rows": 285210,
+    "sealed_gold_rows": 80444,
+    "development_folds": 5,
+    "cross_split_item_overlap": 0,
+    "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "canonical_rowmap_sha256": "00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f",
+    "gold_metric_opened": false,
+    "gold_rows_scored": 0
+  },
+  "retained_v15_results": []
+}
