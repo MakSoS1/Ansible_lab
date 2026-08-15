@@ -1,8 +1,8 @@
 {
   "version": "v14",
-  "status": "completed",
-  "stage": "submission_ready_runtime_verified",
-  "model": "v12-single-rubert-crossencoder-plus-category-gated-human-residual",
+  "status": "in_progress",
+  "stage": "new_architecture_fold0_screening",
+  "model": "item-centric-compressed-cross-interaction",
   "plan": "ecup_matching/experiments/v14/PLAN.md",
   "results": "ecup_matching/experiments/v14/RESULTS.md",
   "safe_metrics": "ecup_matching/experiments/v14/SAFE_METRICS.json",
@@ -16,24 +16,23 @@
     "version": "v13b-groupweak",
     "public_lb": 0.3783781653,
     "fold0_macro_ap": 0.7086611385531062,
-    "conclusion": "v13 improved local fold0 while regressing Public LB; near-neighbour local model selection was inverted"
+    "conclusion": "v13 improved local fold0 while regressing Public LB; near-neighbour local selection was inverted"
   },
-  "current_candidate": {
+  "legacy_residual_fallback": {
     "name": "v14-v12-category-gated-residual",
-    "submission_stage": "ready-for-platform-submission",
-    "public_lb": null,
-    "parent_v12_public_lb": 0.3798116204,
-    "parent_v12_fold0_macro_ap": 0.7059297810308699,
-    "diagnostic_fold0_macro_ap": 0.7065769713851786,
-    "diagnostic_delta_vs_v12": 0.0006471903543086022,
-    "crossfit_side0_delta": 0.000437006267165585,
-    "crossfit_side1_delta": 0.000734831086673049,
-    "crossfit_mean_delta": 0.000585918676919317,
-    "admitted_category_count": 6,
-    "categories_nonnegative_vs_v12": 20,
-    "promotion_gate_passed": true,
-    "strict_five_fold_new_model_confirmed": false,
-    "note": "category-gated residual is cross-fit validated inside canonical fold0; the neural parent remains the measured v12 model"
+    "status": "superseded-by-new-architecture-research",
+    "fold0_macro_ap": 0.7065769713851786,
+    "archive_sha256": "fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e",
+    "runtime_wall_seconds": 28.810029840000425,
+    "note": "retained only as a technical fallback; it is not the requested new architecture"
+  },
+  "new_architecture_screening": {
+    "a0": {"macro_ap": 0.5486140975180157, "status": "rejected", "reason": "plain item-centric LateInteraction is far below v12 fold0"},
+    "a1": {"macro_ap": 0.5422162762826607, "status": "rejected", "reason": "human hard-negative repeats regressed A0"},
+    "a2": {"macro_ap": null, "status": "rejected", "reason": "cancelled after A0/A1 made sampler-only continuation non-credible"},
+    "a3": {"macro_ap": 0.3222800376478955, "status": "rejected", "reason": "category-MoE plus ranking on plain LateInteraction collapsed quality"},
+    "a5": {"macro_ap": null, "status": "in_progress", "architecture": "ruBERT item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891601603},
+    "a8": {"macro_ap": null, "status": "in_progress", "architecture": "Granite-97M multilingual item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "note": "technical ModernBERT implicit-compile failure fixed by forcing reference_compile=false; retry queued"}
   },
   "validation_protocol": {
     "human_rows": 365654,
@@ -51,34 +50,9 @@
     "llm_rows_available": 11187780,
     "llm_human_pair_overlap": 0,
     "llm_admitted": false,
-    "llm_rows_used_by_v14": 0,
-    "residual_label_source": "human-only-development"
+    "llm_rows_used_by_current_candidates": 0,
+    "current_label_source": "human-only-development"
   },
-  "runtime": {
-    "shape": "single-rubert-v12-crossencoder-plus-lightweight-category-residual",
-    "binding_check": {
-      "rows": 1000,
-      "supplied_items": 1999,
-      "extract_seconds": 3.4397788900005253,
-      "wall_seconds": 28.810029840000425,
-      "limit_seconds": 60.0,
-      "return_code": 0,
-      "timed_out": false,
-      "passed": true,
-      "output_valid": true,
-      "unique_scores": 910
-    }
-  },
-  "artifact": {
-    "filename": "ecup-v14-v12-category-gated-residual-submission.zip",
-    "bytes": 663770301,
-    "sha256": "fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e",
-    "model_sha256": "b137761de29dd17b5ac058bc51a4cd5d113f3531a1d60071a91a3ae058ac55e6",
-    "parent_v12_sha256": "a189eb9eaf97ad74c323ef446759c4b42e392f09df8d65327f938b582d01dac1",
-    "probe_run_id": 31882322590,
-    "probe_artifact_id": 9246360741,
-    "packaging_run_id": 31882572941,
-    "ready_for_submission": true
-  },
-  "next_action": "Submit the exact SHA-verified v14 archive to ODS and record its Public LB. Do not claim >0.5 before platform evidence exists."
+  "promotion_policy": "Do not run strict OOF or package a new architecture merely because it is new. First require a credible fold0 recovery toward the v12 quality range; then run exact five-fold OOF, production refit, organizer-shaped runtime Check and private-HF SHA roundtrip.",
+  "next_action": "Finish A5 and A8 fold0. If neither recovers enough quality, test the prebuilt typed-attribute fusion A12 and fold-safe LLM-free distillation A6 before any production packaging."
 }
