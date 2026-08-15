@@ -1,0 +1,7 @@
+{
+  "implementation_branch": "ecup-v15-field-aware",
+  "executor_branch": "ecup-v15-executor",
+  "canonical_memory_branch": "ecup-v14-research",
+  "created_from_canonical_commit": "8a1f05a0119ed67b279f1e6593fa7984297d5e81",
+  "policy": "implementation branches may evolve; architectural truth remains in canonical v15 plan/design; existing v14 runs are untouched"
+}
