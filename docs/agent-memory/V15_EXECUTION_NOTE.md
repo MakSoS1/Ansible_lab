@@ -1,0 +1,1 @@
+Execution is authorized. Do not cancel existing v14/A17 runs. New v15 GPU work may be queued independently once immutable manifests and tests are in place.
