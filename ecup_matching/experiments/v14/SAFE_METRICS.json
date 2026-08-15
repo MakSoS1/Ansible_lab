@@ -1,7 +1,7 @@
 {
   "version": "v14",
   "status": "in_progress",
-  "candidate": "new-item-centric-compressed-cross",
+  "candidate": "setwise-and-token-preserving-screening",
   "public_leaderboard": null,
   "external_anchors": {
     "v12_public_lb": 0.3798116204,
@@ -25,15 +25,30 @@
     "llm_human_pair_overlap": 0,
     "llm_admitted": false,
     "llm_rows_used_by_current_candidates": 0,
-    "label_source": "human-only-development"
+    "label_source": "human-only-development; unlabeled retrieval topology may be used without target"
+  },
+  "fold0_promotion_gate": {
+    "hard_reject_below": 0.64,
+    "research_only_below": 0.68,
+    "credible_strict_oof_minimum": 0.68,
+    "v12_reference": 0.7059297810308699,
+    "fixed_before_a5_result": true
   },
   "screening": {
     "a0": {"macro_ap": 0.5486140975180157, "status": "rejected"},
     "a1": {"macro_ap": 0.5422162762826607, "status": "rejected"},
     "a2": {"macro_ap": null, "status": "rejected", "cancelled": true},
     "a3": {"macro_ap": 0.3222800376478955, "status": "rejected", "run_id": 31887218705, "artifact_id": 9248080049},
-    "a5": {"macro_ap": null, "status": "in_progress", "run_id": 31891601603},
-    "a8": {"macro_ap": null, "status": "in_progress", "modernbert_reference_compile": false}
+    "a5": {"macro_ap": 0.3701278186124241, "status": "rejected", "run_id": 31891601603, "artifact_id": 9249392211, "architecture": "rubert-12slot-compressed-cross+moe+ranking"},
+    "a8": {"macro_ap": 0.3450728413820783, "status": "rejected", "run_id": 31891817294, "artifact_id": 9249911397, "architecture": "granite97m-12slot-compressed-cross+moe+ranking", "modernbert_reference_compile": false},
+    "setwise": {"macro_ap": null, "status": "queued", "run_id": 31896370680, "architecture": "typed-features+permutation-equivariant-candidate-set-transformer"},
+    "a15": {"macro_ap": null, "status": "queued", "run_id": 31897786692, "architecture": "teacher-warm-rubert-real-token-cross+typed-features+global-symmetric-head"},
+    "a6_teacher_data": {"status": "in_progress", "run_id": 31892229544, "llm_target_column_read": false}
+  },
+  "family_decisions": {
+    "compressed_12slot_moe_ranking": "rejected independently of ruBERT vs Granite backbone after A5/A8 both fell below 0.64",
+    "a10_a12_unchanged_descendants": "suspended",
+    "a5c": "suspended pending setwise/A15 evidence"
   },
   "legacy_residual_fallback": {
     "status": "superseded",
