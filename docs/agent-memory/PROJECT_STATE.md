@@ -1,21 +1,22 @@
 # E-CUP Matching — Project State
 
-Updated: **2026-08-15** — current iteration **v14**
+Updated: **2026-08-15** — current iteration **v14 new architecture**
 
 ## Executive state
 
-The best **measured external** result remains v12 Public LB `0.3798116204`. v13 B returned `0.3783781653` despite a higher local fold0 score, proving a real local/external ordering inversion. The current submission-ready candidate is **v14 `v14-v12-category-gated-residual`**: the exact v12 one-CrossEncoder parent plus a small human-only category-gated lexical residual that passed item-disjoint cross-fit and an organizer-shaped runtime Check on the exact final ZIP.
+The best **measured external** result remains v12 Public LB `0.3798116204`. v13 B returned `0.3783781653` despite the higher local fold0 score `0.7086611385531062`, proving that near-neighbour local ordering can invert on the Public LB.
 
-v14 Public LB is not measured yet. Do not claim `>0.5` or even `>v12` externally until the platform returns a score.
+The earlier package `v14-v12-category-gated-residual` is now a **superseded technical fallback**, not the current v14. The active work is a genuinely new item-centric architecture with reusable item encodings and compressed pair-conditioned cross-attention. Current candidates use **zero LLM-labelled rows** and never score the sealed gold.
 
-## External leaderboard anchors
+## External anchors
 
 | Candidate | Comparable local diagnostic | Public LB | Meaning |
 |---|---:|---:|---|
 | v7 | ~`0.70238` | `0.3655833314` | first reliable one-CrossEncoder anchor |
-| v12 | `0.7059297810308699` | **`0.3798116204`** | best measured external parent |
+| v12 | `0.7059297810308699` | **`0.3798116204`** | best measured external result |
 | v13 B | `0.7086611385531062` | `0.3783781653` | measured negative anchor; local ordering inverted |
-| v14 | `0.7065769713851786` | pending | current runtime-verified submission candidate |
+
+No v14 Public LB should be claimed until an exact final archive is submitted.
 
 ## Immutable validation / safety state
 
@@ -24,115 +25,86 @@ v14 Public LB is not measured yet. Do not claim `>0.5` or even `>v12` externally
 - Sealed gold: `80444` rows.
 - Five component-disjoint development folds.
 - Historical split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
-- Recovered canonical row-map SHA-256: `00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f`.
-- Row-map source: artifact `9175469673`, run `31680767570`.
-- Current data alignment: dev↔sealed item overlap `0`; train↔held item overlap `0` in every fold.
-- Sealed gold remains unopened; `gold_metric_opened=false`, `gold_rows_scored=0`.
+- Canonical row-map SHA-256: `00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f`.
+- Dev↔sealed item overlap: `0`.
+- Train↔held item overlap: `0` in every canonical fold.
+- `gold_metric_opened=false`, `gold_rows_scored=0`.
 
-The row map, not a newly recomputed split in a changed environment, is now the authoritative historical validation identity.
+The row map is the authoritative historical validation identity.
 
-## Why v13 changed the selection policy
+## LLM weak-label policy
 
-v13 B improved the local diagnostics:
+Canonical weak file `matches_llm.parquet` has `11,187,780` rows but exact human-pair overlap `0`. Therefore its class-label precision cannot be established from the existing corpus, and confidence/extreme soft targets are not accepted as proof of correctness.
 
-- v12 fold0 `0.7059297810308699`;
-- v13 B fold0 `0.7086611385531062`.
+**Current v14 candidates use zero LLM-labelled rows.** LLM supervision stays denied unless a separate human-controlled audit demonstrates a benefit.
 
-But Public LB moved the opposite direction:
+## New architecture evidence
 
-- v12 `0.3798116204`;
-- v13 B `0.3783781653`;
-- v13 minus v12 = `-0.0014334551`.
+### A0 — plain item-centric LateInteraction
 
-Therefore fold0/Validation-v3 can be useful diagnostics but cannot independently promote a near-neighbour candidate. v13 is retained as a measured negative external anchor.
+- fold0 Macro AP: `0.5486140975180157`;
+- human-only;
+- rejected: far below v12 `0.7059297810308699`.
 
-## Weak-label audit
+### A1 — A0 + human hard-negative repeats
 
-Canonical weak file `matches_llm.parquet` has `11,187,780` rows. Exact pair overlap with the human truth set is `0`, so positive/negative precision cannot be audited against controlled human labels. Confidence or extreme soft targets are not accepted as substitutes for ground truth.
+- fold0 Macro AP: `0.5422162762826607`;
+- rejected: worse than A0 by ~`0.00640`.
 
-**v14 uses zero LLM-labelled rows.** The residual is trained from human development labels only.
+### A2 — component-closure continuation
 
-## v14 architecture research
+- cancelled and rejected without spending another full training cycle after A0/A1 showed sampler-only changes were not credible.
 
-An item-centric/late-interaction A2 path was implemented with one ruBERT encoder, pooled field vectors, token MaxSim, human hard negatives and component closure. Two engineering issues were found and fixed:
+### A3 — LateInteraction + category MoE + ranking
 
-1. component closure failed for endpoints appearing only as `id2`;
-2. current split recomputation did not reproduce the historical split SHA, leading to the explicit canonical row-map recovery.
+- run `31887218705`;
+- evidence artifact `9248080049`;
+- fold0 Macro AP: `0.3222800376478955`;
+- human-only;
+- rejected: category specialization/ranking on top of plain LateInteraction collapsed quality.
 
-A complete new-Transformer strict five-fold was not finished after projected multi-hour RTX cost. This is recorded as unfinished architecture research, **not** a quality rejection.
+## Active architecture
 
-## Fast residual ladder
+### A5 — ruBERT compressed cross interaction
 
-### v1 scalar residual — rejected
+`item encoder -> reusable token/item cache -> learned 12-slot compression -> bidirectional tiny cross-attention -> symmetric category-conditioned score`
 
-- v12 fold0 reproduced exactly: `0.7059297810308699`;
-- diagnostic fold0 `0.7060368061079549`;
-- delta `+0.00010702507708482134`;
-- cross-fit mean `+0.0002866901011532867`;
-- only 11/20 categories non-negative.
+This restores pair-conditioned reasoning without returning to a full concatenated pair CrossEncoder. Human-only fold0 run `31891601603` is active after a read-only `py_compile` cache issue was fixed.
 
-### v2 category gate — evaluator bug found
+### A8 — Granite-97M compressed cross interaction
 
-The first v2 category logic computed per-category admission correctly but the aggregate cross-fit score still applied residual alpha to categories later rejected by the gate. That aggregate evaluator was inconsistent with the intended production decision rule.
+Same compressed pair-conditioned architecture, but with pinned multilingual retrieval encoder `ibm-granite/granite-embedding-97m-multilingual-r2`, revision `c61e626a6255c490879d0af885078b61929d51f6`, weights SHA-256 `f3ea88b230492811046145513710e76b4cc8c2ad49e8708da0e7247e548903be`.
 
-The evaluator was corrected so rejected categories remain exactly at the v12 base score. **Promotion thresholds were not changed.**
+A previous A8 attempt reached model construction but ModernBERT automatically invoked TorchInductor/Triton and tried to write a compiler cache under read-only `/root`. Train, production and submission paths now explicitly force `reference_compile=false`; the failed attempts are infrastructure evidence only, not quality evidence.
 
-### v2 corrected — accepted
+## Prebuilt escalation if A5/A8 are still below the credible quality region
 
-Corrected probe run `31882322590`, evidence artifact `9246360741`:
+- **A12** — Granite compressed cross-attention fused with fold-safe typed `features_v2` signals: model code, quantity, brand, same-key attribute agreement/conflict.
+- **A6** — fold-safe LLM-free distillation into the compressed-cross student; weak retrieval rows contribute pair IDs only, not the legacy LLM target.
+- **A10** — stronger multilingual E5-base encoder under the same compressed-cross architecture, conditional on runtime feasibility.
+- setwise candidate-group teacher is available as an offline teacher if pairwise students remain insufficient.
 
-- v12 fold0 `0.7059297810308699`;
-- v14 fold0 `0.7065769713851786`;
-- delta `+0.0006471903543086022`;
-- side0 opposite-half delta `+0.000437006267165585`;
-- side1 opposite-half delta `+0.000734831086673049`;
-- cross-fit mean `+0.000585918676919317`;
-- admitted categories `6`;
-- full-fold categories non-negative vs v12: `20/20`;
-- frozen promotion gate: PASS.
+## Promotion and completion gate
 
-Active residual categories and alphas:
+A new architecture is not promoted because it is novel. It must first recover to a credible fold0 region. Only then:
 
-- `Автотовары`: `0.025`;
-- `Аптека`: `0.025`;
-- `Бытовая техника`: `0.10`;
-- `Мебель`: `0.05`;
-- `Музыкальные инструменты`: `0.075`;
-- `Спорт и отдых`: `0.025`.
+1. run exact five-fold OOF over all `285210` development rows;
+2. verify exact OOF coverage, zero item leakage, and zero sealed-gold scoring;
+3. full-development production refit;
+4. build a single-checkpoint offline archive with no raw competition data;
+5. run the exact organizer-shaped `<60 s` Check on final ZIP bytes;
+6. upload to private Hugging Face and re-download to verify exact byte count/SHA.
 
-All other categories preserve the v12 base score exactly.
+## Legacy residual fallback
 
-## v14 final artifact
+The earlier `ecup-v14-v12-category-gated-residual-submission.zip` remains reproducible and runtime-verified:
 
-Packaging/runtime run: `31882572941`.
+- SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`;
+- diagnostic fold0 `0.7065769713851786`;
+- organizer-shaped Check `28.810029840000425 s / 60 s` PASS.
 
-- filename: `ecup-v14-v12-category-gated-residual-submission.zip`;
-- bytes: `663770301`;
-- SHA-256: `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`;
-- model SHA-256: `b137761de29dd17b5ac058bc51a4cd5d113f3531a1d60071a91a3ae058ac55e6`;
-- exact parent v12 archive SHA-256: `a189eb9eaf97ad74c323ef446759c4b42e392f09df8d65327f938b582d01dac1`;
-- one safetensors checkpoint;
-- no competition parquet/csv in the archive;
-- sealed gold unopened;
-- zero v14 LLM rows.
-
-### Binding organizer-shaped Check on exact final bytes
-
-- organizer image: `odsai/ecup26-matching-baseline:1.0`;
-- pairs: `1000`;
-- supplied items: `1999`;
-- ZIP extraction: `3.4397788900005253 s`;
-- total wall: **`28.810029840000425 s / 60 s`**;
-- return code `0`;
-- timed out `false`;
-- output valid `true`;
-- unique scores `910`;
-- result: **PASS**.
-
-## Runtime architecture
-
-The retained inference architecture is the measured v12 one-ruBERT CrossEncoder plus a lightweight category-gated six-feature residual. Heavy multi-model/TF-IDF/graph inference remains closed. The exact final archive, not a development source tree, defines the accepted runtime behavior.
+It is retained only as a safe technical fallback/reference. It is **not** the requested new architecture and should not be submitted as the current v14 while the new architecture research is active.
 
 ## Immediate next action
 
-Submit exactly `ecup-v14-v12-category-gated-residual-submission.zip` with SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e` to ODS and record the measured Public LB in the leaderboard registry and v14 results. Until that happens, v12 `0.3798116204` remains the best measured external anchor.
+Finish A5 and the eager-path A8 fold0 screens. If neither is competitive, run A12 typed-attribute fusion and then A6 LLM-free distillation before committing GPU time to strict OOF or packaging. v12 remains the best measured external anchor until a new exact archive receives a platform score.
