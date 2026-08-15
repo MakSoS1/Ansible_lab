@@ -1,0 +1,1 @@
+Task-by-task execution is tracked in `docs/superpowers/plans/2026-08-16-ecup-v15-field-aware-distillation.md`. This snapshot exists so Memora can retrieve the plan even before the next full checkpoint.
