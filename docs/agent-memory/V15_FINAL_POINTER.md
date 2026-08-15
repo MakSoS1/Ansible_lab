@@ -1,0 +1,1 @@
+Do not duplicate v15 architecture decisions in private executor docs; private docs reference the canonical public plan.
