@@ -1,12 +1,14 @@
 {
   "version": "v14",
-  "status": "submission_ready",
-  "candidate": "v14-v12-category-gated-residual",
+  "status": "in_progress",
+  "candidate": "new-item-centric-compressed-cross",
   "public_leaderboard": null,
   "external_anchors": {
     "v12_public_lb": 0.3798116204,
     "v13b_public_lb": 0.3783781653,
-    "delta_v12_minus_v13b": 0.0014334551
+    "delta_v12_minus_v13b": 0.0014334551,
+    "v12_fold0_macro_ap": 0.7059297810308699,
+    "v13b_fold0_macro_ap": 0.7086611385531062
   },
   "canonical_validation": {
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
@@ -22,52 +24,33 @@
     "llm_source_rows_available": 11187780,
     "llm_human_pair_overlap": 0,
     "llm_admitted": false,
-    "llm_rows_used_by_v14": 0,
-    "residual_label_source": "human-only-development"
+    "llm_rows_used_by_current_candidates": 0,
+    "label_source": "human-only-development"
   },
-  "quality": {
-    "v12_fold0_macro_ap": 0.7059297810308699,
-    "v14_fold0_macro_ap": 0.7065769713851786,
-    "diagnostic_delta_vs_v12": 0.0006471903543086022,
-    "crossfit_side0_delta": 0.000437006267165585,
-    "crossfit_side1_delta": 0.000734831086673049,
-    "crossfit_mean_delta": 0.000585918676919317,
-    "admitted_category_count": 6,
-    "categories_nonnegative_vs_v12": 20,
-    "promotion_gate_passed": true,
-    "strict_five_fold_new_model_confirmed": false,
-    "note": "v14 is a category-gated residual over the measured v12 parent; the residual is cross-fit validated inside canonical fold0, not a new five-fold Transformer refit"
+  "screening": {
+    "a0": {"macro_ap": 0.5486140975180157, "status": "rejected"},
+    "a1": {"macro_ap": 0.5422162762826607, "status": "rejected"},
+    "a2": {"macro_ap": null, "status": "rejected", "cancelled": true},
+    "a3": {"macro_ap": 0.3222800376478955, "status": "rejected", "run_id": 31887218705, "artifact_id": 9248080049},
+    "a5": {"macro_ap": null, "status": "in_progress", "run_id": 31891601603},
+    "a8": {"macro_ap": null, "status": "in_progress", "modernbert_reference_compile": false}
   },
-  "active_category_alpha": {
-    "Автотовары": 0.025,
-    "Аптека": 0.025,
-    "Бытовая техника": 0.1,
-    "Мебель": 0.05,
-    "Музыкальные инструменты": 0.075,
-    "Спорт и отдых": 0.025
-  },
-  "runtime": {
-    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
-    "rows": 1000,
-    "supplied_items": 1999,
-    "extract_seconds": 3.4397788900005253,
-    "wall_seconds": 28.810029840000425,
-    "limit_seconds": 60.0,
-    "return_code": 0,
-    "timed_out": false,
-    "output_valid": true,
-    "unique_scores": 910,
-    "passed": true
-  },
-  "artifact": {
+  "legacy_residual_fallback": {
+    "status": "superseded",
     "filename": "ecup-v14-v12-category-gated-residual-submission.zip",
-    "bytes": 663770301,
     "sha256": "fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e",
-    "model_sha256": "b137761de29dd17b5ac058bc51a4cd5d113f3531a1d60071a91a3ae058ac55e6",
-    "parent_v12_sha256": "a189eb9eaf97ad74c323ef446759c4b42e392f09df8d65327f938b582d01dac1",
-    "probe_run_id": 31882322590,
-    "probe_artifact_id": 9246360741,
-    "packaging_run_id": 31882572941,
-    "ready_for_submission": true
+    "fold0_macro_ap": 0.7065769713851786,
+    "runtime_wall_seconds": 28.810029840000425,
+    "runtime_passed": true,
+    "note": "technical fallback only; not the requested new architecture"
+  },
+  "promotion_requirements": {
+    "credible_fold0_recovery_required": true,
+    "strict_five_fold_oof_required": true,
+    "development_oof_rows_required": 285210,
+    "production_refit_required": true,
+    "one_checkpoint_package_required": true,
+    "organizer_runtime_limit_seconds": 60.0,
+    "private_hf_sha_roundtrip_required": true
   }
 }
