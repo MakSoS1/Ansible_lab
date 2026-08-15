@@ -1,0 +1,1 @@
+Implementation isolation uses dedicated branches; the canonical memory branch keeps only durable architecture/status documents. Existing v14 GPU runs remain untouched.
