@@ -1,0 +1,1 @@
+A full Memora checkpoint must only be marked verified after the v15 branch test suite and memory policy/ingest/checkpoint sequence complete successfully. Until then these source-backed documents are the durable memory source.
