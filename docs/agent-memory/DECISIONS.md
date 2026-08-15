@@ -111,10 +111,16 @@ The first category-gated v2 aggregate evaluator had a bug: it applied opposite-h
 
 Corrected run `31882322590` passed the frozen rule with fold0 `0.7065769713851786`, delta `+0.0006471903543086022`, side deltas `+0.000437006267165585` / `+0.000734831086673049`, cross-fit mean `+0.000585918676919317`, six admitted categories, and 20/20 full-fold categories non-negative.
 
-## D050 — v14 final keeps the measured v12 neural parent and adds only gated human residuals
+## D050 — historical residual package is a reproducible fallback
 
-The v14 runtime contains one v12 ruBERT checkpoint plus a small category-specific six-feature lexical residual trained on human development labels only. The residual is active only for six categories proven by item-disjoint cross-fit; all other categories preserve v12 base scores exactly.
+The package formerly called the v14 final contains one v12 ruBERT checkpoint plus a small category-specific six-feature lexical residual trained on human development labels only. It remains reproducible as `ecup-v14-v12-category-gated-residual-submission.zip`, `663770301` bytes, SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`, and passed the organizer-shaped Check in `28.810029840000425 s / 60 s` with `910` unique scores.
 
-Exact final artifact: `ecup-v14-v12-category-gated-residual-submission.zip`, `663770301` bytes, SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`.
+This is historical technical evidence only. It was superseded when v14 was explicitly redirected to a genuinely new architecture; it must not be presented as completion of the active v14 research.
 
-Binding organizer-shaped Check on the exact final bytes passed in `28.810029840000425 s / 60 s`, return code 0, valid output, `910` unique scores. This makes the package submission-ready, not a claim of a particular Public LB. v12 remains the measured external best until v14 is submitted.
+## D051 — active v14 requires a genuinely new pair-conditioned item-centric architecture
+
+A0 item-centric LateInteraction (`0.5486140975180157`), A1 plus human hard repeats (`0.5422162762826607`) and A3 LateInteraction + category MoE/ranking (`0.3222800376478955`) established that independent item scoring loses too much pair-specific information. The active architecture therefore encodes each unique item independently but restores pair-conditioned reasoning after learned token compression using a tiny bidirectional cross-attention block.
+
+The active screen ladder is A5 ruBERT compressed-cross, A8 Granite-97M compressed-cross, A5c clean compressed-cross without category experts/ranking, then A12 typed structured fusion, A6 LLM-free retrieval-domain distillation and A10 multilingual-E5 reserve as needed. Legacy LLM targets are not admitted; A6 reads retrieval pair IDs only and generates new soft targets from fold-safe human-trained teachers.
+
+The fold0 promotion rule was frozen before the A5 result: `<0.64` is an architectural reject; `0.64–<0.68` remains research-only; `>=0.68` enters the credible strict-OOF region. v12 fold0 `0.7059297810308699` remains the local reference, but no local score is a Public-LB estimate. Any final candidate additionally requires exact five-fold OOF, full-development refit, an exact-byte organizer Check `<60 s`, and private-HF download-back SHA verification before it can be called submission-ready.
