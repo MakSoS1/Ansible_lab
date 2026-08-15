@@ -31,9 +31,9 @@
     "a1": {"macro_ap": 0.5422162762826607, "status": "rejected", "reason": "human hard-negative repeats regressed A0"},
     "a2": {"macro_ap": null, "status": "rejected", "reason": "cancelled after A0/A1 made sampler-only continuation non-credible"},
     "a3": {"macro_ap": 0.3222800376478955, "status": "rejected", "reason": "category-MoE plus ranking on plain LateInteraction collapsed quality"},
-    "a5": {"macro_ap": null, "status": "in_progress", "architecture": "ruBERT item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891601603},
+    "a5": {"macro_ap": 0.3701278186124241, "status": "rejected", "architecture": "ruBERT item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891601603, "artifact_id": 9249392211, "reason": "completed far below the predeclared 0.64 hard-reject gate; no strict OOF"},
     "a5c": {"macro_ap": null, "status": "queued", "architecture": "same compressed cross interaction, category experts disabled, ranking weight 0; causal control for A3-derived training additions", "run_id": 31893697194},
-    "a8": {"macro_ap": null, "status": "queued", "architecture": "Granite-97M multilingual item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "note": "technical ModernBERT implicit-compile failure fixed by forcing reference_compile=false; retry queued"},
+    "a8": {"macro_ap": null, "status": "in_progress", "architecture": "Granite-97M multilingual item encoder + cached slots + bidirectional compressed cross-attention + category MoE + ranking", "run_id": 31891817294, "note": "technical ModernBERT implicit-compile failure fixed by forcing reference_compile=false; quality retry is training"},
     "a12": {"macro_ap": null, "status": "queued", "architecture": "Granite compressed-cross + fold-train-only typed product features"},
     "a6": {"macro_ap": null, "status": "teacher_queued", "architecture": "A5 compressed student + LLM-free fold-safe retrieval teacher distillation"},
     "a10": {"macro_ap": null, "status": "queued_reserve", "architecture": "multilingual-E5-base compressed-cross; self-contained exact-model preflight"}
@@ -65,5 +65,5 @@
     "fixed_before_a5_result": true
   },
   "promotion_policy": "A completed fold0 below 0.64 is rejected. Scores from 0.64 up to but not including 0.68 remain research-only and do not trigger strict OOF. A score >=0.68 enters the credible promotion region; then compare screened candidates before exact five-fold OOF. Any final archive still requires strict OOF, production refit, organizer-shaped runtime Check and private-HF SHA roundtrip.",
-  "next_action": "Finish A5, then A8 and the clean A5c causal control. Continue A12/A6/A10 only as required by the fixed promotion gate; package nothing below it."
+  "next_action": "Finish A8. If it misses the fixed gate, run A5c to isolate category-MoE/ranking, then A12/A6/A10 as required; package nothing below the gate."
 }
