@@ -1,54 +1,56 @@
 # E-CUP Matching — Experiment Index
 
-Updated: **2026-08-15**. This index separates historical local metrics, external leaderboard evidence and runtime/package evidence.
+Updated: **2026-08-16**. Local metrics, external leaderboard evidence and package/runtime evidence are kept separate.
 
-| Version | Core idea | Local / proxy evidence | Public / platform evidence | Decision |
-|---|---|---|---|---|
-| v1 | structured lexical HGB | local `0.4961654895` on old holdout | `0.2345852292` | historical |
-| v2 | structured + weak curriculum | local `0.5010008995` old holdout | `0.2583231811` | historical external anchor |
-| v3 | v2 + tiny ruBERT blend | local `0.5254642646` old holdout | canonical `0.2481015189` | historical |
-| v4 | cross-fitted category routing | OOF `0.5276431099` | `0.2531285195` | historical |
-| v5 | six-signal / category-shrunk / HGB development ladder | strict OOF reached `0.6018115534` | no reliable comparable LB retained here | proved extra signals useful but inference became heavy |
-| v6 | runtime engineering of structured stack | strict OOF `0.6006003615` | — | CPU bottleneck identified |
-| v7 | one ruBERT CrossEncoder | fold0 ~`0.70238` | **`0.3655833314`** | reliable fast external anchor |
-| v8 | hard-negative training | fold0 `0.6555648876`, worse than v7 | calibration submission not recorded | hard-negative policy rejected locally; useful spread anchor candidate |
-| v9 | teacher/contrastive/structured/graph stack | OOF ~`0.597` | timeout family | too heavy |
-| v10/v11 | parallelized structured/TF-IDF/graph runtime | OOF ~`0.595`; v11 local 115k `161.9 s`, 275k `379.2 s` | platform timeout | architecture closed; benchmark fixture was unrepresentative |
+| Version | Core idea | Comparable local evidence | Public / platform evidence | Decision |
+|---|---|---:|---:|---|
+| v7 | one RuBERT CrossEncoder | fold0 ~`0.70238` | `0.3655833314` | reliable external anchor |
 | v12 | v7 runtime + stronger weak supervision | fold0 `0.7059297810` | **`0.3798116204`** | current observed Public-LB best |
-| v13 | B/groupweak: preserve weak retrieval-anchor groups/topology | fold0 **`0.7086611386`**; frozen p05 **`0.5690974845`**, mean **`0.6869505675`** | **pending** | next Public-LB candidate; package verified |
+| v13B | preserve weak retrieval groups/orientation | fold0 `0.7086611386` | `0.3783781653` | reject externally vs v12; proves local ranking mismatch |
+| v14 A17 | retrieval-distilled token-cross | `0.5913742384` | — | reject |
+| v14 A20 | Granite full-pair + typed features | `0.6077998852` | — | reject Granite parent |
+| v14 A21 | human-only RuBERT + zero-safe typed residual | teacher `0.6974019210` → `0.6991600103` | — | retain residual evidence |
+| v14 final | v12 + category-gated cross-fit residual | `0.7065769714`; cross-fit mean Δ `+0.0005859187` | pending | **submission-ready**, safer new calibration |
+| v15 A0 | Granite title/category pair control | `0.5989106811` | — | reject production parent |
+| v15 A4 | A0 + attrs + typed + category + macro balance | `0.6164130847`, ΔA0 `+0.0175024036` | — | fields/category/macro signal validated |
+| v15 R1 | strong RuBERT teacher + fast typed/category residual | teacher `0.6974019210` → **`0.7014872395`**, Δ `+0.0040853186` | pending | **experimental submission-ready** |
 
-## High-value research results
+## Validation contract
 
-### Validation and distribution
+- `365,654` human rows.
+- `285,210` development rows + `80,444` sealed gold.
+- 5 component/item-disjoint development folds; cross-split item overlap `0`.
+- Split SHA `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
+- Rowmap SHA `00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f`.
+- Gold unopened, `0` rows scored.
 
-- Immutable split: `285,210` development + `80,444` sealed gold, 5 component-disjoint folds, SHA `aae58f...eb55b`, gold unopened.
-- v7 `0.70238 local -> 0.36558 LB`; v12 `0.70593 local -> 0.37981 LB`. Local score magnitude is not calibrated to LB.
-- Canonical distribution run `31788445849`: `365,654` human rows, `11,187,780` weak rows; human prevalence ~`0.25677`, weak target mean ~`0.24356`. Retrieval degree/hardness, not prevalence alone, is the primary shift.
-- Validation v3 uses human truth and deterministic category-local retrieval-hard stress; it is for candidate ordering, not LB prediction.
+## Key causal conclusions
 
-### Runtime
+1. v13B is the strongest warning against treating fold0 as an LB estimate: it beat v12 locally but lost externally.
+2. Token-cross/retrieval distillation (A17) is not the route.
+3. Granite is too weak as the main pair parent (A20/A0), but A0→A4 `+0.0175` shows that field-aware serialization, typed pair features, category specialization and macro balancing are useful ingredients.
+4. A21 and R1 show the useful place for those ingredients: a zero-safe residual on top of a strong RuBERT pair model. R1 improves its human-only teacher by `+0.0040853`, about 2.32x A21's uplift.
+5. The current production-transfer risk is explicit: R1 was trained/selected against the human-only outer-fold teacher, while the packaged v15 parent is the full-development v12 production teacher. External calibration is required before a five-fold OOF/refit investment.
 
-- Historical v11 exact full-item Check forensic run `31789001358`: `60.033 s` timeout before valid output.
-- v13 binding supplied-item Check: `26.1353473 s / 60 s`, valid output, return code 0.
-- v13 stricter full-item diagnostic: `60.0049954 s` timeout. Diagnostic-only under the current supplied-item subset contract.
-- Graph transform runtime is cheap (~`1.29 s / 275k`) but graph was rejected for quality instability.
+## Exact submission artifacts
 
-### v13 causal ladder
+### v14
 
-- **B / groupweak KEEP as next external candidate:** preserve complete retrieval-anchor groups/orientation; fold0 `0.7086611385531062`.
-- **C2 / equal-exposure ListNet REJECT:** more complex group ranking did not beat B on the frozen diagnostics.
-- Ambiguous all-soft/ListNet work remains research evidence, not a reason to alter the already packaged B candidate without a clean selection win.
+- `ecup-v14-v12-category-gated-residual-submission.zip`
+- bytes `663770301`
+- SHA-256 `fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e`
+- packaging run `31882572941`
+- 1,000-row organizer-shaped Check `28.81002984 s / 60 s`, PASS
 
-## Exact v13 artifact identity
+### v15
 
-- `ecup-v13-groupweak-v7runtime-submission.zip`
-- bytes `663760087`
-- SHA-256 `f4b7aad36c8d293a3939d9fb2ce7f91cff1bd8381c870015b2f16ea65a17badb`
-- production run `31828844182`
-- packaging run `31829720888`
-- HF roundtrip run `31843423348`
-- packaging source commit `4e83294eb5f6c31c720f7cbb0220f0f4d0ee3cb1`
+- `ecup_submission_v15.zip`
+- bytes `665146742`
+- SHA-256 `8623981f54e0cead65695ba2c44eaccd75230a626d65c4508ba64142e527b26b`
+- R1 screen run `31939170747`
+- packaging run `31940154217`
+- 1,000-row organizer-image Check `24 s / 60 s`, PASS
 
-## Interpretation rule
+## External calibration order
 
-The current best *observed external* result is v12. v13 B is only the next candidate until ODS returns a score. Never relabel fold0/p05/mean as Public LB, and never label a successful package/runtime test as a quality win.
+Submit v14 first, record Public LB, then submit v15 R1. Until those scores arrive, **v12 remains the best observed external result** and neither new candidate may be described as a `0.5` solution.
