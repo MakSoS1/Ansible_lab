@@ -1,0 +1,5 @@
+{
+  "source": "private-hf-canonical-v12",
+  "expected_sha256": "a189eb9eaf97ad74c323ef446759c4b42e392f09df8d65327f938b582d01dac1",
+  "purpose": "recover v14-safe submission bytes"
+}
