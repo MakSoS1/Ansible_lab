@@ -1,11 +1,11 @@
 {
   "version": "v15",
-  "status": "in_progress",
+  "status": "submission_candidates_built",
   "public_leaderboard": {
     "v7": 0.3655833314,
     "v12": 0.379811620418641,
     "v13b": 0.37837816527590995,
-    "best": "v12",
+    "best_observed": "v12",
     "target": 0.5
   },
   "validation": {
@@ -22,23 +22,39 @@
   "reviewed_v14_controls": [
     {"run_id": 31902830418, "id": "A17", "fold0_macro_ap": 0.5913742383876135, "decision": "reject"},
     {"run_id": 31906787615, "id": "A20", "fold0_macro_ap": 0.607799885174354, "decision": "reject"},
-    {"run_id": 31906735883, "id": "A21", "fold0_macro_ap": 0.6991600103234464, "teacher_fold0_macro_ap": 0.6974019209735696, "decision": "keep_evidence"}
+    {"run_id": 31906735883, "id": "A21", "teacher_fold0_macro_ap": 0.6974019209735696, "fold0_macro_ap": 0.6991600103234464, "delta_vs_teacher": 0.001758089349876868, "decision": "keep_evidence"}
   ],
-  "retained_v15_results": [
-    {
-      "run_id": 31936366096,
-      "id": "A0-granite-control",
-      "fold0_macro_ap": 0.5989106811324902,
-      "elapsed_seconds": 655.418648470004,
-      "optimizer_steps": 3209,
-      "decision": "reject_production_direction",
-      "gold_metric_opened": false,
-      "gold_rows_scored": 0
-    }
+  "v14_submission": {
+    "candidate": "v14-v12-category-gated-residual",
+    "diagnostic_fold0_macro_ap": 0.7065769713851786,
+    "delta_vs_v12": 0.0006471903543086022,
+    "crossfit_mean_delta": 0.000585918676919317,
+    "categories_nonnegative_vs_v12": 20,
+    "active_category_count": 6,
+    "packaging_run_id": 31882572941,
+    "archive_bytes": 663770301,
+    "archive_sha256": "fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e",
+    "organizer_check_seconds": 28.810029840000425,
+    "organizer_check_passed": true
+  },
+  "v15_controls": [
+    {"run_id": 31936366096, "id": "A0-granite", "fold0_macro_ap": 0.5989106811324902, "decision": "reject_parent"},
+    {"run_id": 31936375282, "id": "A4-granite-field-aware", "fold0_macro_ap": 0.61641308474721, "delta_vs_a0": 0.017502403614719775, "decision": "retain_causal_evidence"}
   ],
-  "active": {
-    "a4_granite_control_run_id": 31936375282,
-    "r1_rubert_fast_category_residual_run_id": 31936982360,
-    "primary_candidate": "R1"
+  "v15_primary": {
+    "id": "R1-rubert-fast-category-residual",
+    "screen_run_id": 31939170747,
+    "teacher_fold0_macro_ap": 0.6974019209735696,
+    "fold0_macro_ap": 0.7014872395264526,
+    "delta_vs_teacher": 0.004085318552883077,
+    "delta_vs_v12_fold0": -0.00444254150441743,
+    "label_policy": "human_only",
+    "llm_rows": 0,
+    "package_run_id": 31940154217,
+    "archive_bytes": 665146742,
+    "archive_sha256": "8623981f54e0cead65695ba2c44eaccd75230a626d65c4508ba64142e527b26b",
+    "organizer_check_seconds": 24,
+    "organizer_check_passed": true,
+    "decision": "experimental_external_calibration_candidate"
   }
 }
