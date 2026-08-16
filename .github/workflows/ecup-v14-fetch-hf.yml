@@ -1,0 +1,53 @@
+name: E-CUP v14 fetch verified safe submission
+
+on:
+  push:
+    branches: [ecup-v15-field-aware]
+    paths: ['ecup_matching/experiments/v15/V14_FETCH_TRIGGER.json']
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_REPO: Maksim123321/e-cup-2026-matching-private
+      HF_FILE: submissions/v12/final/ecup-v12-weak035-v7runtime-submission.zip
+      EXPECTED_SHA: a189eb9eaf97ad74c323ef446759c4b42e392f09df8d65327f938b582d01dac1
+      EXPECTED_BYTES: '663760211'
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Download private canonical bytes and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HF_TOKEN"
+          python -m pip install -q 'huggingface_hub>=0.24,<2'
+          mkdir -p "$RUNNER_TEMP/v14"
+          python - <<'PY'
+          import os,shutil
+          from huggingface_hub import hf_hub_download
+          src=hf_hub_download(repo_id=os.environ['HF_REPO'],repo_type='dataset',filename=os.environ['HF_FILE'],token=os.environ['HF_TOKEN'],force_download=True)
+          shutil.copyfile(src,os.environ['RUNNER_TEMP']+'/v14/ecup_submission_v14_safe.zip')
+          PY
+          cd "$RUNNER_TEMP/v14"
+          test "$(stat -c %s ecup_submission_v14_safe.zip)" = "$EXPECTED_BYTES"
+          echo "$EXPECTED_SHA  ecup_submission_v14_safe.zip" | sha256sum -c -
+          unzip -t ecup_submission_v14_safe.zip >/dev/null
+          split -b 180M -d -a 2 ecup_submission_v14_safe.zip ecup_submission_v14_safe.zip.part-
+          ls -lh
+          printf '{"archive_sha256":"%s","archive_bytes":%s,"zip_test_passed":true}\n' "$EXPECTED_SHA" "$EXPECTED_BYTES" > manifest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: v14-hf-part-00, path: '${{ runner.temp }}/v14/ecup_submission_v14_safe.zip.part-00', retention-days: 3}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: v14-hf-part-01, path: '${{ runner.temp }}/v14/ecup_submission_v14_safe.zip.part-01', retention-days: 3}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: v14-hf-part-02, path: '${{ runner.temp }}/v14/ecup_submission_v14_safe.zip.part-02', retention-days: 3}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: v14-hf-part-03, path: '${{ runner.temp }}/v14/ecup_submission_v14_safe.zip.part-03', retention-days: 3}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: v14-hf-manifest, path: '${{ runner.temp }}/v14/manifest.json', retention-days: 3}
