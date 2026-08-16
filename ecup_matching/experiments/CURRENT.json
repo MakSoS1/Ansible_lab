@@ -1,61 +1,54 @@
 {
   "version": "v15",
-  "status": "in_progress",
-  "stage": "field_aware_crossencoder_tdd_and_fold0_screens",
-  "model": "v15-field-aware-pair-crossencoder",
+  "status": "submission_candidates_built",
+  "stage": "external_calibration_v14_then_v15",
   "plan": "ecup_matching/experiments/v15/PLAN.md",
   "results": "ecup_matching/experiments/v15/RESULTS.md",
   "safe_metrics": "ecup_matching/experiments/v15/SAFE_METRICS.json",
-  "manifest": "ecup_matching/experiments/v15/MANIFEST.json",
   "observed_public_leaderboard": {
     "v7": 0.3655833314,
     "v12": 0.379811620418641,
     "v13b": 0.37837816527590995,
     "best": "v12",
-    "target": 0.5,
-    "v13_delta_vs_v12": -0.00143345514273105
+    "target": 0.5
   },
-  "v13_external_conclusion": {
-    "candidate": "v13b-groupweak",
-    "fold0_macro_ap": 0.7086611385531062,
-    "public_lb": 0.37837816527590995,
-    "decision": "rejected_external_vs_v12",
-    "lesson": "small local gains did not preserve Public ordering; fold0 is a screen only"
-  },
-  "v15_architecture": {
-    "family": "pair_crossencoder",
-    "trusted_labels": "human_authoritative",
-    "legacy_llm_target": "quarantined",
-    "weak_pair_topology": "allowed_as_unlabelled_id1_id2_candidate_source",
-    "field_aware_serialization": true,
-    "typed_pair_features_fused_in_neural_head": true,
-    "category_specialization": "lightweight_optional_after_shared_pair_encoder",
-    "offline_teacher": "allowed_train_time_only_after_human_truth_quality_gate",
-    "final_inference": "one_tokenizer_one_pair_transformer_one_checkpoint"
-  },
-  "validation_protocol": {
-    "name": "Validation-v5",
+  "validation": {
     "human_rows": 365654,
     "development_rows": 285210,
     "sealed_gold_rows": 80444,
-    "development_folds": 5,
-    "cross_split_item_overlap": 0,
+    "folds": 5,
     "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
-    "canonical_rowmap_sha256": "00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f",
+    "rowmap_sha256": "00778edd7ed4581f8aedc143052d17d6fb86c55abfaee9fc6a169f72bb47b32f",
+    "cross_split_item_overlap": 0,
     "gold_metric_opened": false,
-    "gold_rows_scored": 0,
-    "fold0_is_screen_only": true,
-    "strict_oof_rows_required": 285210
+    "gold_rows_scored": 0
   },
-  "parallel_v14_runs": {
-    "policy": "do_not_cancel_or_mutate; record results after completion",
-    "a17_run_id": 31902830418
+  "completed_controls": {
+    "v14_A17": {"run_id": 31902830418, "fold0_macro_ap": 0.5913742383876135, "decision": "reject"},
+    "v14_A20": {"run_id": 31906787615, "fold0_macro_ap": 0.607799885174354, "decision": "reject"},
+    "v14_A21": {"run_id": 31906735883, "fold0_macro_ap": 0.6991600103234464, "decision": "evidence_only"},
+    "v15_A0": {"run_id": 31936366096, "fold0_macro_ap": 0.5989106811324902, "decision": "reject_granite_parent"},
+    "v15_A4": {"run_id": 31936375282, "fold0_macro_ap": 0.61641308474721, "delta_vs_a0": 0.017502403614719775, "decision": "field_aware_signal_validated"}
   },
-  "tdd": {
-    "public_red_source_sha": "1dc1f9b19f3160175ec4a523dcd683e9f4d3e52f",
-    "private_red_run_id": 31910982161,
-    "red_status_at_record_time": "queued"
+  "submission_candidates": {
+    "v14": {
+      "candidate": "v14-v12-category-gated-residual",
+      "diagnostic_fold0_macro_ap": 0.7065769713851786,
+      "packaging_run_id": 31882572941,
+      "archive_sha256": "fcaace1a7f0e663b7c9b0b29ca78a768241c3b417b8f4d4a342f52874a29615e",
+      "organizer_check_passed": true
+    },
+    "v15": {
+      "candidate": "v15-R1-fast-category-residual",
+      "screen_run_id": 31939170747,
+      "teacher_fold0_macro_ap": 0.6974019209735696,
+      "fold0_macro_ap": 0.7014872395264526,
+      "delta_vs_teacher": 0.004085318552883077,
+      "package_run_id": 31940154217,
+      "archive_sha256": "8623981f54e0cead65695ba2c44eaccd75230a626d65c4508ba64142e527b26b",
+      "organizer_check_passed": true,
+      "production_transfer": "experimental_v12_parent_with_fold0_trained_residual"
+    }
   },
-  "artifact": null,
-  "next_action": "Confirm TDD RED, implement v15 modules to GREEN, freeze exact source SHA, then queue causal A0/A1/A2 fold0 screens without touching v14 runs."
+  "next_action": "Submit the exact verified v14 ZIP first and record Public LB; then submit the exact verified v15 R1 ZIP. Use those external deltas to decide whether to invest in five-fold OOF residual training/refit."
 }
