@@ -269,3 +269,26 @@
 **Decision:** Runtime fixtures use the full item universe and multiple workload profiles, never `matches.head(N)` with `items_human.parquet`.
 
 **Evidence:** v11 measured `161.9s` at 115k and `379.2s` at 275k against `360s`/`780s` limits and still timed out on the platform. CPU cost in the serialization branch scales with unique items, not pairs, and training rows are grouped by connected component — so the fixture understated exactly the quantity that was over budget. Two further factors were never accounted for: a server core is typically much slower than a desktop core for pure-Python work, and v10/v11 never ran the 1000-row/60s Check at all, where cost is dominated by fixed model-load rather than pair count. Whether those timeouts happened at Check rather than at 115k is still untested and changes which runtime rule the evidence supports.
+
+## D047 — The human development graph is a set of disjoint edges, so graph features cannot be validated on it
+
+**Decision:** Close the graph line as a locally validatable idea. Do not ship a graph rescoring layer on local evidence, and do not spend further tuning on it.
+
+**Evidence:** sweep run `31953652098` on the v15-R1 fold-0 score vector, six axes, fold-local features:
+
+- `degree_mean = 1.036`, `degree_median = 1.0`;
+- **`fraction_degree_1 = 0.9708`** — 97.08% of items have exactly one incident edge;
+- `fraction_degree_ge_3 = 0.0031`.
+
+With one edge per item, `reciprocal_best` is trivially true for almost every pair and two-hop corroboration is impossible because no shared neighbours exist. There is no graph to propagate through.
+
+Measured against base `0.7014872395`:
+
+- best of the whole grid: `0.7015043858` at `{rb: 0, rt: 0.005, ep: 0, ap: 0, support: 0, orphan: 0}`, i.e. `+0.0000171` — noise;
+- the v9 frozen config `{rb: 0, rt: 0, ep: 0.02, ap: 0.01}` scores `0.7009778266`, i.e. **`-0.0005094` below base**.
+
+So the configuration that shipped inside v9/v10/v11 was slightly harmful on this vector, and the historical `+0.0015` was not reproducible here.
+
+**Correction to D-series reasoning:** the earlier claim that reciprocal-best was "tuned to zero" was wrong in a different way than first reported. `ecup-v8-gate55-graph-tune.yml` pinned `reciprocal_best_bonus` and `reciprocal_top3_bonus` at `0.0` inside the search loop, so they were never varied. They are now searched, and on this distribution they are worthless — but for the structural reason above, not because the idea is wrong.
+
+**What this does not prove:** the competition test pairs come from retrieval, where an anchor has many candidates. A realistic candidate graph may carry real signal. That cannot be measured with any data currently held, so shipping it would be an unvalidated bet, and the one config we can measure is negative.
