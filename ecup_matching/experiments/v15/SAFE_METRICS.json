@@ -19,5 +19,26 @@
     "gold_metric_opened": false,
     "gold_rows_scored": 0
   },
-  "retained_v15_results": []
+  "reviewed_v14_controls": [
+    {"run_id": 31902830418, "id": "A17", "fold0_macro_ap": 0.5913742383876135, "decision": "reject"},
+    {"run_id": 31906787615, "id": "A20", "fold0_macro_ap": 0.607799885174354, "decision": "reject"},
+    {"run_id": 31906735883, "id": "A21", "fold0_macro_ap": 0.6991600103234464, "teacher_fold0_macro_ap": 0.6974019209735696, "decision": "keep_evidence"}
+  ],
+  "retained_v15_results": [
+    {
+      "run_id": 31936366096,
+      "id": "A0-granite-control",
+      "fold0_macro_ap": 0.5989106811324902,
+      "elapsed_seconds": 655.418648470004,
+      "optimizer_steps": 3209,
+      "decision": "reject_production_direction",
+      "gold_metric_opened": false,
+      "gold_rows_scored": 0
+    }
+  ],
+  "active": {
+    "a4_granite_control_run_id": 31936375282,
+    "r1_rubert_fast_category_residual_run_id": 31936982360,
+    "primary_candidate": "R1"
+  }
 }
