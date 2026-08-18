@@ -116,6 +116,20 @@ def _difficulty(similarity: float, reason: str) -> str:
     return "hard" if 0.35 <= similarity <= 0.75 else "medium"
 
 
+def _specific_model_codes(codes: frozenset[str]) -> frozenset[str]:
+    """Keep the most specific model/SKU codes rather than generic shared fragments.
+
+    Product titles often contain both a family token (for example ``s24``) and
+    a vendor SKU (``sms921b``). A shared short family token must not hide a
+    conflict between distinct longer SKUs. We therefore retain all codes whose
+    length is within one character of the longest observed code.
+    """
+    if not codes:
+        return frozenset()
+    longest = max(map(len, codes))
+    return frozenset(code for code in codes if len(code) >= max(2, longest - 1))
+
+
 def classify_pair_stratum(left: ItemNorm, right: ItemNorm) -> PairStratum:
     if clean_text(left.category) != clean_text(right.category):
         category = f"{clean_text(left.category)}|{clean_text(right.category)}"
@@ -127,11 +141,14 @@ def classify_pair_stratum(left: ItemNorm, right: ItemNorm) -> PairStratum:
     attr_keys_right = frozenset(right.attrs)
     attr_overlap = _jaccard(attr_keys_left, attr_keys_right)
     model_overlap = len(left.model_codes & right.model_codes)
+    left_specific = _specific_model_codes(left.model_codes)
+    right_specific = _specific_model_codes(right.model_codes)
+    specific_overlap = left_specific & right_specific
     numeric_conflict = bool(left.numbers and right.numbers and left.numbers.isdisjoint(right.numbers))
 
-    if left.model_codes and right.model_codes and not model_overlap:
+    if left_specific and right_specific and not specific_overlap:
         reason = "MODEL_CONFLICT"
-    elif model_overlap:
+    elif specific_overlap or model_overlap:
         reason = "SAME_MODEL"
     elif _quantity_conflict(left, right, _CAPACITY_DIMS):
         reason = "CAPACITY_CONFLICT"
