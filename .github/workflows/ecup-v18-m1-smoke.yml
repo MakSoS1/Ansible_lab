@@ -31,7 +31,7 @@ jobs:
           uname -m
           python3 -VV
           python3 -m pip install -q --upgrade pip
-          python3 -m pip install -q pytest pandas numpy torch transformers scikit-learn
+          python3 -m pip install -q pytest pandas numpy pyarrow torch transformers scikit-learn
       - name: Probe MPS capability
         shell: bash
         run: |
@@ -48,6 +48,8 @@ jobs:
           print('V18_M1_CAPABILITY=' + json.dumps(payload, sort_keys=True))
           open('/tmp/v18-m1-capability.json','w').write(json.dumps(payload, indent=2, sort_keys=True)+'\n')
           PY
+      - name: Compile v18 modules
+        run: python3 -m py_compile ecup_matching/ml/v18_*.py ecup_matching/ml/run_v18_probe.py
       - name: Run v18 tests
         run: python3 -m pytest -q tests/test_v18_*.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
