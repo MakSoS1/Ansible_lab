@@ -56,15 +56,18 @@ def run_audit(*, pairs_path: Path, teacher1: Path, teacher2: Path, output_dir: P
     pairs = pd.read_parquet(pairs_path).reset_index(drop=True)
     first, second = _read_jsonl(teacher1), _read_jsonl(teacher2)
     accepted, review = _consensus_frame(pairs, first, second)
-    truth = pairs[["id1", "id2", "target", "category", "stratum", "reason_code"]].copy()
+    truth = pairs[["id1", "id2", "target", "category", "stratum", "reason_code"]].copy().rename(
+        columns={"target": "human_target", "reason_code": "human_reason_code"}
+    )
     if len(accepted):
-        joined = accepted.merge(truth, on=["id1", "id2", "category", "stratum"], how="inner", suffixes=("", "_truth"))
+        accepted = accepted.rename(columns={"target": "teacher_target", "reason_code": "teacher_reason_code"})
+        joined = accepted.merge(truth, on=["id1", "id2", "category", "stratum"], how="inner")
         audit_rows = pd.DataFrame({
             "stratum": joined["stratum"].astype(str),
             "category": joined["category"].astype(str),
-            "reason_code": joined["reason_code"].astype(str),
-            "truth": (joined["target"].astype(float) >= 0.5).astype(int),
-            "pred": joined["target_x"].astype(int) if "target_x" in joined else joined["target"].astype(int),
+            "reason_code": joined["teacher_reason_code"].astype(str),
+            "truth": (joined["human_target"].astype(float) >= 0.5).astype(int),
+            "pred": joined["teacher_target"].astype(int),
         })
     else:
         audit_rows = pd.DataFrame(columns=["stratum", "category", "reason_code", "truth", "pred"])
@@ -120,7 +123,11 @@ def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admissio
             "teacher_revisions": json.dumps(row.teacher_revisions),
             "prompt_sha256": json.dumps(row.prompt_sha256),
         })
-    admitted = pd.DataFrame(rows)
+    columns = [
+        "id1", "id2", "target", "category", "stratum", "reason_code", "admitted",
+        "stratum_reliability", "label_origin", "teacher_ids", "teacher_revisions", "prompt_sha256",
+    ]
+    admitted = pd.DataFrame(rows, columns=columns)
     admitted.to_parquet(output_dir / "admitted_labels.parquet", index=False)
     review.to_parquet(output_dir / "active_review.parquet", index=False)
     report = {
