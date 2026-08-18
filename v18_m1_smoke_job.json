@@ -1,1 +1,1 @@
-{"stage":"red","expected":"missing-v18-weak-quality-module"}
+{"stage":"green","suite":"tests/test_v18_*.py","compile":"ecup_matching/ml/v18_*.py ecup_matching/ml/run_v18_*.py"}
