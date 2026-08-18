@@ -1,20 +1,20 @@
 # E-CUP v20 — Audited Data-Centric Rationale Distillation
 
 Date: 2026-08-19
-Status: design approved in chat; implementation not started
+Status: awaiting written-spec review; implementation not started
 Branch: `ecup-v20-data-centric`
 
 ## 1. Objective
 
 Build a materially stronger product-matching submission by improving supervision density and quality over the weak-labelled item universe while retaining the proven single-checkpoint `ai-forever/ruBert-base` pair CrossEncoder runtime shape.
 
-v20 is not another residual/graph/post-processing iteration. It is a data-centric training-system change with three goals:
+v20 has three goals:
 
 1. audit and stratify existing weak supervision instead of treating confidence margin as the main notion of quality;
 2. generate additional informative real-item pairs and admit only labels whose quality is empirically measured on authoritative human data;
 3. distill both binary decisions and structured matching reasons into the same runtime-efficient RuBERT student.
 
-The final submission must remain self-contained and offline. LLMs may be used only during data preparation/training. The current E-CUP FAQ explicitly permits LLM use for relabelling in the product-matching task; all libraries/software used in the final solution must satisfy the competition licensing requirements. No external API call, paid key, remote model, or second inference service is permitted in the submitted runtime.
+The final submission is self-contained and offline. LLMs are training/data-preparation tools only. The current E-CUP FAQ explicitly permits LLM use for relabelling in the product-matching task. No API call, paid key, remote model, or second inference service is permitted in the submitted runtime.
 
 ## 2. Evidence from v1–v19 that constrains the design
 
@@ -22,11 +22,11 @@ The final submission must remain self-contained and offline. LLMs may be used on
 
 The strongest useful architectural jump came from neural pair modelling, and the later strong `ai-forever/ruBert-base` CrossEncoder family substantially exceeded compact/alternative backbones locally. Granite, late-interaction/token-cross, graph and small residual families did not establish a better production parent.
 
-Therefore v20 does not replace the runtime backbone unless a bounded ablation proves a clearly superior checkpoint under the same runtime envelope. The baseline v20 production shape is one RuBERT pair CrossEncoder, max length 256, one `.safetensors` checkpoint.
+Therefore v20 does not replace the runtime backbone unless a bounded ablation proves a clearly superior checkpoint under the same runtime envelope. Baseline production shape: one RuBERT pair CrossEncoder, max length 256, one `.safetensors` checkpoint.
 
-### 2.2 Do not optimize another tiny human fold-0 delta
+### 2.2 Human fold-0 is a safety axis, not the selector
 
-Known Public LB anchors:
+Known external anchors:
 
 | Candidate | Human fold-0 | Public LB |
 |---|---:|---:|
@@ -35,168 +35,144 @@ Known Public LB anchors:
 | v13B | 0.7086611386 | 0.3783781653 |
 | v14 | 0.7065769714 | 0.3803270470 |
 
-Human fold-0 misranks v12/v13B/v14. It remains a safety axis, not the primary promotion signal.
+Human fold-0 misranks v12/v13B/v14, so a tiny fold-0 gain cannot promote v20 by itself.
 
 ### 2.3 Weak supervision is under-used
 
-The canonical weak corpus contains 11,187,780 pairs over 12,384,610 items. The historical v12+ path used `weak_final_rows=600000` and `weak_epochs=0.35`, about 210,000 examples seen, ~1.88% of the pool.
+The canonical weak corpus contains 11,187,780 pairs over 12,384,610 items. The historical v12+ recipe used `weak_final_rows=600000` and `weak_epochs=0.35`, roughly 210,000 examples seen, ~1.88% of the pool.
 
-The human and weak supervision item populations are disjoint. Human labels cover 711,304 items (~5.31% of all 13,397,761 items); weak labels cover ~92.44%. Text/attribute density is similar across populations, so the local/Public gap is not explained by a trivially richer human population.
+Human labels cover 711,304 items (~5.31% of 13,397,761 items); weak labels cover ~92.44%. The two supervision populations share zero item IDs, but their text/attribute density is similar.
 
 ### 2.4 Weak-label quality was never actually audited against human truth
 
-The historical LLM audit had zero shared items between weak and human pools, so positive/negative precision could not be measured. v20 fixes the methodology: the exact candidate LLM labelling pipeline is audited by re-labelling a held authoritative human calibration set, not by searching for overlap with the historical weak corpus.
+The historical weak audit had zero overlap with human items, so positive/negative precision could not be estimated. v20 instead audits the exact candidate LLM labelling pipeline by re-labelling a held authoritative human calibration subset.
 
 ### 2.5 Hard-negative-only curricula are not trusted
 
-Naive static hard-negative weighting in v2 regressed. The model-mined hard-negative second stage in v3 was rejected. v20 therefore balances semantic reasons/difficulty strata and preserves broad replay instead of concentrating training on the most disagreeing negatives.
+Naive hard-negative weighting regressed in v2 and the model-mined hard-negative second stage was rejected in v3. v20 balances semantic reasons and preserves broad replay instead of concentrating training on the most disagreeing negatives.
 
-### 2.6 v17 measured a forgetting problem, but weak truth is uncertain
+### 2.6 v17 measured a forgetting-like shift, but weak truth is uncertain
 
-The completed v17 control measured weak-holdout AP `0.6973930799` after weak training and `0.6565798751` after human fine-tuning, while human fold-0 was `0.7017637364`. This establishes a large change on the weak axis, but weak targets are pseudo-labels and are not authoritative truth. v20 may reuse anti-forgetting mechanisms only when they pass both human and audited-stratum gates.
+The v17 control measured weak-holdout AP `0.6973930799` after weak training and `0.6565798751` after human fine-tuning, with human fold-0 `0.7017637364`. This is a real shift on the weak axis, but weak labels remain pseudo-truth. Anti-forgetting mechanisms are inherited only if they pass human and audited-stratum gates.
 
-## 3. Data contracts
+## 3. Immutable data contract
 
-### 3.1 Immutable sources
+Sources:
 
-- `items.parquet`: 13,397,761 item records.
-- authoritative `matches.parquet`: 365,654 human-labelled pairs.
-- historical `matches_llm.parquet`: 11,187,780 weak-labelled pairs with `id1,id2,target`.
-- frozen five-fold component/item-disjoint human split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`.
-- sealed gold: 80,444 rows; never opened or scored for model selection.
+- `items.parquet`: 13,397,761 item records;
+- authoritative `matches.parquet`: 365,654 human-labelled pairs;
+- historical `matches_llm.parquet`: 11,187,780 weak-labelled pairs;
+- frozen five-fold component/item-disjoint split SHA-256: `aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b`;
+- sealed gold: 80,444 rows, never opened or scored for model selection.
 
-No generated pair may cross a held human fold through either endpoint. For outer fold `k`, every generated/audited/training pair must exclude all item IDs belonging to fold `k` before candidate generation, LLM labelling, teacher scoring, mining, or training.
+For outer fold `k`, every generated/audited/training pair excludes every item ID belonging to fold `k` before candidate generation, LLM labelling, teacher scoring, mining, or training.
 
-### 3.2 New v20 data layers
+Generated private layers:
 
-All generated data remain private and are materialized as reproducible manifests, never committed as raw competition data to public Git.
+- `bronze/audit_candidates.parquet` — human calibration + target-free candidate pairs;
+- `silver/llm_labels.parquet` — raw structured teacher outputs and provenance;
+- `silver/admitted_labels.parquet` — only statistically admitted labels;
+- `gold/train_pairs_fold{k}.parquet` — fold-safe human + admitted weak/generated rows;
+- `gold/active_review.parquet` — uncertainty/disagreement rows excluded from training.
 
-- `bronze/audit_candidates.parquet`: deterministic human calibration pairs and target-free weak/unlabelled candidate pairs.
-- `silver/llm_labels.parquet`: raw structured LLM outputs plus model/provider/revision/prompt hashes.
-- `silver/admitted_labels.parquet`: only labels passing empirical stratum admission gates.
-- `gold/train_pairs_fold{k}.parquet`: fold-safe human + admitted existing weak + admitted generated pairs with source/reason weights.
-- `gold/active_review.parquet`: disagreement/uncertain examples excluded from training but retained for diagnostics/future labelling.
-
-Each row must carry provenance: `source`, `generator_version`, `stratum`, `reason_code`, `label_origin`, `teacher_model`, `teacher_revision`, `prompt_sha256`, `admission_policy_sha256`, and fold exclusion evidence.
+Every generated row carries `source`, `generator_version`, `stratum`, `reason_code`, `label_origin`, teacher IDs/revisions, prompt hash, admission-policy hash and fold-exclusion evidence.
 
 ## 4. Semantic data audit
 
-The first v20 stage scans the complete existing weak corpus and relevant item fields. It does not train a model.
+D1 scans the complete existing weak corpus and relevant item fields without fitting a model. For each official category and target band it reports:
 
-For each official category and target band, produce counts/distributions for:
-
-- exact/normalized brand agreement and conflict;
-- exact model-code match, near-model, model conflict;
-- numeric token overlap/conflict;
-- capacity/volume/storage conflict;
-- pack count and quantity/unit conflict;
-- size/dimension conflict;
-- colour variant;
+- brand agreement/conflict;
+- model-code exact/near/conflict;
+- numeric overlap/conflict;
+- capacity/volume/storage;
+- pack count and quantity/unit;
+- size/dimensions;
+- colour;
 - gender/season;
 - material/composition;
 - year/generation;
 - jewelry hallmark/karat/stone;
-- main product vs accessory indicators;
-- title lexical similarity bins;
+- main-product/accessory indicators;
+- lexical similarity bins;
 - title length and attribute density;
-- exact/partial attribute-key overlap;
+- attribute-key overlap;
 - historical weak target margin.
 
-The audit outputs a deterministic `STRATA.json` containing support and class balance for every usable `category × semantic_reason × difficulty` stratum.
-
-Primary tail categories that must receive explicit reporting: Electronics, Clothing, Footwear, Jewelry, Accessories, Furniture. No category is excluded from training or metric reporting.
+Output: deterministic `STRATA.json` containing support and class balance for every usable `category × semantic_reason × difficulty` stratum. Electronics, Clothing, Footwear, Jewelry, Accessories and Furniture receive explicit tail reports; all 20 official categories remain in training and evaluation.
 
 ## 5. Human-grounded LLM audit
 
-### 5.1 Calibration set construction
+### 5.1 Calibration split
 
-For each outer fold, split only the outer-train human pairs into:
+Within each outer-train human set, make a component/item-disjoint split into `model_train_human` and `llm_audit_human`. The audit subset is not used to optimize student weights during D5–D9 validation. After all model-selection gates are frozen, these rows may rejoin the authoritative human pool only for the final full-development production refit.
 
-- `model_train_human`;
-- `llm_audit_human`.
+Sampling is stratified by official category, class and semantic reason, with extra support for rare critical conflicts.
 
-The audit subset is component/item-disjoint from the model's human validation fold and is never used to optimize student weights in the ablation being evaluated. Sampling is stratified by official category, class and semantic reason, with extra support for rare/critical conflict strata.
+### 5.2 Machine-validated teacher output
 
-### 5.2 Exact labelling schema
+Every teacher invocation returns JSON with:
 
-Every teacher invocation must return machine-validated JSON:
+- `verdict`: `MATCH | NON_MATCH | UNCERTAIN`;
+- `reason_code`: one of `SAME_MODEL`, `MODEL_CONFLICT`, `CAPACITY_CONFLICT`, `SIZE_CONFLICT`, `PACK_COUNT_CONFLICT`, `VARIANT_CONFLICT`, `ACCESSORY`, `DIFFERENT_GENERATION`, `BRAND_CONFLICT`, `SPARSE_EVIDENCE`, `OTHER`;
+- extracted brand/model fields;
+- critical attributes;
+- conflicts;
+- concise evidence grounded only in the two supplied item cards.
 
-```json
-{
-  "verdict": "MATCH | NON_MATCH | UNCERTAIN",
-  "reason_code": "SAME_MODEL | MODEL_CONFLICT | CAPACITY_CONFLICT | SIZE_CONFLICT | PACK_COUNT_CONFLICT | VARIANT_CONFLICT | ACCESSORY | DIFFERENT_GENERATION | BRAND_CONFLICT | SPARSE_EVIDENCE | OTHER",
-  "same_product_type": true,
-  "brand_left": "...",
-  "brand_right": "...",
-  "model_left": "...",
-  "model_right": "...",
-  "critical_attributes": {},
-  "conflicts": [],
-  "evidence": []
-}
-```
+`UNCERTAIN` is never converted to a hard target. Self-reported model confidence is logged but never used for admission.
 
-`UNCERTAIN` is never converted to a hard target. LLM self-reported confidence is logged if provided but is never an admission signal.
+### 5.3 Strict two-teacher policy
 
-### 5.3 Teacher policy
+LLM-generated labels are eligible for admission only when **two independently configured teacher lines are available**. Exact model IDs, revisions, provider/runtime, quantization and temperature are pinned before audit results.
 
-Use at least two independently configured open-license teacher lines when practical. Exact model IDs, revisions, provider/runtime, quantization and temperature are pinned in a private manifest. Offline/local inference is preferred when feasible. If an external API is used for offline labelling, its secret must never be committed, logged, copied into the final ZIP, or required at inference.
+Eligible acceptance requires teacher consensus plus deterministic structured-checker compatibility. Teacher disagreement or checker conflict goes to `active_review`.
 
-Acceptance modes:
+There is no one-teacher exception. If a second teacher cannot be used reproducibly, v20 falls back to deterministic generated-pair supervision and existing audited weak signals; it does not admit new LLM-generated labels.
 
-1. teacher consensus plus deterministic structured checker agreement; or
-2. one teacher plus deterministic checker, only for a stratum whose empirical human precision gate is already passed.
-
-Teacher disagreement and `UNCERTAIN` go to `active_review`, not training.
+External APIs, if used for offline labelling, may not leak secrets into logs, public Git, private data manifests distributed with the final solution, or the submission ZIP. Final inference never requires them.
 
 ### 5.4 Statistical admission
 
-Admission is by measured precision on `llm_audit_human`, separately for positive/negative and semantic strata. Use a two-sided Wilson interval; the lower 95% confidence bound must exceed the threshold.
-
-Default floors:
+For every category/reason stratum, compute precision on `llm_audit_human` and its two-sided 95% Wilson interval. Admission requires the lower confidence bound to exceed the predeclared floor:
 
 - positive precision LCB >= 0.985;
 - negative precision LCB >= 0.995;
 - category aggregate precision LCB >= 0.970;
-- critical conflict stratum precision LCB >= 0.950.
+- critical conflict precision LCB >= 0.950.
 
-Minimum support is predeclared per stratum before labels are inspected. A stratum with insufficient support is rejected, not pooled opportunistically after results. No threshold is loosened post-result.
+Minimum support per stratum is fixed in the implementation plan before teacher audit labels are inspected. Insufficient-support strata are rejected rather than pooled post-result. Thresholds are never relaxed after seeing metrics.
 
 ## 6. Target-free candidate generation
 
-Candidate generation uses no unknown target and no held-fold label.
+### 6.1 Existing weak rows
 
-### 6.1 Existing weak-pair recovery
-
-The 11.2M historical weak rows are primarily a candidate graph. Historical `target` is treated as one noisy teacher signal, not authoritative truth. Existing rows are re-stratified and sampled by semantic reason and category; v20 does not blindly ingest all 11.2M targets.
+The 11.2M historical weak pairs are primarily a candidate graph. Their `target` is a noisy teacher signal, not authoritative truth. v20 re-stratifies them by category/reason/difficulty instead of blindly ingesting all rows.
 
 ### 6.2 New real-item pairs
 
-Generate additional pairs from real item cards using deterministic blocking:
+Generate candidate pairs from real item cards only, using deterministic blocks:
 
 - same category;
 - brand/model-code blocks;
-- normalized title token/character nearest-neighbour blocks;
-- critical attribute blocks;
-- controlled near-model substitutions;
-- accessory/main-product lexical blocks;
-- same-product candidate blocks across seller/title variation.
+- normalized title nearest neighbours;
+- critical-attribute blocks;
+- controlled near-model blocks;
+- accessory/main-product blocks;
+- same-product candidates under seller/title variation.
 
-Negative candidate types include model, capacity, size, generation, pack-count, gender/material and accessory conflicts. Positive candidates focus on same identity under title/attribute sparsity, seller variation, reordered fields and partial metadata.
+Negative candidates target model, capacity, size, generation, pack-count, gender/material and accessory conflicts. Positive candidates target same identity under sparse/reordered/noisy metadata.
 
-Do not synthesize fictitious item records as the primary source. v20 prioritizes new pairings of real competition items. Text augmentation may be used only as a secondary label-preserving regularizer and must not invent identity facts.
+Fictitious item records are not the primary source. Label-preserving text augmentation may be used only as a secondary regularizer and may not invent identity facts.
 
-### 6.3 Diversity caps
+### 6.3 Diversity controls
 
-No anchor, item, seller-like duplicate cluster, or semantic reason may dominate the generated corpus. Deterministic caps are enforced per category, item degree, reason and duplicate signature. Exact canonical duplicate pairs are collapsed.
+Deterministic caps prevent domination by one anchor, item, duplicate cluster, category, class or semantic reason. Canonical duplicate pairs collapse to one row. Candidate budgets and per-stratum caps are fixed after D1 descriptive counts and before any v20 model-quality result.
 
 ## 7. Training architecture
 
 ### 7.1 Runtime backbone
 
-Baseline and expected production architecture:
-
-- `ai-forever/ruBert-base` pinned revision;
+- pinned `ai-forever/ruBert-base` revision;
 - pair CrossEncoder;
 - max length 256;
 - one production checkpoint;
@@ -204,218 +180,155 @@ Baseline and expected production architecture:
 
 ### 7.2 Multi-task rationale distillation
 
-During training only, attach auxiliary heads to the shared RuBERT representation:
+Training-only auxiliary heads share the RuBERT representation:
 
-- main `match` head;
-- `model_conflict`;
-- `numeric_conflict`;
-- `variant_conflict`;
-- `accessory`;
-- coarse `reason_code` classification.
+- main match head;
+- model-conflict head;
+- numeric-conflict head;
+- variant-conflict head;
+- accessory head;
+- coarse reason-code head.
 
-Auxiliary labels come only from deterministic extractors or admitted LLM-labelled examples. Missing auxiliary labels are masked, never guessed.
-
-The production package retains only the shared encoder and main match head unless a measured runtime-free benefit from keeping an auxiliary scalar is explicitly demonstrated. Default production inference remains one match logit per pair.
+Auxiliary labels come only from deterministic extractors or admitted teacher rows. Missing auxiliary labels are masked. Production retains only the shared encoder and main match head by default, so inference remains one CrossEncoder forward pass.
 
 ### 7.3 Source-aware loss
 
-Total training loss:
-
 `L = L_match + lambda_reason * L_reason + lambda_consistency * L_pair_symmetry`
 
-Source weights are explicit:
+Source weights:
 
-- authoritative human = 1.0;
-- admitted generated/LLM = empirical stratum reliability weight capped below human;
-- historical weak = quality-aware weight from v18 plus stratum/reliability factor;
+- human = 1.0;
+- admitted generated/LLM = empirical stratum reliability, capped below human;
+- historical weak = v18 quality weight × stratum reliability;
 - uncertain/disagreement = 0.
 
-Exact lambda values are frozen in the implementation plan before real GPU quality results are inspected.
+Exact lambdas, replay fractions and reliability transforms are frozen in the implementation plan before GPU quality results.
 
 ## 8. Curriculum
 
-v20 does not use `weak -> human -> done`.
+Phase A: broad admitted weak/generated supervision with category/class/reason balancing.
 
-### Phase A — broad audited supervision
+Phase B: mixed authoritative human + weak/generated replay.
 
-Train on admitted historical weak + admitted generated pairs with category/class/reason balancing.
+Phase C: short lower-LR authoritative recovery with a fixed replay fraction.
 
-### Phase B — mixed human replay
+Phase D: optional v19-style refresh only if v19 itself passes its preregistered human/weak/Brier/category gates.
 
-Train on authoritative human plus weak/generated replay in the same phase. Human examples remain the strongest source while replay prevents abrupt domain forgetting.
+This prevents the historical `weak -> human -> done` pattern while avoiding blind replay of unaudited weak labels.
 
-### Phase C — short authoritative recovery with replay
+## 9. Validation and external-anchor proxy
 
-Short lower-LR recovery emphasizes human rows but retains a fixed weak/generated replay fraction. This fraction is frozen before quality results.
+### Human axis
 
-### Phase D — optional anti-forgetting refresh
-
-Apply the v19 weak refresh only if v19 itself passes its preregistered human/weak/Brier/category gates. v20 must not inherit a rejected v19 mechanism merely because it exists.
-
-## 9. Validation and leaderboard-proxy calibration
-
-### 9.1 Human axis
-
-- immutable component-disjoint outer folds;
-- Macro AP over exactly 20 official categories;
+- immutable component-disjoint folds;
+- official 20-category Macro AP;
 - per-category AP and worst-category regression;
-- folds 0 and 1 are mandatory confirmation before production;
+- folds 0 and 1 required before production;
 - sealed gold unopened.
 
-### 9.2 Weak/test-like axis
+### Weak/test-like axis
 
-Use the v17 item-disjoint weak holdout but preserve both soft and hard targets. Report:
+Use the v17 item-disjoint weak holdout with both soft and hard targets. Report hard-target Macro AP, soft Brier, soft cross-entropy, per-category metrics and critical-stratum metrics. This axis is pseudo-supervision agreement, not a leaderboard estimate.
 
-- Macro AP against thresholded weak targets;
-- Brier score against soft targets;
-- soft cross-entropy;
-- per-category metrics;
-- critical semantic-stratum AP/calibration.
+### External-anchor proxy
 
-This axis measures agreement with pseudo-supervision on unseen weak-population items and is never called a leaderboard estimate.
-
-### 9.3 External-anchor proxy
-
-Before using any new proxy for promotion, score frozen prediction sets/checkpoints for v7, v12, v13B and v14 on identical proxy slices. A candidate proxy must reproduce the observed Public LB ordering at least directionally:
+Before a proxy can select v20, evaluate frozen v7/v12/v13B/v14 prediction sets or checkpoints on identical proxy slices. A promotable aggregate diagnostic must reproduce the observed Public LB ordering directionally:
 
 `v14 > v12 > v13B > v7`.
 
-Candidate proxy dimensions:
+Candidate diagnostics: weak Macro AP, Brier, soft cross-entropy, hard-positive AP, hard-negative AP, critical-stratum AP and tail-category aggregate.
 
-- weak hard Macro AP;
-- weak soft Brier;
-- weak soft cross-entropy;
-- critical-stratum AP;
-- hard-positive AP;
-- hard-negative AP;
-- tail-category aggregate.
-
-Any proxy that reproduces the human fold-0 misranking is diagnostic only and cannot select v20.
-
-Do not fit row-level targets to four leaderboard scores. External anchors are used only to reject misleading aggregate diagnostics, not as pseudo-labels or supervised meta-training data.
+A diagnostic that reproduces the human fold-0 misranking remains diagnostic only. The four leaderboard scores are never used as row-level labels or to fit a supervised meta-model.
 
 ## 10. Experiment ladder
 
-Each stage writes immutable metrics and a decision manifest. Later stages do not run when the prerequisite gate fails.
+Every stage writes immutable metrics plus a decision manifest. Downstream stages stop when prerequisites fail.
 
-### D0 — experiment ledger repair
+- **D0 — ledger repair:** one machine-readable v1–v19 ledger with local metrics, external anchors, runtime, data recipe and rejection reason; repair stale `CURRENT.json` on the v20 branch.
+- **D1 — full data census:** complete semantic audit, `STRATA.json`, candidate-volume estimates. Prefer hosted CPU/M1.
+- **D2 — proxy calibration:** freeze which aggregate proxy diagnostics are promotable using v7/v12/v13B/v14 only.
+- **D3 — two-teacher human audit:** run exact labelling pipeline on fold-safe human calibration; compute Wilson admission gates.
+- **D4 — generated-pair corpus:** target-free real-item candidate generation, two-teacher labelling, statistical admission, private bronze/silver/gold manifests.
+- **D5 — v20-A data-only:** proven RuBERT recipe + admitted new data, no auxiliary rationale heads.
+- **D6 — v20-B rationale multi-task:** same data/exposure as D5 + auxiliary rationale heads.
+- **D7 — v20-C mixed replay:** keeper of D5/D6 + source-aware mixed replay.
+- **D8 — v20-D scaled data:** scale only retained mechanisms; do not add a new architecture simultaneously.
+- **D9 — fold confirmation:** frozen candidate on human folds 0 and 1 plus weak/proxy diagnostics.
+- **D10 — production:** all 285,210 development rows + retained admitted corpus, sealed gold untouched, one checkpoint, exact ZIP, organizer gate and SHA-256.
 
-Create one v1–v19 machine-readable ledger with local metrics, Public LB anchors, runtime, data recipe, outcome and rejection reason. Fix stale `CURRENT.json` state on the v20 branch only. This prevents re-running rejected ideas.
+## 11. Promotion invariants
 
-### D1 — full data census
+Exact numeric deltas are fixed in the implementation plan before D5 training. The policy must enforce:
 
-Run the complete weak/item semantic audit and generate `STRATA.json` plus candidate-volume estimates. CPU/M1/GitHub-hosted execution is preferred because no training is required.
+1. no promotion on human fold0 alone;
+2. no promotion when an accepted external-anchor proxy regresses materially;
+3. no large tail-category regression for a tiny global gain;
+4. weak-axis gain alone is insufficient when authoritative human/audited strata regress;
+5. generated LLM data must beat an identical architecture/exposure baseline without those rows;
+6. rationale heads must beat D5 at identical data/exposure;
+7. production requires two-fold confirmation plus runtime preflight;
+8. no gate is loosened after results.
 
-### D2 — proxy calibration
-
-Evaluate available frozen v7/v12/v13B/v14 checkpoints or immutable prediction vectors on the same candidate proxy axes. Freeze which proxy diagnostics are promotable before v20 model results.
-
-### D3 — LLM human audit
-
-Run exact teacher pipeline on the fold-safe human calibration set; compute Wilson gates per stratum. No generated label is admitted before this stage passes.
-
-### D4 — generated-pair corpus
-
-Generate target-free real-item candidate pairs, teacher-label them, apply statistical admission and publish private bronze/silver/gold manifests.
-
-### D5 — v20-A data-only baseline
-
-Existing proven RuBERT training recipe + admitted new data, no auxiliary rationale heads. This isolates data quality effect.
-
-### D6 — v20-B rationale multi-task
-
-Same data/exposure as D5 + auxiliary rationale heads. This isolates architectural benefit.
-
-### D7 — v20-C source-aware mixed replay
-
-Keeper of D5/D6 + mixed human/weak/generated replay curriculum. This isolates anti-forgetting/source-balance effect.
-
-### D8 — v20-D scaled data
-
-Scale only the mechanisms already individually retained. Increase admitted corpus exposure; do not introduce a new architecture simultaneously.
-
-### D9 — fold confirmation
-
-Run frozen candidate on human folds 0 and 1 plus weak/test-like diagnostics. Both folds must pass the preregistered gate.
-
-### D10 — production refit and package
-
-Full 285,210 development rows + retained admitted corpus, sealed gold untouched. Save one checkpoint, build exact organizer ZIP, run exact organizer-shaped Check and record SHA-256.
-
-## 11. Promotion policy
-
-Exact numeric deltas for D5–D9 are fixed in the implementation plan before training. The policy must satisfy these invariants:
-
-1. no candidate may be promoted on human fold0 alone;
-2. no candidate may be promoted when an accepted external-anchor proxy regresses materially;
-3. no candidate may trade a large tail-category regression for a tiny global gain;
-4. weak-axis gain alone is insufficient when audited human strata regress;
-5. LLM/generated data must demonstrate an admitted-data ablation gain over the same architecture/data exposure without those rows;
-6. multi-task rationale heads must demonstrate an ablation gain over D5 at the same data;
-7. production is allowed only after two-fold confirmation and runtime preflight.
-
-No gate is loosened after results.
-
-## 12. Runtime and packaging contract
+## 12. Runtime and packaging
 
 Final package requirements:
 
 - one RuBERT-compatible production checkpoint by default;
-- `run.py` and metadata contract compatible with organizer image;
-- no network dependency;
-- no LLM/API/provider secret;
-- no training-only raw generated corpus in ZIP;
-- exact input pair order preserved;
+- organizer-compatible `run.py` and metadata;
+- no network dependency or API secret;
+- generated training corpus excluded from ZIP;
+- exact input order preserved;
 - finite, non-degenerate predictions;
 - ZIP integrity and SHA-256 recorded;
 - organizer-shaped 1,000-row Check mandatory;
-- full public/private-size runtime gate mandatory when feasible on the RTX 2060S;
-- archive setup/extraction included in authoritative wall timing where the established v12+ gate includes it.
+- public/private-size RTX runtime gate when feasible;
+- setup/extraction included in authoritative wall timing under the established v12+ gate.
 
-If multi-task training changes only training-time heads, strip auxiliary-only weights/modules from production or prove they add no extra inference forward pass.
+Training-only auxiliary heads are stripped unless they add no extra forward pass and a measured benefit justifies retaining them.
 
-## 13. Compute/orchestration
+## 13. Compute and queueing
 
-Public `Ansible_lab` contains source, tests, design/plan, deterministic manifests without raw sensitive competition data.
+Public `Ansible_lab`: source, tests, specs/plans and non-sensitive deterministic manifests.
 
-Private `gpu-dispatch` contains self-hosted RTX workflows and private outputs. Use a single concurrency group with `queue: max` so v18/v19/v20 are not displaced.
+Private `gpu-dispatch`: RTX workflows and private outputs. All expensive lines use the existing single GPU concurrency lane with `queue: max`; v20 is queued after v18/v19 rather than displacing either.
 
 Execution tiers:
 
-- GitHub-hosted macOS/Ubuntu: syntax, unit tests, deterministic audits, small corpus/sample generation, MPS micro-smokes when available;
-- RTX 2060 SUPER: canonical RuBERT training and comparable model metrics;
-- private HF dataset: durable generated-data manifests/checkpoints/submission artifacts when credentials are available;
-- persistent runner disk: fallback when GitHub artifact quota blocks upload.
+- GitHub-hosted macOS/Ubuntu: syntax/tests, audits, deterministic candidate generation, small MPS micro-smokes when available;
+- RTX 2060 SUPER: canonical RuBERT training and comparable metrics;
+- private HF dataset: durable generated-data/checkpoint/submission storage when credentials work;
+- persistent runner disk: fallback if Actions artifact quota blocks upload.
 
-## 14. Failure and stop rules
+## 14. Stop/fallback rules
 
-Close rather than patch around a line when:
+Close a line rather than patch around it when:
 
-- LLM audit cannot achieve the precision LCB floor for useful strata;
-- generated data improves only the teacher-agreement metric but harms authoritative human or accepted proxy axes;
-- rationale multi-task does not beat the identical data-only baseline;
-- a larger/different backbone cannot fit runtime/VRAM or cannot beat RuBERT under equal data;
-- proxy diagnostics cannot reproduce known v7/v12/v13B/v14 external ordering;
-- a stage requires opening sealed gold;
-- an infrastructure failure occurs: record it as infrastructure evidence, never as negative model evidence.
+- the two-teacher audit cannot meet precision LCB floors for useful strata;
+- generated data improves teacher agreement but harms authoritative human or accepted proxy axes;
+- rationale multi-task does not beat identical data-only D5;
+- a larger/different backbone cannot beat RuBERT under the runtime envelope;
+- no candidate proxy reproduces known v7/v12/v13B/v14 external ordering;
+- a stage would require opening sealed gold.
 
-If LLM audit fails broadly, v20 falls back to deterministic generated-pair supervision plus v18/v19 retained training mechanisms; it does not admit unaudited LLM labels.
+Infrastructure failures are recorded as infrastructure evidence, never negative model evidence.
 
-## 15. Expected deliverables
+If LLM audit fails, v20 falls back to deterministic real-item pair generation + audited historical weak data + retained v18/v19 mechanisms. It does not admit unaudited LLM labels.
+
+## 15. Deliverables
 
 - `ecup_matching/experiments/v20/LEDGER.json`
 - `ecup_matching/experiments/v20/PLAN.md`
 - `ecup_matching/experiments/v20/RESULTS.md`
-- full semantic audit manifest
+- semantic audit and `STRATA.json`
 - proxy calibration report
 - LLM audit/admission report
-- private generated corpus manifests
-- ablation results D5–D8
+- private generated-corpus manifests
+- D5–D8 ablation evidence
 - two-fold confirmation manifest
 - production provenance manifest
 - final `ecup-v20-audited-rationale-v7runtime-submission.zip`
-- exact archive SHA-256 and organizer runtime report
+- exact SHA-256 and organizer runtime report
 
 ## 16. Non-claims
 
-v20 targets a substantial Public LB improvement but cannot guarantee `>0.5` before the competition platform evaluates the exact archive. Local human AP, weak AP, Brier, proxy diagnostics and teacher precision are evidence axes, not substitute leaderboard scores.
+v20 targets a substantial Public LB improvement but cannot guarantee `>0.5` before the platform evaluates the exact archive. Human AP, weak AP, Brier, proxy diagnostics and teacher precision are separate evidence axes, not substitute leaderboard scores.
