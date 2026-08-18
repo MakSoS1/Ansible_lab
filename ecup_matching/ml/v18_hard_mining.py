@@ -6,6 +6,23 @@ import numpy as np
 import pandas as pd
 
 
+def _append_unique(
+    destination: list[int],
+    seen: set[int],
+    indices,
+    *,
+    limit: int,
+) -> None:
+    for raw in indices:
+        index = int(raw)
+        if index in seen:
+            continue
+        destination.append(index)
+        seen.add(index)
+        if len(destination) >= int(limit):
+            break
+
+
 def select_disagreement_hard_examples(
     frame: pd.DataFrame,
     predictions,
@@ -13,6 +30,13 @@ def select_disagreement_hard_examples(
     max_rows: int,
     seed: int = 2026,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Return a deterministic hard+broad weak mixture for the second curriculum phase.
+
+    Roughly half of the budget is filled by high model/weak-label disagreement,
+    balanced across category and hard class. The other half is deterministic
+    broad coverage from the remaining weak distribution. Targets are never
+    replaced by model predictions; predictions are selection evidence only.
+    """
     required = {"id1", "id2", "target", "weak_weight", "category"}
     missing = required - set(frame.columns)
     if missing:
@@ -34,43 +58,94 @@ def select_disagreement_hard_examples(
     work["_stable_row"] = np.arange(len(work), dtype=np.int64)
 
     take_total = min(int(max_rows), len(work))
+    hard_budget = min(take_total, max(1, int(math.ceil(take_total * 0.5))))
+    broad_budget = take_total - hard_budget
     groups = list(work.groupby(["category", "hard_target"], sort=True, dropna=False))
-    quota = max(1, take_total // max(1, len(groups)))
+    hard_quota = max(1, int(math.ceil(hard_budget / max(1, len(groups)))))
     selected_indices: list[int] = []
     selected_set: set[int] = set()
 
-    # Tiny deterministic jitter breaks exact score ties without making the
-    # underlying ranking seed-dependent in ordinary cases.
+    # Tiny deterministic jitter breaks exact disagreement ties while retaining
+    # a reproducible order for the same seed.
     rng = np.random.default_rng(int(seed))
     work["_tie"] = rng.random(len(work)) * 1e-12
 
+    # Part 1: model-disagreement examples, approximately category/class balanced.
     for _, group in groups:
+        if len(selected_indices) >= hard_budget:
+            break
         ordered = group.sort_values(
             ["_hard_disagreement", "_tie", "_stable_row"],
             ascending=[False, False, True],
             kind="mergesort",
         )
-        for idx in ordered.index[: min(quota, len(ordered))]:
-            i = int(idx)
-            if i not in selected_set and len(selected_indices) < take_total:
-                selected_indices.append(i)
-                selected_set.add(i)
-
-    if len(selected_indices) < take_total:
-        remaining = work.loc[~work.index.isin(selected_set)].sort_values(
+        _append_unique(
+            selected_indices,
+            selected_set,
+            ordered.index[: min(hard_quota, len(ordered))],
+            limit=hard_budget,
+        )
+    if len(selected_indices) < hard_budget:
+        remaining_hard = work.loc[~work.index.isin(selected_set)].sort_values(
             ["_hard_disagreement", "_tie", "_stable_row"],
             ascending=[False, False, True],
             kind="mergesort",
         )
-        need = take_total - len(selected_indices)
-        selected_indices.extend(int(i) for i in remaining.index[:need])
+        _append_unique(
+            selected_indices,
+            selected_set,
+            remaining_hard.index,
+            limit=hard_budget,
+        )
+    actual_hard_rows = int(len(selected_indices))
+
+    # Part 2: broad coverage from the rows not already selected. Sampling is
+    # stratified by category/class so the second phase does not collapse to only
+    # pathological disagreements and forget the wider weak distribution.
+    if broad_budget > 0:
+        remaining = work.loc[~work.index.isin(selected_set)]
+        remaining_groups = list(
+            remaining.groupby(["category", "hard_target"], sort=True, dropna=False)
+        )
+        broad_quota = max(1, int(math.ceil(broad_budget / max(1, len(remaining_groups)))))
+        broad_limit = hard_budget + broad_budget
+        for group_number, (_, group) in enumerate(remaining_groups):
+            if len(selected_indices) >= broad_limit:
+                break
+            take = min(broad_quota, len(group))
+            if take <= 0:
+                continue
+            sampled = group.sample(n=take, random_state=int(seed) + 10_007 + group_number)
+            _append_unique(
+                selected_indices,
+                selected_set,
+                sampled.index,
+                limit=broad_limit,
+            )
+        if len(selected_indices) < broad_limit:
+            pool = work.loc[~work.index.isin(selected_set)]
+            if len(pool):
+                need = min(broad_limit - len(selected_indices), len(pool))
+                sampled = pool.sample(n=need, random_state=int(seed) + 20_011)
+                _append_unique(
+                    selected_indices,
+                    selected_set,
+                    sampled.index,
+                    limit=broad_limit,
+                )
 
     selected = work.loc[selected_indices].copy().reset_index(drop=True)
+    selected["_selection_role"] = [
+        "hard" if index < actual_hard_rows else "broad"
+        for index in range(len(selected))
+    ]
     selected = selected.drop(columns=["_stable_row", "_tie"])
     disagreement = selected["_hard_disagreement"].to_numpy(float)
     report: dict[str, object] = {
         "input_rows": int(len(work)),
         "selected_rows": int(len(selected)),
+        "hard_rows": int((selected["_selection_role"] == "hard").sum()),
+        "broad_rows": int((selected["_selection_role"] == "broad").sum()),
         "group_count": int(len(groups)),
         "mean_disagreement": float(disagreement.mean()) if len(disagreement) else 0.0,
         "max_disagreement": float(disagreement.max()) if len(disagreement) else 0.0,
