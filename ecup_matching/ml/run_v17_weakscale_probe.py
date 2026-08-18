@@ -37,20 +37,31 @@ import pandas as pd
 from .run_v5_pretrained_biencoder import development_rows_and_folds
 from .run_v7_outer_oof import (
     IMMUTABLE_SPLIT_SHA,
-    _build_immutable_manifest,
     _phase,
     _prepare_common_weak,
     _stream_text_cache,
 )
 from .run_v7_outer_oof_fast import _load_model_no_checkpoint
+
+# D043: the recomputing manifest builder yields `d1b31023...`, not the
+# immutable `aae58fb4...`, so every GPU driver loads the committed split
+# artifact instead. Importing the loader directly rather than monkey-patching
+# means this driver cannot be dispatched without it.
+from .run_v7_outer_oof_frozen import _load_immutable_manifest
 from .train_v4_reranker import DEFAULT_MODEL_REVISION, _verify_model_revision
 from .v5_evaluation import macro_ap_report
 from .v7_neural import predict_pairs, train_pair_phase
 from .v17_weak_holdout import split_weak_item_disjoint
 
 
-V13B_FOLD0_REFERENCE = 0.7086611385531062
-V13B_WEAK_EXAMPLES_SEEN = 210_000
+# This driver calls `_prepare_common_weak` from `run_v7_outer_oof`, the
+# ungrouped preparation. `v12_production_entry` does not patch it, so v12 is
+# the comparable anchor; v13b's `0.7086611386` came from the grouped
+# replacement installed by `v13_groupweak_entry` and is a different pipeline.
+# v12 is also the better external anchor of the two: Public LB `0.3798116204`
+# against v13b's `0.3783781653`.
+V12_FOLD0_REFERENCE = 0.7059297810308699
+BASELINE_WEAK_EXAMPLES_SEEN = 210_000
 
 
 def _weak_macro_ap(
@@ -124,7 +135,7 @@ def run_weakscale_probe(
         fold=0,
         weak_final_rows=int(weak_final_rows),
         weak_epochs=float(weak_epochs),
-        v13b_reference=V13B_FOLD0_REFERENCE,
+        v12_reference=V12_FOLD0_REFERENCE,
         cuda_device=cuda_device,
     )
 
@@ -132,7 +143,7 @@ def run_weakscale_probe(
         human_items_path, columns=["id", "name", "attributes", "category"]
     )
     matches = pd.read_parquet(human_matches_path, columns=["id1", "id2", "target"])
-    pairs, manifest, overlap = _build_immutable_manifest(
+    pairs, manifest, overlap = _load_immutable_manifest(
         human_items, matches, expected_split_sha=expected_split_sha
     )
     dev_rows, fold_ids = development_rows_and_folds(manifest, total_rows=len(matches))
@@ -168,7 +179,7 @@ def run_weakscale_probe(
     _phase(
         "v17-weak-holdout",
         weak_examples_seen=weak_examples_seen,
-        exposure_vs_v13b=weak_examples_seen / V13B_WEAK_EXAMPLES_SEEN,
+        exposure_vs_baseline=weak_examples_seen / BASELINE_WEAK_EXAMPLES_SEEN,
         **holdout_report,
     )
 
@@ -268,7 +279,7 @@ def run_weakscale_probe(
         "weak_final_rows": int(weak_final_rows),
         "weak_epochs": float(weak_epochs),
         "weak_examples_seen": weak_examples_seen,
-        "exposure_vs_v13b": weak_examples_seen / V13B_WEAK_EXAMPLES_SEEN,
+        "exposure_vs_baseline": weak_examples_seen / BASELINE_WEAK_EXAMPLES_SEEN,
         "human_epochs": float(human_epochs),
         "physical_batch_size": int(physical_batch_size),
         "effective_batch_size": int(effective_batch_size),
@@ -281,8 +292,8 @@ def run_weakscale_probe(
         "train_rows": int(len(human_train)),
         "held_rows": int(len(held)),
         "fold0_macro_average_precision": fold0_ap,
-        "v13b_fold0_reference": V13B_FOLD0_REFERENCE,
-        "delta_vs_v13b_fold0": float(fold0_ap - V13B_FOLD0_REFERENCE),
+        "v12_fold0_reference": V12_FOLD0_REFERENCE,
+        "delta_vs_v12_fold0": float(fold0_ap - V12_FOLD0_REFERENCE),
         "per_category_ap": report["per_category_ap"],
         "weak_holdout": holdout_report,
         "weak_holdout_after_weak_phase": weak_after_weak,
