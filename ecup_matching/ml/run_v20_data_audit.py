@@ -30,6 +30,7 @@ def build_item_index(items_path: Path, db_path: Path) -> dict[str, object]:
         conn.execute("PRAGMA synchronous=OFF")
         conn.execute("PRAGMA temp_store=MEMORY")
         conn.execute("CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT NOT NULL, attributes TEXT NOT NULL, category TEXT NOT NULL)")
+        conn.execute("CREATE TABLE weak_item (id INTEGER PRIMARY KEY)")
         handle = pq.ParquetFile(items_path)
         rows = 0
         started = time.perf_counter()
@@ -63,7 +64,12 @@ def _fetch_items(conn: sqlite3.Connection, ids: list[int], *, query_chunk: int =
 def audit_weak_corpus(*, weak_path: Path, item_db: Path, output_dir: Path) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
     handle = pq.ParquetFile(weak_path)
-    conn = sqlite3.connect(f"file:{item_db}?mode=ro", uri=True)
+    # Read item records and persist weak membership through separate connections;
+    # WAL is unnecessary because this stage is single-process.
+    read_conn = sqlite3.connect(f"file:{item_db}?mode=ro", uri=True)
+    write_conn = sqlite3.connect(item_db)
+    write_conn.execute("PRAGMA journal_mode=OFF")
+    write_conn.execute("PRAGMA synchronous=OFF")
     counts: Counter[tuple[str, str, str, str, int]] = Counter()
     missing_items = pair_rows = 0
     target_sum = 0.0
@@ -72,7 +78,9 @@ def audit_weak_corpus(*, weak_path: Path, item_db: Path, output_dir: Path) -> di
         for index in range(handle.metadata.num_row_groups):
             frame = handle.read_row_group(index, columns=["id1", "id2", "target"]).to_pandas()
             ids = sorted(set(frame["id1"].astype(int)) | set(frame["id2"].astype(int)))
-            items = _fetch_items(conn, ids)
+            write_conn.executemany("INSERT OR IGNORE INTO weak_item(id) VALUES(?)", ((item_id,) for item_id in ids))
+            write_conn.commit()
+            items = _fetch_items(read_conn, ids)
             for row in frame.itertuples(index=False):
                 left = items.get(int(row.id1)); right = items.get(int(row.id2))
                 if left is None or right is None:
@@ -85,8 +93,12 @@ def audit_weak_corpus(*, weak_path: Path, item_db: Path, output_dir: Path) -> di
                 target_sum += p
             _emit("v20-weak-audit", row_group=index + 1, row_groups=handle.metadata.num_row_groups, pairs=pair_rows, strata=len(counts))
     finally:
-        conn.close()
+        read_conn.close(); write_conn.close()
 
+    verify = sqlite3.connect(f"file:{item_db}?mode=ro", uri=True)
+    weak_items = int(verify.execute("SELECT COUNT(*) FROM weak_item").fetchone()[0])
+    total_items = int(verify.execute("SELECT COUNT(*) FROM item").fetchone()[0])
+    verify.close()
     strata = [
         {"category": k[0], "reason_code": k[1], "difficulty": k[2], "target_band": k[3], "hard_target": k[4], "count": int(v)}
         for k, v in sorted(counts.items())
@@ -94,7 +106,8 @@ def audit_weak_corpus(*, weak_path: Path, item_db: Path, output_dir: Path) -> di
     policy = V20Policy()
     report = {
         "version": "v20-semantic-audit-v1",
-        "weak_rows": int(pair_rows),
+        "weak_rows": int(pair_rows), "weak_items": weak_items, "total_items": total_items,
+        "nonweak_items": int(total_items - weak_items),
         "missing_item_pairs": int(missing_items),
         "target_mean": float(target_sum / max(pair_rows, 1)),
         "strata_rows": int(len(strata)),
