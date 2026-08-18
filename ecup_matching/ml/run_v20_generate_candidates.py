@@ -10,8 +10,6 @@ from pathlib import Path
 import sqlite3
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 from .textnorm import normalize_item
 from .v20_candidates import _block_signatures, _canonical_pair
@@ -63,6 +61,7 @@ def generate_from_block_index(
     max_pairs_per_category_reason: int,
     max_block_size: int,
     seed: int,
+    exclude_weak_items: bool = False,
 ) -> dict[str, object]:
     conn = sqlite3.connect(f"file:{item_db}?mode=ro", uri=True)
     degree: Counter[int] = Counter()
@@ -81,13 +80,22 @@ def generate_from_block_index(
         "SELECT category,signature,COUNT(*) FROM block GROUP BY category,signature HAVING COUNT(*) BETWEEN 2 AND ? ORDER BY category,signature",
         (int(max_block_size),),
     )
-    candidate_blocks = accepted_blocks = 0
+    candidate_blocks = accepted_pairs = 0
     for category, signature, count in groups:
         candidate_blocks += 1
-        ids = [int(r[0]) for r in conn.execute(
-            "SELECT item_id FROM block WHERE category=? AND signature=? ORDER BY item_id",
-            (category, signature),
-        )]
+        if exclude_weak_items:
+            ids = [int(r[0]) for r in conn.execute(
+                "SELECT b.item_id FROM block b LEFT JOIN weak_item w ON w.id=b.item_id "
+                "WHERE b.category=? AND b.signature=? AND w.id IS NULL ORDER BY b.item_id",
+                (category, signature),
+            )]
+        else:
+            ids = [int(r[0]) for r in conn.execute(
+                "SELECT item_id FROM block WHERE category=? AND signature=? ORDER BY item_id",
+                (category, signature),
+            )]
+        if len(ids) < 2:
+            continue
         pairs: list[tuple[bytes, int, int]] = []
         for i, a in enumerate(ids):
             if a in forbidden_ids:
@@ -115,22 +123,28 @@ def generate_from_block_index(
                 "stratum": f"{stratum.category}|{stratum.reason_code}|{stratum.difficulty}",
                 "reason_code": stratum.reason_code, "difficulty": stratum.difficulty,
                 "generator_version": GENERATOR_VERSION, "generator_block": str(signature),
+                "population": "never_labelled" if exclude_weak_items else "nonhuman_candidate",
             })
-            accepted_blocks += 1
+            accepted_pairs += 1
         if len(rows) >= max_pairs:
             break
     conn.close()
-    frame = pd.DataFrame(rows)
+    columns = [
+        "id1", "id2", "category", "stratum", "reason_code", "difficulty",
+        "generator_version", "generator_block", "population",
+    ]
+    frame = pd.DataFrame(rows, columns=columns)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(output_path, index=False)
     return {
         "version": GENERATOR_VERSION,
         "pairs": int(len(frame)), "unique_items": int(len(set(frame.id1) | set(frame.id2))) if len(frame) else 0,
-        "candidate_blocks": candidate_blocks, "accepted_pairs": accepted_blocks,
+        "candidate_blocks": candidate_blocks, "accepted_pairs": accepted_pairs,
         "max_observed_degree": int(max(degree.values(), default=0)),
         "max_degree": int(max_degree), "max_pairs": int(max_pairs),
         "max_pairs_per_category_reason": int(max_pairs_per_category_reason),
-        "forbidden_items": int(len(forbidden_ids)), "target_column_present": bool("target" in frame.columns),
+        "forbidden_items": int(len(forbidden_ids)), "exclude_weak_items": bool(exclude_weak_items),
+        "target_column_present": bool("target" in frame.columns),
     }
 
 
@@ -145,6 +159,7 @@ def main() -> int:
     p.add_argument("--max-block-size", type=int, default=40)
     p.add_argument("--seed", type=int, default=2026)
     p.add_argument("--rebuild-block-index", action="store_true")
+    p.add_argument("--exclude-weak-items", action="store_true")
     args = p.parse_args()
     if args.rebuild_block_index:
         report = build_block_index(args.item_db)
@@ -159,8 +174,10 @@ def main() -> int:
         max_pairs=args.max_pairs, max_degree=args.max_degree,
         max_pairs_per_category_reason=args.max_pairs_per_category_reason,
         max_block_size=args.max_block_size, seed=args.seed,
+        exclude_weak_items=args.exclude_weak_items,
     )
-    (args.output.parent / "candidate-generation.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    manifest = args.output.with_suffix(".manifest.json")
+    manifest.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     return 0
 
 
