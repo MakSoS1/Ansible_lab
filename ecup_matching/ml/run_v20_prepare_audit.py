@@ -31,11 +31,17 @@ def run(*, human_items_path: Path, matches_path: Path, output_dir: Path, fold: i
         r.id: normalize_item(r.id, r.name, r.attributes, r.category)
         for r in items.loc[items["id"].isin(needed)].itertuples(index=False)
     }
-    reasons = []
+    strata = []
+    reason_codes = []
+    difficulties = []
     for row in outer_train.itertuples(index=False):
         s = classify_pair_stratum(item_map[row.id1], item_map[row.id2])
-        reasons.append(f"{s.category}|{s.reason_code}|{s.difficulty}")
-    outer_train["stratum"] = reasons
+        strata.append(f"{s.category}|{s.reason_code}|{s.difficulty}")
+        reason_codes.append(s.reason_code)
+        difficulties.append(s.difficulty)
+    outer_train["stratum"] = strata
+    outer_train["reason_code"] = reason_codes
+    outer_train["difficulty"] = difficulties
     model_train, llm_audit, audit_report = build_fold_safe_audit_split(
         outer_train, audit_fraction=audit_fraction, seed=seed + int(fold) * 1009
     )
