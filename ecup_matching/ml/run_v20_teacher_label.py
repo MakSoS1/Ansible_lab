@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import re
 import sqlite3
 import time
 
@@ -21,8 +20,6 @@ def _card(row) -> str:
 
 
 def _extract_json(text: str) -> str:
-    # Generation occasionally wraps the object in Markdown. We validate the
-    # extracted object with TeacherDecision afterwards, so this is not lenient schema parsing.
     start = text.find("{")
     end = text.rfind("}")
     if start < 0 or end <= start:
@@ -57,6 +54,7 @@ def run(
     ).to("cuda").eval()
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
 
     pairs = pd.read_parquet(pairs_path).reset_index(drop=True)
     if limit > 0:
@@ -83,14 +81,14 @@ def run(
             if not prompts:
                 continue
             encoded = tokenizer(prompts, padding=True, truncation=True, max_length=1536, return_tensors="pt").to("cuda")
+            input_width = int(encoded["input_ids"].shape[1])
             with torch.inference_mode():
                 generated = model.generate(
                     **encoded, max_new_tokens=max_new_tokens, do_sample=False,
                     pad_token_id=tokenizer.pad_token_id,
                 )
-            lengths = encoded["attention_mask"].sum(dim=1).tolist()
-            for key, seq, input_len in zip(keys, generated, lengths):
-                text = tokenizer.decode(seq[int(input_len):], skip_special_tokens=True)
+            for key, seq in zip(keys, generated):
+                text = tokenizer.decode(seq[input_width:], skip_special_tokens=True)
                 raw = _extract_json(text)
                 record = dict(key)
                 try:
