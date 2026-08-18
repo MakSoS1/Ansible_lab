@@ -40,5 +40,6 @@ def test_two_fold_confirmation_requires_each_fold_and_nonnegative_mean_human() -
     post1 = _metrics(0.690, 0.647, 0.209)
     result = evaluate_two_fold_refresh(pre0, post0, pre1, post1)
     assert result["promote"] is True
-    post1_bad = _metrics(0.6880, 0.647, 0.209)
+    # -0.002 exactly is allowed by the preregistered gate; use a true violation.
+    post1_bad = _metrics(0.6879, 0.647, 0.209)
     assert evaluate_two_fold_refresh(pre0, post0, pre1, post1_bad)["promote"] is False
