@@ -1,0 +1,117 @@
+name: E-CUP publish fast-final submissions to private HF
+
+on:
+  push:
+    branches: [ecup-v19-antiforget]
+    paths: [hf_fastfinal_publish_job.json]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  publish:
+    runs-on: [self-hosted, Linux, X64, gpu, ecup]
+    timeout-minutes: 60
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+    steps:
+      - name: Locate newest quality-gated fast final
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo '::error::HF_TOKEN missing in Ansible_lab'; exit 2; }
+          ROOT="$(python3 - <<'PY'
+          from pathlib import Path
+          roots=[]
+          for p in Path('/srv/github-gpu/output').glob('v18-v19-fastfinal-*/final/FASTFINAL.json'):
+              roots.append((p.stat().st_mtime,p.parent))
+          if not roots: raise SystemExit('no fast-final manifests found')
+          print(max(roots)[1])
+          PY
+          )"
+          echo "FASTFINAL_OUT=$ROOT" >> "$GITHUB_ENV"
+          echo "fastfinal=$ROOT"
+      - name: Validate manifests before any upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          final=Path(os.environ['FASTFINAL_OUT']); summary=json.loads((final/'FASTFINAL.json').read_text())
+          passing=0
+          for version in ('v18','v19'):
+              m=summary.get(version,{})
+              if not m.get('archive'): continue
+              passing+=1
+              archive=final/m['archive']; manifest=json.loads((final/f'{version}-manifest.json').read_text())
+              assert archive.is_file() and archive.stat().st_size==manifest['archive_bytes']
+              h=hashlib.sha256()
+              with archive.open('rb') as f:
+                  for chunk in iter(lambda:f.read(8<<20),b''): h.update(chunk)
+              assert h.hexdigest()==manifest['archive_sha256']
+              assert manifest['quality_gate']['promote'] is True
+              assert manifest['gold_metric_opened'] is False and manifest['gold_rows_scored']==0
+              assert manifest['single_safetensors_checkpoint'] is True
+              assert manifest['exact_zip_check_gate']['passed'] is True
+          assert passing>0, 'no quality-gated archive'
+          print('HF_PREUPLOAD_VALIDATION=PASS')
+          PY
+      - name: Install isolated HF client
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/ecup-fastfinal-hf"; python3 -m venv "$RUNNER_TEMP/ecup-fastfinal-hf"
+          "$RUNNER_TEMP/ecup-fastfinal-hf/bin/pip" install -q 'huggingface_hub>=0.34,<2'
+      - name: Upload and round-trip verify exact bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/ecup-fastfinal-hf/bin/python" - <<'PY'
+          import hashlib,json,os,shutil
+          from pathlib import Path
+          from huggingface_hub import CommitOperationAdd,HfApi,hf_hub_download
+          final=Path(os.environ['FASTFINAL_OUT']); repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']
+          summary=json.loads((final/'FASTFINAL.json').read_text()); ops=[]; expected=[]
+          for version in ('v18','v19'):
+              m=summary.get(version,{})
+              if not m.get('archive'): continue
+              archive=final/m['archive']; manifest=final/f'{version}-manifest.json'
+              target=f'submissions/{version}/final-fast/{archive.name}'
+              mt=f'submissions/{version}/final-fast/{version.upper()}_FAST_FINAL.json'
+              ops += [CommitOperationAdd(path_in_repo=target,path_or_fileobj=str(archive)),CommitOperationAdd(path_in_repo=mt,path_or_fileobj=str(manifest))]
+              expected.append((version,target,int(m['archive_bytes']),m['archive_sha256']))
+          api=HfApi(token=token)
+          info=api.create_commit(repo_id=repo,repo_type='dataset',operations=ops,commit_message='E-CUP: publish quality-gated v18/v19 fast finals')
+          verified={}; cache=Path(os.environ['RUNNER_TEMP'])/'ecup-fastfinal-hf-roundtrip'; shutil.rmtree(cache,ignore_errors=True)
+          for version,target,size,digest in expected:
+              src=Path(hf_hub_download(repo_id=repo,repo_type='dataset',filename=target,token=token,force_download=True,cache_dir=str(cache/'cache')))
+              h=hashlib.sha256()
+              with src.open('rb') as f:
+                  for chunk in iter(lambda:f.read(8<<20),b''): h.update(chunk)
+              if src.stat().st_size!=size or h.hexdigest()!=digest: raise SystemExit(f'{version} roundtrip mismatch')
+              verified[version]={'path':target,'bytes':size,'sha256':digest}
+          payload={'repo_id':repo,'commit':info.oid,'verified':verified}
+          (final/'HF_PUBLICATION_VERIFIED.json').write_text(json.dumps(payload,indent=2,sort_keys=True)+'\n')
+          print('HF_PUBLICATION_VERIFIED='+json.dumps(payload,sort_keys=True))
+          PY
+      - name: Publish completion status without exposing token
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']; sha=os.environ['GITHUB_SHA']; token=os.environ['GH_TOKEN']; status=os.environ['JOB_STATUS']
+          state='success' if status=='success' else 'failure'
+          req=urllib.request.Request(f'https://api.github.com/repos/{repo}/statuses/{sha}',data=json.dumps({'state':state,'context':'ecup/fastfinal-hf-publish','description':f'HF publish {status}'}).encode(),method='POST',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'ecup-fastfinal-hf'})
+          urllib.request.urlopen(req,timeout=30).read()
+          PY
+      - name: Cleanup client state
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ecup-fastfinal-hf" "$RUNNER_TEMP/ecup-fastfinal-hf-roundtrip"
