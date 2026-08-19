@@ -1,0 +1,35 @@
+name: E-CUP HF token presence probe
+
+on:
+  push:
+    branches: [ecup-v19-antiforget]
+    paths: [hf_token_presence_probe.json]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - name: Publish presence only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${HF_TOKEN:-}" ]; then STATE=success; DESC='HF_TOKEN present in Ansible_lab'; else STATE=failure; DESC='HF_TOKEN missing in Ansible_lab'; fi
+          python3 - <<'PY'
+          import json,os,urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']; sha=os.environ['GITHUB_SHA']; token=os.environ['GH_TOKEN']; state=os.environ['STATE']; desc=os.environ['DESC']
+          req=urllib.request.Request(f'https://api.github.com/repos/{repo}/statuses/{sha}',data=json.dumps({'state':state,'context':'ecup/hf-token-presence','description':desc}).encode(),method='POST',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'ecup-hf-probe'})
+          urllib.request.urlopen(req,timeout=30).read()
+          PY
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ env.HF_TOKEN != '' && 'success' || 'failure' }}
+          DESC: ${{ env.HF_TOKEN != '' && 'HF_TOKEN present in Ansible_lab' || 'HF_TOKEN missing in Ansible_lab' }}
