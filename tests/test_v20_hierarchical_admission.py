@@ -37,9 +37,11 @@ def test_pooled_reason_support_can_pass_without_lowering_floors():
     )
     report = build_hierarchical_policy(audit, V20Policy())
 
+    assert report["version"] == "v20-hierarchical-admission-v2"
     assert report["predicted_labels"]["0"]["lcb"] >= V20Policy().negative_precision_lcb
     assert report["predicted_labels"]["1"]["lcb"] >= V20Policy().positive_precision_lcb
-    assert report["reasons"]["MODEL_CONFLICT"]["pass"] is True
+    assert report["reason_labels"]["MODEL_CONFLICT"]["0"]["pass"] is True
+    assert report["reason_diagnostics"]["MODEL_CONFLICT"]["pass_any_label"] is True
     assert report["categories"]["phones"]["pass"] is True
 
 
