@@ -94,6 +94,8 @@ def build_openai_chat_request(
         "max_tokens": int(max_new_tokens),
         "stream": False,
         "response_format": {"type": "json_object"},
+        "chat_template_kwargs": {"enable_thinking": False},
+        "reasoning_effort": "none",
     }
     return str(spec.endpoint), payload
 
