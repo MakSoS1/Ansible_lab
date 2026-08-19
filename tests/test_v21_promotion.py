@@ -77,7 +77,14 @@ def test_two_fold_requires_each_fold_and_nonnegative_mean_human() -> None:
     c1 = _metrics(human=0.690, weak=0.645, brier=0.112, tail=0.670)
     a0 = _metrics(human=0.701, weak=0.661, brier=0.109, tail=0.684)
     a1 = _metrics(human=0.691, weak=0.656, brier=0.111, tail=0.674)
-    result = evaluate_two_fold_transfer(c0, a0, _calibration(0.515, 3.6), c1, a1, _calibration(0.507, 3.3))
+    result = evaluate_two_fold_transfer(
+        c0,
+        a0,
+        _calibration(implied=0.515, normalized=3.6),
+        c1,
+        a1,
+        _calibration(implied=0.507, normalized=3.3),
+    )
     assert result["mean_human_delta"] >= 0
     assert result["mean_weak_delta"] > 0.005
     assert result["min_proxy_implied_public_lb"] >= 0.5
