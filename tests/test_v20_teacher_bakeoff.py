@@ -88,6 +88,22 @@ def test_same_family_pair_is_rejected_even_if_accurate():
     assert "independent_family" in pair["failed_gates"]
 
 
+def test_pair_consensus_must_match_deterministic_reason_contract():
+    truth = pd.DataFrame([
+        {"id1": 1, "id2": 2, "target": 0, "reason_code": "MODEL_CONFLICT", "category": "phones"}
+    ])
+    labels = pd.DataFrame([
+        {"id1": 1, "id2": 2, "pred": 0, "reason_code": "SAME_MODEL", "valid": True, "uncertain": False}
+    ])
+    first = {"eligible": True, "model_id": "a", "revision": "1" * 40, "family": "family-a", "rows_per_second": 1.0}
+    second = {"eligible": True, "model_id": "b", "revision": "2" * 40, "family": "family-b", "rows_per_second": 1.0}
+    pair = score_pair(truth, labels, labels, first, second)
+    assert pair["consensus_rows"] == 0
+    assert pair["coverage"] == 0.0
+    assert pair["eligible"] is False
+    assert "consensus_coverage" in pair["failed_gates"]
+
+
 def test_pair_selection_prefers_consensus_quality_before_throughput():
     reports = {
         "qwen": {"eligible": True, "model_id": "Qwen/Qwen3.5-4B", "revision": "1" * 40, "family": "qwen35"},
