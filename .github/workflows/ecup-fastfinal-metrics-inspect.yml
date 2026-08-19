@@ -14,6 +14,18 @@ jobs:
     runs-on: [self-hosted, Linux, X64, gpu, ecup]
     timeout-minutes: 5
     steps:
+      - name: Expose inspect run id
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']; sha=os.environ['GITHUB_SHA']; run=os.environ['GITHUB_RUN_ID']; token=os.environ['GH_TOKEN']
+          req=urllib.request.Request(f'https://api.github.com/repos/{repo}/statuses/{sha}',data=json.dumps({'state':'pending','context':'ecup/fastfinal-metrics-inspect','description':f'run={run}','target_url':f'https://github.com/{repo}/actions/runs/{run}'}).encode(),method='POST',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'ecup-inspect'})
+          urllib.request.urlopen(req,timeout=30).read()
+          PY
       - name: Print exact preserved metrics
         shell: bash
         run: |
@@ -27,3 +39,23 @@ jobs:
           echo 'FASTFINAL_BEGIN'
           cat "$ROOT/final/FASTFINAL.json"
           echo 'FASTFINAL_END'
+          if [ -s "$ROOT/final/HF_PUBLICATION_VERIFIED.json" ]; then
+            echo 'HF_PUBLICATION_VERIFIED_BEGIN'
+            cat "$ROOT/final/HF_PUBLICATION_VERIFIED.json"
+            echo 'HF_PUBLICATION_VERIFIED_END'
+          fi
+      - name: Publish inspect completion
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']; sha=os.environ['GITHUB_SHA']; run=os.environ['GITHUB_RUN_ID']; token=os.environ['GH_TOKEN']; status=os.environ['JOB_STATUS']
+          state='success' if status=='success' else 'failure'
+          req=urllib.request.Request(f'https://api.github.com/repos/{repo}/statuses/{sha}',data=json.dumps({'state':state,'context':'ecup/fastfinal-metrics-inspect','description':f'run={run} status={status}','target_url':f'https://github.com/{repo}/actions/runs/{run}'}).encode(),method='POST',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'ecup-inspect'})
+          urllib.request.urlopen(req,timeout=30).read()
+          PY
