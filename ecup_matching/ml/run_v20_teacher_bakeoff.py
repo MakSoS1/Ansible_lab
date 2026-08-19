@@ -15,12 +15,21 @@ from .v20_teacher_bakeoff import score_pair, score_teacher
 CANONICAL_TEACHER_CANDIDATES: dict[str, dict[str, object]] = {
     "qwen35": {
         "model_id": "Qwen/Qwen3.5-4B",
-        "family": "qwen35",
+        "family": "qwen",
         "backend": "openai-http",
         "quantization": "Q4_K_M",
         "artifact_repo": "bartowski/Qwen_Qwen3.5-4B-GGUF",
         "artifact_file": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
         "artifact_sha256": "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+    },
+    "pollux": {
+        "model_id": "ai-forever/Pollux-4B-Judge",
+        "family": "qwen",
+        "backend": "openai-http",
+        "quantization": "Q8_0",
+        "artifact_repo": "ledgergap/Pollux-4B-Judge-GGUF",
+        "artifact_file": "Pollux-4B-Judge.Q8_0.gguf",
+        "artifact_sha256": "resolved-and-verified-at-runtime",
     },
     "gemma4": {
         "model_id": "google/gemma-4-E2B-it",
