@@ -1,0 +1,29 @@
+name: E-CUP inspect fast-final metrics
+
+on:
+  push:
+    branches: [ecup-v19-antiforget]
+    paths: [fastfinal_metrics_inspect_job.json]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, Linux, X64, gpu, ecup]
+    timeout-minutes: 5
+    steps:
+      - name: Print exact preserved metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="/srv/github-gpu/output/v18-v19-fastfinal-32240709456"
+          test -s "$ROOT/probe/fast-refresh-metrics.json"
+          echo 'FAST_REFRESH_METRICS_BEGIN'
+          cat "$ROOT/probe/fast-refresh-metrics.json"
+          echo 'FAST_REFRESH_METRICS_END'
+          test -s "$ROOT/final/FASTFINAL.json"
+          echo 'FASTFINAL_BEGIN'
+          cat "$ROOT/final/FASTFINAL.json"
+          echo 'FASTFINAL_END'
