@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pandas as pd
-
 from ecup_matching.ml.run_v20_teacher_bakeoff import (
     CANONICAL_TEACHER_CANDIDATES,
     select_two_fold_teacher_pair,
@@ -13,6 +11,7 @@ def test_canonical_pool_has_modern_and_russian_controls_but_no_yandex():
     assert "Qwen/Qwen3.5-4B" in ids
     assert "google/gemma-4-E2B-it" in ids
     assert "utter-project/EuroLLM-1.7B-Instruct" in ids
+    assert "ai-forever/Pollux-4B-Judge" in ids
     assert "ai-forever/FRED-T5-1.7B" in ids
     assert not any("yandex" in value.lower() for value in ids)
 
@@ -41,12 +40,12 @@ def _pair(a: str, b: str, *, precision: float, critical: float, coverage: float,
 def test_pair_must_pass_both_folds_and_uses_worst_fold_quality():
     teacher_reports = {
         0: {
-            "qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen35"),
+            "qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen"),
             "gemma": _teacher_report("google/gemma-4-E2B-it", "gemma4"),
             "euro": _teacher_report("utter-project/EuroLLM-1.7B-Instruct", "eurollm"),
         },
         1: {
-            "qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen35"),
+            "qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen"),
             "gemma": _teacher_report("google/gemma-4-E2B-it", "gemma4"),
             "euro": _teacher_report("utter-project/EuroLLM-1.7B-Instruct", "eurollm"),
         },
@@ -62,15 +61,35 @@ def test_pair_must_pass_both_folds_and_uses_worst_fold_quality():
         ],
     }
     selected = select_two_fold_teacher_pair(teacher_reports, pair_reports)
-    assert selected["selected"] == ["qwen", "euro"]
+    assert selected["selected"] == ["euro", "qwen"]
     assert selected["best_pair"]["consensus_precision"] == 0.997
     assert selected["best_pair"]["critical_precision"] == 0.997
 
 
+def test_qwen35_and_pollux_are_treated_as_same_superfamily():
+    teacher_reports = {
+        0: {
+            "qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen"),
+            "pollux": _teacher_report("ai-forever/Pollux-4B-Judge", "qwen"),
+        },
+        1: {
+            "qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen"),
+            "pollux": _teacher_report("ai-forever/Pollux-4B-Judge", "qwen"),
+        },
+    }
+    pair_reports = {
+        0: [_pair("qwen", "pollux", precision=1.0, critical=1.0, coverage=1.0)],
+        1: [_pair("qwen", "pollux", precision=1.0, critical=1.0, coverage=1.0)],
+    }
+    selected = select_two_fold_teacher_pair(teacher_reports, pair_reports, fail_closed=False)
+    assert selected["selected"] is None
+    assert selected["eligible_pairs"] == 0
+
+
 def test_pair_failing_one_fold_is_not_eligible():
     teacher_reports = {
-        0: {"qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen35"), "gemma": _teacher_report("google/gemma-4-E2B-it", "gemma4")},
-        1: {"qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen35"), "gemma": _teacher_report("google/gemma-4-E2B-it", "gemma4")},
+        0: {"qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen"), "gemma": _teacher_report("google/gemma-4-E2B-it", "gemma4")},
+        1: {"qwen": _teacher_report("Qwen/Qwen3.5-4B", "qwen"), "gemma": _teacher_report("google/gemma-4-E2B-it", "gemma4")},
     }
     pair_reports = {
         0: [_pair("qwen", "gemma", precision=0.999, critical=0.999, coverage=0.8)],
