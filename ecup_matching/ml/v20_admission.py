@@ -138,6 +138,114 @@ def _precision_record(group: pd.DataFrame, *, floor: float) -> dict[str, object]
     }
 
 
+def _supported_precision_record(
+    group: pd.DataFrame,
+    *,
+    floor: float,
+    min_support: int,
+) -> dict[str, object]:
+    rec = _precision_record(group, floor=floor)
+    rec["min_support"] = int(min_support)
+    rec["support_pass"] = bool(int(rec["trials"]) >= int(min_support))
+    rec["pass"] = bool(rec["pass"] and rec["support_pass"])
+    return rec
+
+
+def build_hierarchical_policy(
+    audit_rows: pd.DataFrame,
+    policy: V20Policy | None = None,
+) -> dict[str, object]:
+    """Calibrate teacher consensus at the reliability levels actually reused for candidates.
+
+    Unlike the legacy fine-stratum gate, this pools evidence by predicted label,
+    teacher reason, category and the critical-conflict family. Wilson floors are
+    unchanged; only support fragmentation is removed.
+    """
+    policy = policy or V20Policy()
+    required = {"truth", "pred", "reason_code", "category"}
+    if not required.issubset(audit_rows.columns):
+        raise ValueError(f"audit rows missing columns: {sorted(required - set(audit_rows.columns))}")
+    work = audit_rows.copy()
+    work = work[work["pred"].isin([0, 1])].reset_index(drop=True)
+    min_support = int(policy.min_stratum_support)
+
+    labels: dict[str, dict[str, object]] = {}
+    for pred_value in (0, 1):
+        group = work.loc[work["pred"].astype(int) == pred_value]
+        floor = policy.positive_precision_lcb if pred_value == 1 else policy.negative_precision_lcb
+        labels[str(pred_value)] = _supported_precision_record(
+            group, floor=floor, min_support=min_support
+        )
+
+    reasons: dict[str, dict[str, object]] = {}
+    for reason, group in work.groupby(work["reason_code"].astype(str), sort=True):
+        predicted = sorted(set(group["pred"].astype(int)))
+        if len(predicted) != 1:
+            rec = _supported_precision_record(
+                group, floor=max(policy.positive_precision_lcb, policy.negative_precision_lcb),
+                min_support=min_support,
+            )
+            rec["mixed_predicted_labels"] = True
+            rec["pass"] = False
+        else:
+            floor = policy.positive_precision_lcb if predicted[0] == 1 else policy.negative_precision_lcb
+            rec = _supported_precision_record(group, floor=floor, min_support=min_support)
+            rec["mixed_predicted_labels"] = False
+        reasons[str(reason)] = rec
+
+    categories: dict[str, dict[str, object]] = {}
+    for category, group in work.groupby(work["category"].astype(str), sort=True):
+        categories[str(category)] = _supported_precision_record(
+            group, floor=policy.category_precision_lcb, min_support=min_support
+        )
+
+    critical = work.loc[work["reason_code"].astype(str).isin(CRITICAL_REASONS)]
+    critical_record = _supported_precision_record(
+        critical, floor=policy.critical_precision_lcb, min_support=min_support
+    )
+
+    return {
+        "version": "v20-hierarchical-admission-v1",
+        "policy": policy.__dict__,
+        "predicted_labels": labels,
+        "reasons": reasons,
+        "categories": categories,
+        "critical_family": critical_record,
+        "audit_rows": int(len(work)),
+    }
+
+
+def row_passes_hierarchical_policy(
+    row: object,
+    policy_report: dict[str, object],
+) -> bool:
+    def value(name: str, default=None):
+        if isinstance(row, dict):
+            return row.get(name, default)
+        return getattr(row, name, default)
+
+    try:
+        pred = str(int(value("pred", value("target"))))
+    except (TypeError, ValueError):
+        return False
+    reason = str(value("reason_code", ""))
+    category = str(value("category", ""))
+
+    labels = dict(policy_report.get("predicted_labels") or {})
+    reasons = dict(policy_report.get("reasons") or {})
+    categories = dict(policy_report.get("categories") or {})
+    if not bool(dict(labels.get(pred) or {}).get("pass", False)):
+        return False
+    if not bool(dict(reasons.get(reason) or {}).get("pass", False)):
+        return False
+    if not bool(dict(categories.get(category) or {}).get("pass", False)):
+        return False
+    if reason in CRITICAL_REASONS:
+        if not bool(dict(policy_report.get("critical_family") or {}).get("pass", False)):
+            return False
+    return True
+
+
 def admit_strata(audit_rows: pd.DataFrame, policy: V20Policy | None = None) -> dict[str, object]:
     policy = policy or V20Policy()
     required = {"stratum", "truth", "pred", "reason_code"}
@@ -201,4 +309,11 @@ def admit_strata(audit_rows: pd.DataFrame, policy: V20Policy | None = None) -> d
     }
 
 
-__all__ = ["CRITICAL_REASONS", "wilson_lower_bound", "build_fold_safe_audit_split", "admit_strata"]
+__all__ = [
+    "CRITICAL_REASONS",
+    "wilson_lower_bound",
+    "build_fold_safe_audit_split",
+    "build_hierarchical_policy",
+    "row_passes_hierarchical_policy",
+    "admit_strata",
+]
