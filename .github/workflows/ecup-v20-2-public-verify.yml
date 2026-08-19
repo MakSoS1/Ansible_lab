@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "53afc12ad05993ffdb1daaea4d426f2cd574d845"
           python -m py_compile ecup_matching/ml/v20_*.py ecup_matching/ml/run_v20_*.py
-          pytest -q tests/test_v20_*.py
+          python -m pytest -q tests/test_v20_*.py
 
       - name: Publish terminal status
         if: always()
