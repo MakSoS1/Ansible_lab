@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: 53afc12ad05993ffdb1daaea4d426f2cd574d845
 
       - name: Publish start status
         env:
@@ -48,10 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "53afc12ad05993ffdb1daaea4d426f2cd574d845" || {
-            echo "request commit is expected to be a child of frozen source; verifying frozen source is its parent"
-            test "$(git rev-parse HEAD^)" = "53afc12ad05993ffdb1daaea4d426f2cd574d845"
-          }
+          test "$(git rev-parse HEAD)" = "53afc12ad05993ffdb1daaea4d426f2cd574d845"
           python -m py_compile ecup_matching/ml/v20_*.py ecup_matching/ml/run_v20_*.py
           pytest -q tests/test_v20_*.py
 
