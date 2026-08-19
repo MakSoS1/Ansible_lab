@@ -1,0 +1,88 @@
+name: E-CUP v12 short-context visibility audit
+
+on:
+  push:
+    branches: [ecup-v12-puregpu-main]
+    paths: ['.github/workflows/ecup-v12-context128-audit.yml']
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  MODEL_ID: ai-forever/ruBert-base
+  MODEL_REVISION: 43be4261797042e172adf7476c558734f3cbb2a0
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -q -r ecup_matching/requirements-ci.txt
+          python -m pip install -q 'transformers==4.55.4' 'tokenizers==0.21.4'
+      - name: Download human inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v12ctx"
+          for f in items_human.parquet matches.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" -o "$RUNNER_TEMP/v12ctx/$f"
+          done
+      - name: Measure 128-token identity visibility by char budget
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from collections import defaultdict
+          from pathlib import Path
+          import pandas as pd
+          from transformers import AutoTokenizer
+          from ecup_matching.ml.textnorm import normalize_item, canonical_attribute_value, clean_text
+          from ecup_matching.ml.v7_item_text import serialize_item_v7
+          from ecup_matching.ml.v7_frozen_split import load_frozen_split_manifest
+          root=Path(os.environ['RUNNER_TEMP'])/'v12ctx'
+          items=pd.read_parquet(root/'items_human.parquet',columns=['id','name','attributes','category'])
+          matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target'])
+          rows=load_frozen_split_manifest()['fold_rows'][0]
+          held=matches.iloc[rows].copy().reset_index(drop=True)
+          by_id=items.drop_duplicates('id').set_index('id')
+          held['category']=held.id1.map(by_id.category).astype(str)
+          focus=['Одежда','Обувь','Ювелирные изделия','Мебель','Галантерея и аксессуары']
+          held=held[held.category.isin(focus)].groupby('category',group_keys=False).head(1500).reset_index(drop=True)
+          ids=set(held.id1)|set(held.id2); subset=items[items.id.isin(ids)]
+          norm={r.id:normalize_item(r.id,r.name,r.attributes,r.category) for r in subset.itertuples(index=False)}
+          tok=AutoTokenizer.from_pretrained(os.environ['MODEL_ID'],revision=os.environ['MODEL_REVISION'],use_fast=True)
+          needles=('материал','material','состав','fabric','ткан','пол','gender','sex','сезон','season','проба','hallmark','карат','вставк','камень','stone','gem','размер','габарит','длин','ширин','высот','цвет','color','модель','model','sku','артикул')
+          def entries(n):
+            out=[]
+            for k,v in sorted(n.attrs.items()):
+              key=clean_text(k)
+              if not any(x in key for x in needles): continue
+              val=canonical_attribute_value(v)
+              if val: out.append(f'{key}={val}')
+            return out
+          results={}
+          for budget in (300,450,600,900):
+            texts={i:f'[CAT] {n.category}\n{serialize_item_v7(n,max_chars=budget)}' for i,n in norm.items()}
+            stats=defaultdict(lambda:[0,0])
+            for row in held.itertuples(index=False):
+              a,b=texts[row.id1],texts[row.id2]
+              enc=tok(a,b,truncation=True,max_length=128,return_offsets_mapping=True)
+              seq=enc.sequence_ids(); offs=enc['offset_mapping']
+              for side,item_id,text in ((0,row.id1,a),(1,row.id2,b)):
+                for entry in entries(norm[item_id]):
+                  stats[str(row.category)][0]+=1
+                  start=text.find(entry)
+                  if start>=0:
+                    end=start+len(entry)
+                    if any(seq[i]==side and offs[i][1]>start and offs[i][0]<end for i in range(len(offs))): stats[str(row.category)][1]+=1
+            results[str(budget)]={cat:{'total':v[0],'visible':v[1],'fraction':v[1]/max(v[0],1)} for cat,v in sorted(stats.items())}
+          print('V12_CONTEXT128='+json.dumps(results,ensure_ascii=False,sort_keys=True))
+          PY

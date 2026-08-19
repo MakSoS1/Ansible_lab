@@ -1,0 +1,52 @@
+{
+  "version": "v9-validation-v2",
+  "source_run_id": 31639183423,
+  "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+  "official_metric": "unweighted macro average precision over 20 official categories",
+  "retrieval_prevalence_ratio": 0.566880890615799,
+  "graph_config": {
+    "rb": 0.0,
+    "rt": 0.0,
+    "ep": 0.02,
+    "ap": 0.01
+  },
+  "candidates": {
+    "gate25": {
+      "coverage": 0.25,
+      "teacher_fraction": 0.25002279022474666,
+      "strict_oof_macro_ap": 0.5947115591000889,
+      "fold_local_graph_macro_ap": 0.5961903713277379,
+      "graph_delta": 0.0014788122276490068,
+      "all_graph_folds_positive": true,
+      "target_stress_mean": 0.45077792061326727,
+      "target_stress_std": 0.0016871298833520015,
+      "target_stress_p05": 0.44817877452510557,
+      "target_stress_p95": 0.4534007374014067
+    },
+    "gate40": {
+      "coverage": 0.40,
+      "teacher_fraction": 0.400024543318958,
+      "strict_oof_macro_ap": 0.595505427416499,
+      "fold_local_graph_macro_ap": 0.597005931143384,
+      "graph_delta": 0.0015005037268849275,
+      "all_graph_folds_positive": true,
+      "target_stress_mean": 0.4515676235464289,
+      "target_stress_std": 0.0017001454087140482,
+      "target_stress_p05": 0.44892286713353785,
+      "target_stress_p95": 0.45420540803140086
+    }
+  },
+  "selection": {
+    "selected": "gate40",
+    "reason": "gate40 dominates gate25 on strict OOF, fold-local graph OOF, and target-stress mean while retaining materially lower expected teacher cost than gate70",
+    "fallback_if_outer_wall_exceeds_700_seconds": "gate25",
+    "selection_made_before_final_runtime_measurement": true
+  },
+  "leaderboard_anchor": {
+    "v7_observed_by_owner": 0.36,
+    "used_for_fitting": false,
+    "claimed_as_v9_score": false
+  },
+  "sealed_gold_opened": false,
+  "gold_rows_scored": 0
+}

@@ -1,0 +1,75 @@
+name: E-CUP v10 context budget audit
+
+on:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths: [.github/workflows/ecup-v10-context-budget.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'transformers==4.57.1' pandas pyarrow
+      - name: Download canonical human items
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+            "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/items_human.parquet?download=true" \
+            -o "$RUNNER_TEMP/items_human.parquet"
+      - name: Audit serialized context at 128 and 160 tokens
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np, pandas as pd
+          from transformers import AutoTokenizer
+          from ecup_matching.ml.v7_runtime import build_v7_text_cache_from_parquet
+
+          MODEL='cointegrated/rubert-tiny2'; REV='e8ed3b0c8bbf4fb6984c3de043bf7d2f4e5969ae'
+          tok=AutoTokenizer.from_pretrained(MODEL,revision=REV,use_fast=True)
+          items_path=Path(os.environ['RUNNER_TEMP'])/'items_human.parquet'
+          items=pd.read_parquet(items_path,columns=['id','category'])
+          chunks=[]
+          for cat,part in items.groupby('category',sort=True):
+              chunks.append(part.sort_values('id').head(min(1000,len(part))))
+          sample=pd.concat(chunks,ignore_index=True)
+          ids=sample.id.tolist()
+          text_map,_=build_v7_text_cache_from_parquet(items_path,ids,max_chars=700,workers=2)
+          texts=[text_map[item_id] for item_id in ids]
+          lens=np.asarray([len(tok.encode(t,add_special_tokens=True,truncation=False)) for t in texts],dtype=int)
+          result={'rows':int(len(sample)),'model':MODEL,'revision':REV,'raw_token_mean':float(lens.mean()),'raw_token_p50':float(np.quantile(lens,.5)),'raw_token_p90':float(np.quantile(lens,.9)),'raw_token_p95':float(np.quantile(lens,.95)),'raw_token_p99':float(np.quantile(lens,.99))}
+          for budget in (96,128,160,192):
+              result[f'over_{budget}_fraction']=float(np.mean(lens>budget))
+              result[f'tokens_lost_mean_at_{budget}']=float(np.maximum(lens-budget,0).mean())
+          bycat={}
+          for cat,part in sample.groupby('category',sort=True):
+              idx=part.index.to_numpy(); x=lens[idx]
+              bycat[str(cat)]={'rows':len(part),'over128':float(np.mean(x>128)),'over160':float(np.mean(x>160)),'lost128':float(np.maximum(x-128,0).mean()),'lost160':float(np.maximum(x-160,0).mean())}
+          result['by_category']=bycat
+          Path('v10-context-budget.json').write_text(json.dumps(result,ensure_ascii=False,indent=2,sort_keys=True)+'\n')
+          print('V10_CONTEXT='+json.dumps(result,ensure_ascii=False,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v10-context-budget
+          path: v10-context-budget.json
+          if-no-files-found: error
+          retention-days: 14

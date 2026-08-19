@@ -1,0 +1,81 @@
+name: E-CUP v8 export exact gate85 final chunks
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-export-chunks.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FINAL_URL: https://github.com/MakSoS1/Ansible_lab/releases/download/ecup-v8-gate85-final-1c1d10d8f856/ecup-v8-gate85-fp16-dualcache-graph-0.6021573019-submission.zip
+  EXPECTED_SHA256: b23972fab2355dfa30825d6ec778d75359226bcea5847aef1abd27dcdac820c4
+  EXPECTED_BYTES: '1251659408'
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download exact published gate85 final and verify before split
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v8-chunks"
+          curl -fL --retry 12 --retry-all-errors "$FINAL_URL" -o "$RUNNER_TEMP/v8-chunks/final.zip"
+          test "$(stat -c %s "$RUNNER_TEMP/v8-chunks/final.zip")" = "$EXPECTED_BYTES"
+          echo "$EXPECTED_SHA256  $RUNNER_TEMP/v8-chunks/final.zip" | sha256sum -c -
+      - name: Split into connector-sized byte chunks and emit manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/v8-chunks"
+          split -b 300000000 -d -a 2 final.zip part-
+          count="$(find . -maxdepth 1 -name 'part-*' -type f | wc -l)"
+          test "$count" = 5
+          sha256sum part-* > chunks.sha256
+          stat -c '%n %s' part-* > chunks.sizes
+          {
+            echo "final_sha256=$EXPECTED_SHA256"
+            echo "final_bytes=$EXPECTED_BYTES"
+            cat chunks.sha256
+            cat chunks.sizes
+          } > manifest.txt
+          cat manifest.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-gate85-chunk-00
+          path: ${{ runner.temp }}/v8-chunks/part-00
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-gate85-chunk-01
+          path: ${{ runner.temp }}/v8-chunks/part-01
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-gate85-chunk-02
+          path: ${{ runner.temp }}/v8-chunks/part-02
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-gate85-chunk-03
+          path: ${{ runner.temp }}/v8-chunks/part-03
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-gate85-chunk-04
+          path: ${{ runner.temp }}/v8-chunks/part-04
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-gate85-chunk-manifest
+          path: ${{ runner.temp }}/v8-chunks/manifest.txt
+          retention-days: 14

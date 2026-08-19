@@ -1,0 +1,350 @@
+name: E-CUP v4 freeze verified cross-fitted blend
+
+on:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v4-freeze-crossfit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      V3_ZIP: submissions/v3/canonical/b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660/ecup-v3-submission.zip
+      V3_SHA: b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660
+      V3_VALIDATION: experiments/v3/neural/2d31cb18a06e/validation_predictions.parquet
+      VALIDATION_SHA: 4112aa2556cb683ffca27cd9bd16c00a7149bb7e3279d1f2a6abb2b20438d643
+      V3_MACRO_AP: '0.5254642645846543'
+      CROSSFIT_MACRO_AP: '0.5276431099433088'
+      CROSSFIT_DELTA: '0.0021788453586544243'
+      SELECTED_PRIOR: '4000'
+      EXPECTED_FULL_FIT_MACRO_AP: '0.5284493942551521'
+      CROSSFIT_RUN_ID: '31473553650'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned finalizer stack
+        run: |
+          python -m pip install \
+            'huggingface_hub==0.36.2' \
+            'pandas==2.3.3' \
+            'pyarrow==23.0.1' \
+            'numpy==2.4.6' \
+            'scikit-learn==1.9.0'
+
+      - name: Rebuild final package from verified cross-fit choice
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import json
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
+          import numpy as np
+          import pandas as pd
+          from huggingface_hub import hf_hub_download
+          from ecup_matching.ml.metrics import macro_average_precision
+          from ecup_matching.ml.train_v4_reranker import shrink_category_alphas
+          from ecup_matching.ml.v3_selection import select_best_blend
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'v4freeze'
+          private = root / 'private'
+          extracted = root / 'submission'
+          root.mkdir(parents=True, exist_ok=True)
+          extracted.mkdir(parents=True, exist_ok=True)
+
+          v3_zip = Path(hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+              filename=os.environ['V3_ZIP'], token=os.environ['HF_TOKEN'], local_dir=private,
+          ))
+          if hashlib.sha256(v3_zip.read_bytes()).hexdigest() != os.environ['V3_SHA']:
+              raise RuntimeError('immutable v3 SHA mismatch')
+          validation = Path(hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+              filename=os.environ['V3_VALIDATION'], token=os.environ['HF_TOKEN'], local_dir=private,
+          ))
+          validation_sha = hashlib.sha256(validation.read_bytes()).hexdigest()
+          if validation_sha != os.environ['VALIDATION_SHA']:
+              raise RuntimeError(f'frozen validation SHA mismatch: {validation_sha}')
+
+          with zipfile.ZipFile(v3_zip) as archive:
+              for info in archive.infolist():
+                  rel = PurePosixPath(info.filename)
+                  if rel.is_absolute() or '..' in rel.parts:
+                      raise RuntimeError(f'unsafe source ZIP path: {info.filename}')
+                  if stat.S_ISLNK((info.external_attr >> 16) & 0xFFFF):
+                      raise RuntimeError(f'symlink forbidden in source ZIP: {info.filename}')
+                  target = extracted.joinpath(*rel.parts)
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                      continue
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with archive.open(info) as src, target.open('wb') as dst:
+                      while True:
+                          chunk = src.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          dst.write(chunk)
+
+          manifest_path = extracted / 'model_v3_manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          old_alphas = manifest.get('category_alphas')
+          if old_alphas != {'__global__': 0.45}:
+              raise RuntimeError(f'unexpected v3 routing: {old_alphas!r}')
+
+          df = pd.read_parquet(validation).reset_index(drop=True)
+          if len(df) != 73131:
+              raise RuntimeError(f'unexpected validation rows: {len(df)}')
+          y = df['target'].to_numpy(float)
+          category = df['category'].astype(str).to_numpy()
+          structured = df['v2b-weak-curriculum'].to_numpy(float)
+          neural = df['selected_neural'].to_numpy(float)
+          grid = tuple(value / 40 for value in range(41))
+          prior = int(os.environ['SELECTED_PRIOR'])
+
+          global_fit = select_best_blend(structured, neural, y, category, alphas=grid)
+          global_alpha = float(global_fit['alpha_neural'])
+          raw: dict[str, float] = {}
+          support: dict[str, int] = {}
+          for name in sorted(set(category)):
+              mask = category == name
+              support[name] = int(mask.sum())
+              local = select_best_blend(
+                  structured[mask], neural[mask], y[mask], category[mask], alphas=grid
+              )
+              raw[name] = float(local['alpha_neural'])
+          alphas = shrink_category_alphas(
+              raw, global_alpha=global_alpha,
+              category_support=support, prior_strength=prior,
+          )
+
+          final_score = np.empty(len(df), dtype=float)
+          for name in set(category):
+              mask = category == name
+              alpha = float(alphas[name])
+              final_score[mask] = (1.0 - alpha) * structured[mask] + alpha * neural[mask]
+          macro, per_category = macro_average_precision(y, final_score, category)
+          expected = float(os.environ['EXPECTED_FULL_FIT_MACRO_AP'])
+          if abs(float(macro) - expected) > 1e-12:
+              raise RuntimeError(f'full-fit metric changed: {macro} != {expected}')
+          if float(os.environ['CROSSFIT_MACRO_AP']) <= float(os.environ['V3_MACRO_AP']):
+              raise RuntimeError('verified cross-fit candidate no longer beats v3')
+
+          manifest['category_alphas'] = alphas
+          manifest['validation_macro_ap'] = float(macro)
+          manifest['blend_iteration'] = 'v4-crossfitted-shrunk-category'
+          manifest['blend_baseline_v3_macro_ap'] = float(os.environ['V3_MACRO_AP'])
+          manifest['blend_crossfit_macro_ap'] = float(os.environ['CROSSFIT_MACRO_AP'])
+          manifest['blend_crossfit_delta_vs_v3'] = float(os.environ['CROSSFIT_DELTA'])
+          manifest['blend_full_fit_macro_ap'] = float(macro)
+          manifest['blend_prior_strength'] = prior
+          manifest['blend_global_alpha_neural'] = global_alpha
+          manifest['blend_selection_protocol'] = '5-fold GroupKFold by all-pair item components'
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          output = root / 'ecup-v4-submission.zip'
+          with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+              for path in sorted(extracted.rglob('*')):
+                  if path.is_file():
+                      archive.write(path, path.relative_to(extracted).as_posix())
+          if output.stat().st_size >= 5 * 1024**3:
+              raise RuntimeError('v4 ZIP exceeds 5 GiB')
+          digest = hashlib.sha256(output.read_bytes()).hexdigest()
+
+          metrics = {
+              'version': 'v4-crossfitted-shrunk-category-blend',
+              'source_v3_sha256': os.environ['V3_SHA'],
+              'source_validation_sha256': validation_sha,
+              'selection_crossfit_run_id': os.environ['CROSSFIT_RUN_ID'],
+              'selection_protocol': '5-fold GroupKFold by all-pair item components',
+              'validation_rows': 73131,
+              'validation_item_overlap': 0,
+              'validation_components': 53131,
+              'baseline_v3_macro_average_precision': float(os.environ['V3_MACRO_AP']),
+              'selected_prior_strength': prior,
+              'crossfit_macro_average_precision': float(os.environ['CROSSFIT_MACRO_AP']),
+              'crossfit_delta_vs_v3': float(os.environ['CROSSFIT_DELTA']),
+              'full_fit_macro_average_precision': float(macro),
+              'full_fit_delta_vs_v3': float(macro - float(os.environ['V3_MACRO_AP'])),
+              'full_fit_global_alpha_neural': global_alpha,
+              'category_alphas': alphas,
+              'full_fit_per_category_ap': per_category,
+              'submission_sha256': digest,
+              'zip_bytes': int(output.stat().st_size),
+              'exact_image_offline_smoke_verified': False,
+          }
+          (root / 'v4-package-metrics.json').write_text(
+              json.dumps(metrics, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(metrics, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Prepare smoke inputs
+        run: |
+          ROOT="$RUNNER_TEMP/v4freeze"
+          mkdir -p "$ROOT/smoke" "$ROOT/runtime" "$ROOT/out"
+          chmod 0777 "$ROOT/out"
+          curl --fail --location --retry 3 \
+            'https://storage.yandexcloud.net/ozon-ecup-2026/Matching/items_human.parquet' \
+            --output "$ROOT/smoke/items_human.parquet"
+          curl --fail --location --retry 3 \
+            'https://storage.yandexcloud.net/ozon-ecup-2026/Matching/matches.parquet' \
+            --output "$ROOT/smoke/matches_all.parquet"
+          python - <<'PY'
+          import os
+          import pandas as pd
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'v4freeze/smoke'
+          matches = pd.read_parquet(root / 'matches_all.parquet').head(1000).copy()
+          ids = set(matches['id1']) | set(matches['id2'])
+          items = pd.read_parquet(root / 'items_human.parquet')
+          items = items[items['id'].isin(ids)].copy()
+          matches[['id1','id2']].to_parquet(root / 'matches.parquet', index=False)
+          items.to_parquet(root / 'items.parquet', index=False)
+          PY
+
+      - name: Exact organizer-image offline smoke
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/v4freeze"
+          python - <<'PY'
+          import os, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          root = Path(os.environ['RUNNER_TEMP']) / 'v4freeze'
+          with zipfile.ZipFile(root / 'ecup-v4-submission.zip') as archive:
+              for info in archive.infolist():
+                  rel = PurePosixPath(info.filename)
+                  if rel.is_absolute() or '..' in rel.parts:
+                      raise RuntimeError('unsafe path')
+                  if stat.S_ISLNK((info.external_attr >> 16) & 0xFFFF):
+                      raise RuntimeError('symlink')
+                  target = root / 'runtime' / Path(*rel.parts)
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                      continue
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with archive.open(info) as src, target.open('wb') as dst:
+                      while chunk := src.read(1024 * 1024):
+                          dst.write(chunk)
+          PY
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --pids-limit 512 \
+            --memory 12g \
+            --shm-size 2g \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=4g \
+            --volume "$ROOT/runtime:/submission:ro" \
+            --volume "$ROOT/smoke:/smoke:ro" \
+            --volume "$ROOT/out:/out:rw" \
+            --workdir /submission \
+            odsai/ecup26-matching-baseline:1.0 \
+            python -u run.py \
+              --items_path /smoke/items.parquet \
+              --matches_path /smoke/matches.parquet \
+              --output_path /out/submit.csv \
+            | tee "$ROOT/smoke.log"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          root = Path(os.environ['RUNNER_TEMP']) / 'v4freeze'
+          source = pd.read_parquet(root / 'smoke/matches.parquet')
+          output = pd.read_csv(root / 'out/submit.csv')
+          if list(output.columns) != ['id1','id2','predict']:
+              raise RuntimeError(f'invalid columns: {list(output.columns)}')
+          if len(output) != 1000 or len(output) != len(source):
+              raise RuntimeError('invalid row count')
+          if not output[['id1','id2']].reset_index(drop=True).equals(source[['id1','id2']].reset_index(drop=True)):
+              raise RuntimeError('pair order mismatch')
+          score = output['predict'].to_numpy(float)
+          if not np.isfinite(score).all() or (score < 0).any() or (score > 1).any():
+              raise RuntimeError('invalid scores')
+          if len(np.unique(score)) <= 100:
+              raise RuntimeError('scores unexpectedly degenerate')
+          log = (root / 'smoke.log').read_text(encoding='utf-8', errors='replace').casefold()
+          if 'neural_pairs=1,000' not in log and 'neural_pairs=1000' not in log:
+              raise RuntimeError('neural routing not exercised')
+          metrics_path = root / 'v4-package-metrics.json'
+          metrics = json.loads(metrics_path.read_text(encoding='utf-8'))
+          metrics['exact_image_offline_smoke_verified'] = True
+          metrics['smoke_rows'] = 1000
+          metrics['smoke_unique_scores'] = int(len(np.unique(score)))
+          metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('v4_exact_image_offline_smoke_verified', len(output), len(np.unique(score)))
+          PY
+
+      - name: Freeze canonical v4 privately
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          root = Path(os.environ['RUNNER_TEMP']) / 'v4freeze'
+          zip_path = root / 'ecup-v4-submission.zip'
+          metrics_path = root / 'v4-package-metrics.json'
+          digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+          metrics = json.loads(metrics_path.read_text(encoding='utf-8'))
+          if metrics.get('exact_image_offline_smoke_verified') is not True:
+              raise RuntimeError('cannot freeze before smoke verification')
+          if metrics.get('submission_sha256') != digest:
+              raise RuntimeError('package SHA changed after smoke')
+          prefix = f'submissions/v4/canonical/{digest}'
+          metrics['canonical_private_prefix'] = prefix
+          metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          for local, remote in (
+              (zip_path, f'{prefix}/ecup-v4-submission.zip'),
+              (metrics_path, f'{prefix}/v4-package-metrics.json'),
+              (zip_path, 'submissions/v4/ecup-v4-submission.zip'),
+              (metrics_path, 'submissions/v4/v4-package-metrics.json'),
+          ):
+              api.upload_file(
+                  path_or_fileobj=str(local), path_in_repo=remote,
+                  repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+                  commit_message=f'Freeze E-CUP v4 {digest[:12]}',
+              )
+          files = set(api.list_repo_files(repo_id=os.environ['HF_REPO_ID'], repo_type='dataset'))
+          required = {
+              f'{prefix}/ecup-v4-submission.zip',
+              f'{prefix}/v4-package-metrics.json',
+              'submissions/v4/ecup-v4-submission.zip',
+              'submissions/v4/v4-package-metrics.json',
+          }
+          missing = required - files
+          if missing:
+              raise RuntimeError(f'private freeze missing {sorted(missing)}')
+          print('canonical_private_prefix', prefix)
+          print('submission_sha256', digest)
+          PY
+
+      - name: Upload safe metrics
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ecup-v4-final-metrics
+          path: ${{ runner.temp }}/v4freeze/v4-package-metrics.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/v4freeze"

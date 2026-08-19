@@ -1,0 +1,124 @@
+name: E-CUP v8 no-teacher graph meta
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-no-teacher-graph-meta.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download immutable no-teacher OOF and human inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v8-nt-meta"; mkdir -p "$root/oof"
+          for f in matches.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" -o "$root/$f"
+          done
+          curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9116709489/zip" -o "$root/oof.zip"
+          unzip -q "$root/oof.zip" -d "$root/oof"
+          echo "meta_root=$root" >> "$GITHUB_ENV"
+      - name: Cross-fit fixed graph meta models
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np, pandas as pd
+          from sklearn.ensemble import HistGradientBoostingClassifier
+          from sklearn.linear_model import LogisticRegression
+          from sklearn.pipeline import make_pipeline
+          from sklearn.preprocessing import StandardScaler
+          from ecup_matching.ml.v5_evaluation import macro_ap_report
+          from ecup_matching.ml.v8_graph import graph_features
+
+          root=Path(os.environ['meta_root'])
+          oof=pd.read_parquet(next((root/'oof').glob('*-oof.parquet')))
+          matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target'])
+          items=pd.read_parquet(root/'items_human.parquet',columns=['id','category']).drop_duplicates('id')
+          rows=oof.row_index.to_numpy(np.int64); folds=oof.fold.to_numpy(np.int8)
+          base=oof.fusion_oof_score.to_numpy(np.float64)
+          work=matches.iloc[rows].reset_index(drop=True); work['fold']=folds
+          cmap=dict(zip(items.id.tolist(),items.category.astype(str).tolist()))
+          work['category']=work.id1.map(cmap); right=work.id2.map(cmap)
+          if work.category.isna().any() or right.isna().any() or not np.array_equal(work.category.astype(str),right.astype(str)):
+              raise RuntimeError('category contract failed')
+          if abs(float(macro_ap_report(work,base,strict_official=True)['macro_average_precision'])-0.5931387077244183)>1e-10:
+              raise RuntimeError('base no-teacher reproduction failed')
+
+          # Compute graph context separately per immutable outer fold.
+          parts=[]
+          for fold in sorted(np.unique(folds)):
+              mask=folds==fold
+              fw=work.loc[mask,['id1','id2','category']].reset_index(drop=True)
+              gf=graph_features(fw,base[mask]).copy()
+              gf.insert(0,'base_score',base[mask])
+              gf['fold']=int(fold)
+              gf['row_pos']=np.flatnonzero(mask)
+              parts.append(gf)
+          feat=pd.concat(parts,ignore_index=True).sort_values('row_pos').reset_index(drop=True)
+          if not np.array_equal(feat.row_pos.to_numpy(),np.arange(len(work))): raise RuntimeError('feature alignment failed')
+          numeric=[c for c in feat.columns if c not in {'fold','row_pos'}]
+          X=feat[numeric].astype(float)
+          # Fixed category one-hot; category is target-free and known at inference.
+          cat=pd.get_dummies(work.category.astype(str),prefix='cat',dtype=float)
+          X=pd.concat([X.reset_index(drop=True),cat.reset_index(drop=True)],axis=1)
+          y=work.target.to_numpy(np.int8)
+
+          factories={
+            'logit': lambda: make_pipeline(StandardScaler(),LogisticRegression(C=0.5,max_iter=500,solver='lbfgs')),
+            'hgb': lambda: HistGradientBoostingClassifier(max_iter=80,learning_rate=0.05,max_leaf_nodes=15,min_samples_leaf=100,l2_regularization=1.0,random_state=2026),
+          }
+          results=[]
+          for name,factory in factories.items():
+              pred=np.empty(len(work),dtype=np.float64)
+              fold_reports=[]
+              for fold in sorted(np.unique(folds)):
+                  train=folds!=fold; valid=folds==fold
+                  model=factory(); model.fit(X.loc[train],y[train]); pred[valid]=model.predict_proba(X.loc[valid])[:,1]
+                  b=float(macro_ap_report(work.loc[valid].reset_index(drop=True),base[valid])['macro_average_precision'])
+                  m=float(macro_ap_report(work.loc[valid].reset_index(drop=True),pred[valid])['macro_average_precision'])
+                  fold_reports.append({'fold':int(fold),'base':b,'meta':m,'delta':m-b})
+              full=float(macro_ap_report(work,pred,strict_official=True)['macro_average_precision'])
+              tune_mask=np.isin(folds,[0,1]); confirm_mask=np.isin(folds,[2,3,4])
+              tune=float(macro_ap_report(work.loc[tune_mask].reset_index(drop=True),pred[tune_mask])['macro_average_precision'])
+              confirm=float(macro_ap_report(work.loc[confirm_mask].reset_index(drop=True),pred[confirm_mask])['macro_average_precision'])
+              result={'candidate':name,'full_crossfit_macro_ap':full,'tune_01_macro_ap':tune,'confirm_234_macro_ap':confirm,'delta_vs_base':full-0.5931387077244183,'all_folds_positive':all(x['delta']>0 for x in fold_reports),'fold_reports':fold_reports}
+              results.append(result); print('V8_NT_GRAPH_META='+json.dumps(result,sort_keys=True),flush=True)
+          # Candidate choice uses folds 0-1 only; 2-4 remain confirmatory.
+          chosen=max(results,key=lambda r:r['tune_01_macro_ap'])
+          summary={'chosen_on_folds_01':chosen['candidate'],'chosen_confirm_234_macro_ap':chosen['confirm_234_macro_ap'],'chosen_full_crossfit_macro_ap':chosen['full_crossfit_macro_ap'],'results':results,'gold_opened':False}
+          (root/'no-teacher-graph-meta.json').write_text(json.dumps(summary,indent=2,sort_keys=True)+'\n')
+          print('V8_NT_GRAPH_META_SUMMARY='+json.dumps(summary,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v8-no-teacher-graph-meta
+          path: ${{ env.meta_root }}/no-teacher-graph-meta.json
+          retention-days: 14

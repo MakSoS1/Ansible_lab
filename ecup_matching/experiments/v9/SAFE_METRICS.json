@@ -1,0 +1,169 @@
+{
+  "version": "v9",
+  "status": "completed-compact-submission-candidate",
+  "validation": {
+    "human_rows": 365654,
+    "development_rows": 285210,
+    "sealed_gold_rows": 80444,
+    "development_folds": 5,
+    "cross_split_item_overlap": 0,
+    "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "metric": "unweighted mean of sklearn average_precision_score over exactly 20 official categories",
+    "sealed_gold_opened": false,
+    "gold_rows_scored": 0
+  },
+  "leaderboard": {
+    "v7_score_observed_by_owner": 0.36,
+    "v7_anchor_used_for_fitting": false,
+    "v9_target_region": 0.5,
+    "v9_target_is_claimed_score": false,
+    "v9_measured_score": null
+  },
+  "target_stress": {
+    "prevalence_ratio": 0.566880890615799,
+    "diagnostic_only": true
+  },
+  "graph_config": {
+    "reciprocal_best_bonus": 0.0,
+    "reciprocal_top3_bonus": 0.0,
+    "endpoint_rank_weight": 0.02,
+    "ambiguity_penalty": 0.01
+  },
+  "gate25": {
+    "teacher_fraction": 0.25002279022474666,
+    "strict_oof_macro_average_precision": 0.5947115591000889,
+    "fold_local_graph_macro_average_precision": 0.5961903713277379,
+    "target_stress_mean": 0.45077792061326727,
+    "role": "predeclared fallback not activated"
+  },
+  "gate40": {
+    "teacher_fraction_oof": 0.400024543318958,
+    "strict_oof_macro_average_precision": 0.595505427416499,
+    "fold_local_graph_macro_average_precision": 0.597005931143384,
+    "graph_delta": 0.0015005037268849275,
+    "all_graph_folds_positive": true,
+    "target_stress_mean": 0.4515676235464289,
+    "target_stress_std": 0.0017001454087140482,
+    "target_stress_p05": 0.44892286713353785,
+    "target_stress_p95": 0.45420540803140086,
+    "selected_before_final_runtime": true,
+    "production_refit_run_id": 31639692541,
+    "production_artifact_id": 9158411928,
+    "production_teacher_fraction": 0.400025,
+    "production_elapsed_seconds": 74.4,
+    "production_peak_ram_gib": 0.736,
+    "production_refit_is_validation": false,
+    "private_hf_prefix": "experiments/v9/production/gate40/853a3925ac2b"
+  },
+  "superseded_platform_timeout_package": {
+    "name": "ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip",
+    "bytes": 1251659961,
+    "sha256": "925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782",
+    "platform_result": "Container did not finish in time",
+    "submission_status": "rejected-for-submission-runtime-risk",
+    "validation_evidence_retained": true
+  },
+  "keeper_package": {
+    "name": "ecup-v9-compact-fp16storage-0.5970059311-submission.zip",
+    "build_run_id": 31675196422,
+    "release_tag": "ecup-v9-compact-6ba133ce25f7",
+    "bytes": 596925132,
+    "sha256": "aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345",
+    "source_bytes": 1251659961,
+    "bytes_saved": 654734829,
+    "size_ratio": 0.4769067882646763,
+    "runtime_policy": {
+      "structured_worker_cap": 8,
+      "cuda_autocast": "float16",
+      "contrastive_batch_rtx2060": 256,
+      "teacher_batch_rtx2060": 96
+    },
+    "storage_compaction": {
+      "contrastive_and_teacher_floating_safetensors": "fp16",
+      "integer_tensors_preserved": true,
+      "structured_and_meta_models_changed": false,
+      "dead_bytecode_removed": true
+    }
+  },
+  "compact_equivalence": {
+    "run_id": 31675338174,
+    "artifact_id": 9171461622,
+    "rows": 20000,
+    "original_seconds": 91.352614853,
+    "compact_seconds": 81.015456088,
+    "mean_abs_delta": 0.00016378653597360943,
+    "p99_abs_delta": 0.0019011406844106082,
+    "p999_abs_delta": 0.008163265306122325,
+    "max_abs_delta": 0.10074231177094373,
+    "pearson_correlation": 0.9999931722281602,
+    "spearman_rank_correlation": 0.9999931451822124,
+    "top_fraction_overlap": {
+      "0.01": 1.0,
+      "0.05": 0.999,
+      "0.10": 0.999,
+      "0.25": 0.9996
+    },
+    "output_valid": true,
+    "strict_oof_remeasured_after_storage_compaction": false,
+    "reason_not_remeasured": "production refit already saw all development rows; sealed gold remains unopened",
+    "interpretation": "near-identical ranking transfer evidence, not exact numeric equality and not a new validation score"
+  },
+  "runtime_gate": {
+    "run_id": 31675903851,
+    "artifact_id": 9171929877,
+    "artifact_sha256": "93936d2bade56f8765c259ca31a0c8950e89aedeacd330b1f105d3b111eddb23",
+    "device": "NVIDIA GeForce RTX 2060 SUPER",
+    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
+    "timer_scope": "safe ZIP extraction + docker inference + output validation; network download and fixture preparation excluded",
+    "public": {
+      "rows": 115000,
+      "acceptance_seconds": 330.0,
+      "extract_seconds": 5.234229078,
+      "inference_seconds": 287.592726358,
+      "validation_seconds": 0.738098444,
+      "wall_seconds": 293.569452608,
+      "headroom_seconds": 36.430547391999994,
+      "return_code": 0,
+      "output_valid": true,
+      "unique_scores": 108264,
+      "passed": true
+    },
+    "private": {
+      "rows": 275000,
+      "acceptance_seconds": 700.0,
+      "extract_seconds": 5.714303003,
+      "inference_seconds": 640.236212537,
+      "validation_seconds": 0.992280967,
+      "wall_seconds": 646.947129008,
+      "headroom_seconds": 53.05287099199995,
+      "return_code": 0,
+      "output_valid": true,
+      "unique_scores": 271298,
+      "passed": true
+    },
+    "both_passed": true
+  },
+  "verification": {
+    "run_id": 31676442849,
+    "tests_passed": 425,
+    "tests_skipped": 5,
+    "memory_policy": "OK"
+  },
+  "rejected_experiments": {
+    "fixed_prevalence_weighted_hgb": {
+      "strict_delta": -0.00006587537913905984,
+      "graph_delta": -0.00006047802956310022,
+      "target_stress_delta": -0.00007796115858560881
+    },
+    "crossfitted_category_fusion": {
+      "strict_delta": -0.0005091711267831691,
+      "graph_delta": -0.0002712629651683285,
+      "target_stress_delta": -0.00028261913973903763
+    }
+  },
+  "v8_runtime_failure_reference": {
+    "inner_run_seconds": 731.22,
+    "outer_wall_seconds": 820.784,
+    "old_workflow_pass_marker_was_invalid": true
+  }
+}

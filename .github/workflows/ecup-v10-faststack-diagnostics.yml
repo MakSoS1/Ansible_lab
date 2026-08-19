@@ -1,0 +1,53 @@
+name: E-CUP v11 Weighted OOF
+
+on:
+  push:
+    branches: [ecup-v11-fastlex]
+    paths:
+      - 'ecup_matching/ml/v11_weighted_overlap.py'
+      - 'ecup_matching/ml/run_v11_weighted_oof.py'
+      - 'ecup_matching/ml/v11_sparse_channels.py'
+      - 'ecup_matching/ml/v11_stack.py'
+      - '.github/workflows/ecup-v10-faststack-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
+jobs:
+  oof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download canonical human data
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v11-weighted-oof"; mkdir -p "$root/input" "$root/output"
+          for f in matches.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" -o "$root/input/$f"
+          done
+          echo "V11_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Run immutable five-fold weighted OOF and stress
+        run: |
+          python -m ecup_matching.ml.run_v11_weighted_oof \
+            --matches "$V11_ROOT/input/matches.parquet" \
+            --items "$V11_ROOT/input/items_human.parquet" \
+            --output-dir "$V11_ROOT/output"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v11-weighted-oof
+          path: ${{ env.V11_ROOT }}/output/
+          retention-days: 30

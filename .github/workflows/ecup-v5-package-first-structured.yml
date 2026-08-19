@@ -1,0 +1,170 @@
+name: E-CUP v5 package first verified structured bundle
+
+on:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v5-package-first-structured.yml
+      - ecup_matching/submission/run_v5.py
+      - ecup_matching/submission/predict_v5.py
+      - ecup_matching/build_submission_v5.py
+      - ecup_matching/ci/v5_artifacts.py
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  MAIN_RUN_ID: '31503176262'
+  MAC_STRUCTURED_RUN_ID: '31509061060'
+  TEACHER_RUN_ID: '31504431386'
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download and resolve production component artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/artifacts/structured" "$RUNNER_TEMP/artifacts/contrastive" "$RUNNER_TEMP/artifacts/teacher"
+
+          artifact_id_for() {
+            local run_id="$1" name="$2"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+              --jq ".artifacts[] | select(.name == \"$name\") | .id" | head -n1 || true
+          }
+          download_artifact() {
+            local artifact_id="$1" name="$2" dest="$3"
+            gh api -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/$name.zip"
+            unzip -q "$RUNNER_TEMP/$name.zip" -d "$dest"
+            echo "downloaded $name artifact_id=$artifact_id"
+          }
+
+          structured_id="$(artifact_id_for "$MAIN_RUN_ID" v5-prod-structured)"
+          structured_name=v5-prod-structured
+          structured_run="$MAIN_RUN_ID"
+          if [[ -z "$structured_id" ]]; then
+            structured_id="$(artifact_id_for "$MAC_STRUCTURED_RUN_ID" v5-prod-structured-macos)"
+            structured_name=v5-prod-structured-macos
+            structured_run="$MAC_STRUCTURED_RUN_ID"
+          fi
+          test -n "$structured_id"
+          echo "selected_structured_run=$structured_run selected_structured_artifact=$structured_name"
+          download_artifact "$structured_id" "$structured_name" "$RUNNER_TEMP/artifacts/structured"
+
+          contrastive_id="$(artifact_id_for "$MAIN_RUN_ID" v5-prod-contrastive)"
+          teacher_id="$(artifact_id_for "$TEACHER_RUN_ID" v5-prod-teacher-exact)"
+          test -n "$contrastive_id" -a -n "$teacher_id"
+          download_artifact "$contrastive_id" v5-prod-contrastive "$RUNNER_TEMP/artifacts/contrastive"
+          download_artifact "$teacher_id" v5-prod-teacher-exact "$RUNNER_TEMP/artifacts/teacher"
+
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from ecup_matching.ci.v5_artifacts import resolve_structured_artifact
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'artifacts' / 'structured'
+          paths = resolve_structured_artifact(root)
+          with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as stream:
+              stream.write(f'STRUCTURED_MODEL_PATH={paths.model}\n')
+              stream.write(f'STRUCTURED_LEGACY_PATH={paths.legacy_runtime}\n')
+          print('structured_model', paths.model)
+          print('structured_legacy_runtime', paths.legacy_runtime)
+          PY
+
+          test -f "$RUNNER_TEMP/artifacts/contrastive/config.json"
+          test -f "$RUNNER_TEMP/artifacts/contrastive/model.safetensors"
+          test -f "$RUNNER_TEMP/artifacts/teacher/config.json"
+          test -f "$RUNNER_TEMP/artifacts/teacher/model.safetensors"
+          printf '%s\n' \
+            "structured_run=$structured_run" \
+            "structured_artifact=$structured_name" \
+            "contrastive_run=$MAIN_RUN_ID" \
+            "teacher_run=$TEACHER_RUN_ID" \
+            > "$RUNNER_TEMP/artifacts/PROVENANCE.txt"
+      - name: Full test suite before packaging
+        run: python -m pytest ecup_matching/tests -q
+      - name: Build final six-signal submission ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/final"
+          python -m ecup_matching.build_submission_v5 \
+            --structured-model "$STRUCTURED_MODEL_PATH" \
+            --contrastive-model-dir "$RUNNER_TEMP/artifacts/contrastive" \
+            --teacher-model-dir "$RUNNER_TEMP/artifacts/teacher" \
+            --legacy-runtime-dir "$STRUCTURED_LEGACY_PATH" \
+            --output "$RUNNER_TEMP/final/ecup-v5-six-signal-0.5975445721-submission.zip"
+          sha256sum "$RUNNER_TEMP/final/ecup-v5-six-signal-0.5975445721-submission.zip" | tee "$RUNNER_TEMP/final/SHA256SUMS.txt"
+          cp "$RUNNER_TEMP/artifacts/PROVENANCE.txt" "$RUNNER_TEMP/final/PROVENANCE.txt"
+          stat -c 'submission_bytes=%s' "$RUNNER_TEMP/final/ecup-v5-six-signal-0.5975445721-submission.zip"
+          unzip -t "$RUNNER_TEMP/final/ecup-v5-six-signal-0.5975445721-submission.zip" >/dev/null
+      - name: Prepare organizer smoke inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/smoke" "$RUNNER_TEMP/smoke-out" "$RUNNER_TEMP/submission"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/smoke/matches-full.parquet" "$BASE_URL/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/smoke/items-full.parquet" "$BASE_URL/items_human.parquet"
+          python - <<'PY'
+          import os, pandas as pd
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'smoke'
+          pairs=pd.read_parquet(root/'matches-full.parquet',columns=['id1','id2']).head(64).copy()
+          ids=set(pairs.id1)|set(pairs.id2)
+          items=pd.read_parquet(root/'items-full.parquet',columns=['id','name','attributes','category'])
+          items=items[items.id.isin(ids)].copy()
+          assert ids <= set(items.id)
+          pairs.to_parquet(root/'matches.parquet',index=False)
+          items.to_parquet(root/'items.parquet',index=False)
+          PY
+          unzip -q "$RUNNER_TEMP/final/ecup-v5-six-signal-0.5975445721-submission.zip" -d "$RUNNER_TEMP/submission"
+      - name: Exact organizer-image offline smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only \
+            --tmpfs /tmp:rw,size=2g \
+            -v "$RUNNER_TEMP/submission:/submission:ro" \
+            -v "$RUNNER_TEMP/smoke:/data:ro" \
+            -v "$RUNNER_TEMP/smoke-out:/out:rw" \
+            odsai/ecup26-matching-baseline:1.0 \
+            python -u /submission/run.py \
+              --output_path /out/submit.csv \
+              --items_path /data/items.parquet \
+              --matches_path /data/matches.parquet
+          python - <<'PY'
+          import os, numpy as np, pandas as pd
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          inp=pd.read_parquet(root/'smoke'/'matches.parquet',columns=['id1','id2'])
+          out=pd.read_csv(root/'smoke-out'/'submit.csv')
+          assert list(out.columns)==['id1','id2','predict']
+          assert len(out)==len(inp)==64
+          assert out[['id1','id2']].equals(inp[['id1','id2']])
+          score=out.predict.to_numpy(float)
+          assert np.isfinite(score).all() and ((score>=0)&(score<=1)).all()
+          assert len(np.unique(score))>1
+          print('organizer_smoke_rows',len(out),'unique_predictions',len(np.unique(score)))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v5-six-signal-best-submission
+          path: |
+            ${{ runner.temp }}/final/ecup-v5-six-signal-0.5975445721-submission.zip
+            ${{ runner.temp }}/final/SHA256SUMS.txt
+            ${{ runner.temp }}/final/PROVENANCE.txt
+          retention-days: 14

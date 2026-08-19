@@ -1,0 +1,23 @@
+name: E-CUP probe official runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - ".github/workflows/ecup-probe-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Pull official organizer image
+        run: docker pull odsai/ecup26-matching-baseline:1.0
+      - name: Print runtime compatibility matrix
+        shell: bash
+        run: |
+          docker run --rm odsai/ecup26-matching-baseline:1.0 python -c 'import sys, numpy, pandas, sklearn, joblib; print("python",sys.version); print("numpy",numpy.__version__); print("pandas",pandas.__version__); print("sklearn",sklearn.__version__); print("joblib",joblib.__version__); import importlib.util; print("catboost", bool(importlib.util.find_spec("catboost"))); print("rapidfuzz", bool(importlib.util.find_spec("rapidfuzz")))'

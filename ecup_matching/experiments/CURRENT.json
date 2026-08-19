@@ -1,0 +1,93 @@
+{
+  "version": "v11",
+  "status": "completed-submission-ready",
+  "model": "no_teacher+frozen_graph-faststack",
+  "results": "ecup_matching/experiments/v11/RESULTS.md",
+  "safe_metrics": "ecup_matching/experiments/v11/SAFE_METRICS.json",
+  "validation_protocol": {
+    "human_rows": 365654,
+    "development_rows": 285210,
+    "sealed_gold_rows": 80444,
+    "development_folds": 5,
+    "cross_split_item_overlap": 0,
+    "split_sha256": "aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b",
+    "metric": "unweighted mean of sklearn average_precision_score over exactly 20 official categories",
+    "gold_metric_opened": false,
+    "gold_rows_scored": 0
+  },
+  "external_leaderboard_anchor": {
+    "version": "v7",
+    "score_observed_by_owner": 0.36,
+    "used_for_fitting": false,
+    "v11_target_region": 0.5,
+    "v11_target_is_claimed_score": false,
+    "v11_measured_leaderboard_score": null
+  },
+  "selection": {
+    "candidate": "no_teacher+frozen_graph-faststack",
+    "strict_raw_oof_macro_ap": 0.5931387077244183,
+    "strict_graph_oof_macro_ap": 0.5950413762943735,
+    "target_stress_graph_mean": 0.44961526826354,
+    "teacher_checkpoint_required": false,
+    "contrastive_runtime_required": true,
+    "stronger_local_rejected_candidate": {
+      "candidate": "no_contrastive+frozen_graph",
+      "strict_graph_oof_macro_ap": 0.5978943607354008,
+      "target_stress_graph_mean": 0.45353679907723865,
+      "rejection_reason": "pair-scaled teacher retained; higher platform timeout risk"
+    }
+  },
+  "keeper_package": {
+    "name": "ecup-v11-faststack-graph-0.5950413763-submission.zip",
+    "bytes": 480249754,
+    "sha256": "0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a",
+    "payload_identity": "byte-identical to the fixed v10 no-teacher keeper",
+    "original_build_run_id": 31699070599,
+    "original_source_sha": "0e86d6a951d47d6d92230563e3d9790b2f044f86",
+    "teacher_checkpoint_packaged": false,
+    "root_metadata_json_present": true,
+    "metadata_image": "odsai/ecup26-matching-baseline:1.0",
+    "metadata_entry_point": "python -u run.py",
+    "export_run_id": 31712297949,
+    "export_artifact_id": 9185774794
+  },
+  "fresh_runtime_gate": {
+    "run_id": 31712095181,
+    "job_id": 94487396402,
+    "device": "NVIDIA GeForce RTX 2060 SUPER",
+    "organizer_image": "odsai/ecup26-matching-baseline:1.0",
+    "timer_scope": "ZIP extraction + Docker inference + output validation",
+    "public": {
+      "rows": 115000,
+      "extract_seconds": 2.039450411000871,
+      "wall_seconds": 161.9069420099986,
+      "acceptance_seconds": 180.0,
+      "unique_scores": 108578,
+      "passed": true
+    },
+    "private": {
+      "rows": 275000,
+      "extract_seconds": 2.791927307000151,
+      "wall_seconds": 379.24445236499014,
+      "acceptance_seconds": 420.0,
+      "unique_scores": 271964,
+      "passed": true
+    }
+  },
+  "verification": {
+    "run_id": 31712646355,
+    "job_id": 94489299438,
+    "tests_passed": 450,
+    "tests_skipped": 6,
+    "memory_policy": "OK"
+  },
+  "distribution_policy": {
+    "submission_store": "private_huggingface_only",
+    "hf_repo": "Maksim123321/e-cup-2026-matching-private",
+    "canonical_prefix": "submissions/v11/final/",
+    "github_actions_artifacts": "transient_ci_evidence_only"
+  },
+  "sealed_gold_evaluated": false,
+  "leaderboard_score": null,
+  "next_action": "Submit only the exact v11 keeper SHA256 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a. Record the measured leaderboard result separately; do not rewrite OOF or target-stress history."
+}

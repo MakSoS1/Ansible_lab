@@ -1,0 +1,107 @@
+name: E-CUP v9 cross-fitted category fusion
+
+on:
+  push:
+    branches: [ecup-v9-leaderboard-adapt]
+    paths:
+      - .github/workflows/ecup-v9-category-fusion.yml
+      - ecup_matching/ml/v9_category_fusion.py
+      - ecup_matching/tests/test_v9_category_fusion.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  GATE40_ARTIFACT_ID: '9117908809'
+  STRESS_RATIO: '0.566880890615799'
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: TDD contract
+        run: python -m pytest ecup_matching/tests/test_v9_category_fusion.py -q
+      - name: Download immutable gate40 OOF and human inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v9-catfusion"; mkdir -p "$root/gate40" "$root/out"
+          test -n "${HF_TOKEN:-}"
+          for f in matches.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" -o "$root/$f"
+          done
+          curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${GATE40_ARTIFACT_ID}/zip" -o "$root/gate40.zip"
+          unzip -q "$root/gate40.zip" -d "$root/gate40"
+          test -s "$root/gate40/v6-teacher-gate-40-oof.parquet"
+          echo "catfusion_root=$root" >> "$GITHUB_ENV"
+      - name: Evaluate leakage-free category fusion, graph and stress
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from sklearn.metrics import average_precision_score
+          from ecup_matching.ml.v5_evaluation import macro_ap_report
+          from ecup_matching.ml.v8_graph import graph_features,graph_rescore
+          from ecup_matching.ml.v9_category_fusion import crossfit_category_fusion
+
+          root=Path(os.environ['catfusion_root']); ratio=float(os.environ['STRESS_RATIO'])
+          oof=pd.read_parquet(root/'gate40/v6-teacher-gate-40-oof.parquet')
+          rows=oof.row_index.to_numpy(np.int64); folds=oof.fold.to_numpy(np.int16)
+          matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target']); dev=matches.iloc[rows].reset_index(drop=True)
+          items=pd.read_parquet(root/'items_human.parquet',columns=['id','category']).drop_duplicates('id'); cmap=dict(zip(items.id.tolist(),items.category.astype(str).tolist())); dev['category']=dev.id1.map(cmap)
+          categories=dev.category.astype(str).to_numpy(); target=dev.target.to_numpy(np.int8)
+          base=oof.fusion_oof_score.to_numpy(float); category=oof.category_shrunk_oof_score.to_numpy(float); hgb=oof.hgb_stack_oof_score.to_numpy(float)
+          base_ap=float(macro_ap_report(dev,base,strict_official=True)['macro_average_precision'])
+          assert abs(base_ap-0.595505427416499)<1e-10
+          result=crossfit_category_fusion(category,hgb,target,categories,folds,weight_grid=(0.0,0.25,0.5,0.75,1.0))
+          fused=np.asarray(result['oof_score'],float); fused_ap=float(macro_ap_report(dev,fused,strict_official=True)['macro_average_precision'])
+          cfg=dict(reciprocal_best_bonus=0.0,reciprocal_top3_bonus=0.0,endpoint_rank_weight=.02,ambiguity_penalty=.01)
+          def fold_graph(score):
+            out=np.empty_like(score); info=[]
+            for fold in sorted(np.unique(folds).tolist()):
+              m=folds==fold; frame=dev.loc[m,['id1','id2','category','target']].reset_index(drop=True); s=score[m]
+              gf=graph_features(frame[['id1','id2','category']],s); g=graph_rescore(s,gf,**cfg); out[m]=g
+              b=float(macro_ap_report(frame,s)['macro_average_precision']); ga=float(macro_ap_report(frame,g)['macro_average_precision']); info.append({'fold':int(fold),'base':b,'graph':ga,'delta':ga-b})
+            return out,info
+          base_graph,_=fold_graph(base); fused_graph,fused_folds=fold_graph(fused)
+          base_graph_ap=float(macro_ap_report(dev,base_graph,strict_official=True)['macro_average_precision']); fused_graph_ap=float(macro_ap_report(dev,fused_graph,strict_official=True)['macro_average_precision'])
+          plans={}
+          for cat in sorted(np.unique(categories).tolist()):
+            idx=np.flatnonzero(categories==cat); cy=target[idx]; p=float(cy.mean()); tp=p*ratio; neg=int(np.sum(cy==0)); pos=int(np.sum(cy==1)); keep=min(pos,max(1,int(round(tp*neg/max(1e-12,1-tp))))); plans[cat]=(idx,cy,keep)
+          def stress(score):
+            vals=[]
+            for seed in range(2026,2126):
+              rng=np.random.default_rng(seed); aps=[]
+              for cat in sorted(plans):
+                idx,cy,k=plans[cat]; neg=idx[cy==0]; pos=idx[cy==1]; sel=np.concatenate([neg,rng.choice(pos,size=k,replace=False)]); aps.append(float(average_precision_score(target[sel],score[sel])))
+              vals.append(float(np.mean(aps)))
+            a=np.asarray(vals,float); return {'mean':float(a.mean()),'std':float(a.std(ddof=1)),'p05':float(np.quantile(a,.05)),'p95':float(np.quantile(a,.95))}
+          baseline_stress=stress(base_graph); fused_stress=stress(fused_graph)
+          payload={'version':'v9-category-fusion-v1','weight_grid':[0.0,.25,.5,.75,1.0],'base_strict_oof':base_ap,'category_fusion_strict_oof':fused_ap,'strict_delta':fused_ap-base_ap,'base_graph_oof':base_graph_ap,'category_fusion_graph_oof':fused_graph_ap,'graph_delta_vs_base':fused_graph_ap-base_graph_ap,'fused_graph_per_fold':fused_folds,'all_fused_graph_folds_positive':all(x['delta']>0 for x in fused_folds),'base_stress':baseline_stress,'category_fusion_stress':fused_stress,'stress_mean_delta':fused_stress['mean']-baseline_stress['mean'],'fold_weights':result['fold_weights'],'leaderboard_anchor_used_for_fitting':False,'sealed_gold_opened':False,'gold_rows_scored':0}
+          (root/'out/v9-category-fusion.json').write_text(json.dumps(payload,indent=2,sort_keys=True)+'\n'); print('V9_CATEGORY_FUSION='+json.dumps(payload,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ecup-v9-category-fusion
+          path: ${{ env.catfusion_root }}/out/v9-category-fusion.json
+          retention-days: 14

@@ -1,0 +1,88 @@
+name: E-CUP v9 publish keeper to HF
+
+on:
+  push:
+    branches:
+      - ecup-v9-leaderboard-adapt
+    paths:
+      - .github/workflows/ecup-v9-upload-hf.yml
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    env:
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      ASSET_URL: https://github.com/MakSoS1/Ansible_lab/releases/download/ecup-v9-gate40-final-eb2bcf18d53e/ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip
+      ARCHIVE_NAME: ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip
+      EXPECTED_SHA256: 925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782
+      HF_PATH: submissions/v9/final/ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip
+    steps:
+      - name: Require HF token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo '::error::HF_TOKEN is missing'; exit 1; }
+
+      - name: Download exact immutable GitHub Release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-all-errors --output "$ARCHIVE_NAME" "$ASSET_URL"
+          test "$(stat -c '%s' "$ARCHIVE_NAME")" = "1251659961"
+          echo "$EXPECTED_SHA256  $ARCHIVE_NAME" | sha256sum --check --strict
+
+      - name: Install Hugging Face client
+        run: python -m pip install 'huggingface_hub>=1.0,<2'
+
+      - name: Upload exact keeper and metadata to private HF dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from huggingface_hub import HfApi, CommitOperationAdd
+
+          archive = Path(os.environ['ARCHIVE_NAME'])
+          manifest = Path('V9_KEEPER.json')
+          manifest.write_text(json.dumps({
+              'version': 'v9',
+              'status': 'completed',
+              'archive': archive.name,
+              'bytes': archive.stat().st_size,
+              'sha256': os.environ['EXPECTED_SHA256'],
+              'local_graph_strict_oof_macro_ap': 0.597005931143384,
+              'target_stress_mean': 0.4515676235464289,
+              'leaderboard_score': None,
+              'leaderboard_score_claimed': False,
+              'runtime_public_115k_seconds': 281.821475323,
+              'runtime_private_275k_seconds': 634.766220868,
+              'gpu': 'NVIDIA GeForce RTX 2060 SUPER',
+              'source_release_tag': 'ecup-v9-gate40-final-eb2bcf18d53e',
+          }, indent=2) + '\n')
+
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          repo = os.environ['HF_REPO_ID']
+          archive_path = os.environ['HF_PATH']
+          manifest_path = 'submissions/v9/final/V9_KEEPER.json'
+          api.create_commit(
+              repo_id=repo,
+              repo_type='dataset',
+              operations=[
+                  CommitOperationAdd(path_in_repo=archive_path, path_or_fileobj=str(archive)),
+                  CommitOperationAdd(path_in_repo=manifest_path, path_or_fileobj=str(manifest)),
+              ],
+              commit_message='Publish exact E-CUP v9 keeper submission',
+          )
+          files = set(api.list_repo_files(repo_id=repo, repo_type='dataset'))
+          for p in (archive_path, manifest_path):
+              if p not in files:
+                  raise RuntimeError(f'upload verification failed: {p}')
+              print('verified_hf', p)
+          print('hf_repo', repo)
+          print('archive_sha256', os.environ['EXPECTED_SHA256'])
+          PY

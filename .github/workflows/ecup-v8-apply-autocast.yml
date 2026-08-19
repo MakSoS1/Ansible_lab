@@ -1,0 +1,63 @@
+name: E-CUP v8 apply guarded autocast patch
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-apply-autocast.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ecup-v8-hardsku
+          fetch-depth: 0
+      - name: Apply exact three-site autocast patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('ecup_matching/submission/predict_v6.py')
+          text=path.read_text(encoding='utf-8')
+          replacements=[
+              (
+                  'from ecup_matching.submission.v6_fast import (\n    batch_index_ranges,\n    collect_chunked_scores,\n    select_runtime_config,\n)',
+                  'from ecup_matching.submission.v6_fast import (\n    batch_index_ranges,\n    collect_chunked_scores,\n    select_runtime_config,\n    torch_autocast,\n)',
+              ),
+              (
+                  '                hidden = model(**tokens).last_hidden_state\n                emb = _mean_pool(hidden, tokens["attention_mask"])',
+                  '                with torch_autocast(torch, config):\n                    hidden = model(**tokens).last_hidden_state\n                    emb = _mean_pool(hidden, tokens["attention_mask"])',
+              ),
+              (
+                  '                values = torch.sigmoid(model(**tokens).logits.squeeze(-1))',
+                  '                with torch_autocast(torch, config):\n                    values = torch.sigmoid(model(**tokens).logits.squeeze(-1))',
+              ),
+          ]
+          for old,new in replacements:
+              count=text.count(old)
+              if count != 1:
+                  raise SystemExit(f'guarded patch expected exactly one match, found {count}: {old[:80]!r}')
+              text=text.replace(old,new,1)
+          path.write_text(text,encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- ecup_matching/submission/predict_v6.py
+          grep -q 'torch_autocast' ecup_matching/submission/predict_v6.py
+      - name: Commit only guarded runtime change
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git status --short | wc -l)" -eq 1
+          git status --short | grep -q '^ M ecup_matching/submission/predict_v6.py$'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ecup_matching/submission/predict_v6.py
+          git commit -m 'fix: enable declared CUDA autocast in v6 neural inference'
+          git push origin HEAD:ecup-v8-hardsku

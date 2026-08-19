@@ -1,0 +1,153 @@
+name: E-CUP v3 retained sprint package and offline benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-build-sprint.yml
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  ORGANIZER_IMAGE: odsai/ecup26-matching-baseline:1.0
+  STRUCTURED_PREFIX: experiments/v2/structured/3ad39ca999e0
+  NEURAL_PREFIX: experiments/v3/neural-sprint/e18e6f852db9
+
+jobs:
+  package-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - name: Verify exact source before packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r ecup_matching/requirements-ci.txt
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+      - name: Require private HF token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo '::error::Missing HF_TOKEN'; exit 1; }
+      - name: Fetch retained v2 anchor, sprint neural model and benchmark data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v3/structured" "$RUNNER_TEMP/v3/neural" "$RUNNER_TEMP/v3/data" "$RUNNER_TEMP/v3/pkg" "$RUNNER_TEMP/v3/bench"
+          python - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          from huggingface_hub import HfApi, hf_hub_download
+          root=Path(os.environ['RUNNER_TEMP'])/'v3'; repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; sp=os.environ['STRUCTURED_PREFIX']; nprefix=os.environ['NEURAL_PREFIX']
+          api=HfApi(token=token); visible=set(api.list_repo_files(repo_id=repo,repo_type='dataset'))
+          scalar={
+            f'{sp}/model.joblib':root/'structured/model.joblib',
+            f'{sp}/manifest.json':root/'structured/manifest.json',
+            f'{sp}/metrics.json':root/'structured/metrics.json',
+            f'{nprefix}/manifest.json':root/'neural/manifest.json',
+            f'{nprefix}/metrics.json':root/'neural/metrics.json',
+            'matches.parquet':root/'data/matches.parquet',
+            'items_human.parquet':root/'data/items_human.parquet',
+          }
+          for remote,target in scalar.items():
+            if remote not in visible: raise RuntimeError(f'missing private HF dependency: {remote}')
+            src=Path(hf_hub_download(repo_id=repo,repo_type='dataset',filename=remote,token=token)); target.parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(src,target); print('fetched_private',remote,target.stat().st_size)
+          model_files=sorted(p for p in visible if p.startswith(f'{nprefix}/model/'))
+          if not model_files: raise RuntimeError('v3 neural model directory is empty in private HF')
+          for remote in model_files:
+            rel=Path(remote).relative_to(f'{nprefix}/model'); target=root/'neural/model'/rel
+            src=Path(hf_hub_download(repo_id=repo,repo_type='dataset',filename=remote,token=token)); target.parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(src,target); print('fetched_neural_asset',rel,target.stat().st_size)
+          PY
+      - name: Validate strict v3 improvement gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'v3'; m=json.loads((root/'neural/metrics.json').read_text()); man=json.loads((root/'neural/manifest.json').read_text())
+          score=float(m['selected_macro_average_precision']); delta=float(m['delta_vs_v2'])
+          assert m['validation_item_overlap']==0 and m['validation_rows']==73131
+          assert score>0.5010008994958702 and delta>0.0
+          assert any(float(v)>0 for v in man['category_alphas'].values())
+          print('v3_validation_gate_ok',score,delta,m['selected_candidate'],m['selected_model_stage']); print('category_alphas',man['category_alphas'])
+          PY
+      - name: Pull exact organizer image and build v3 ZIP inside it
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$ORGANIZER_IMAGE"
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace:ro" -v "$RUNNER_TEMP/v3/structured:/structured:ro" -v "$RUNNER_TEMP/v3/neural:/neural:ro" -v "$RUNNER_TEMP/v3:/out" -w /workspace "$ORGANIZER_IMAGE" \
+            python -m ecup_matching.build_submission_v3 --structured-model /structured/model.joblib --structured-manifest /structured/manifest.json --neural-model-dir /neural/model --neural-manifest /neural/manifest.json --output /out/ecup-v3-submission.zip
+          unzip -q "$RUNNER_TEMP/v3/ecup-v3-submission.zip" -d "$RUNNER_TEMP/v3/pkg"
+          python - <<'PY'
+          import os,zipfile
+          from pathlib import Path
+          p=Path(os.environ['RUNNER_TEMP'])/'v3/ecup-v3-submission.zip'; print('submission_zip_bytes',p.stat().st_size)
+          with zipfile.ZipFile(p) as z:
+            names=z.namelist(); assert 'model_v3/model.safetensors' in names and 'model_v2.joblib' in names; assert not any(n.endswith('.parquet') for n in names); print('submission_files',len(names))
+          PY
+      - name: Create exact 275k benchmark slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -i -v "$RUNNER_TEMP/v3/data:/data:ro" -v "$RUNNER_TEMP/v3/bench:/bench" "$ORGANIZER_IMAGE" python - <<'PY'
+          import pandas as pd
+          m=pd.read_parquet('/data/matches.parquet')[['id1','id2']].iloc[:275000].reset_index(drop=True); items=pd.read_parquet('/data/items_human.parquet'); ids=set(m.id1)|set(m.id2); items=items[items.id.isin(ids)]
+          assert len(m)==275000; m.to_parquet('/bench/matches.parquet',index=False); items.to_parquet('/bench/items.parquet',index=False); print('benchmark_pairs',len(m),'items',len(items))
+          PY
+      - name: Run full v3 275k benchmark offline in exact organizer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          docker run --rm --network none -v "$RUNNER_TEMP/v3/pkg:/submission:ro" -v "$RUNNER_TEMP/v3/bench:/bench" -w /submission "$ORGANIZER_IMAGE" \
+            python -u run.py --items_path /bench/items.parquet --matches_path /bench/matches.parquet --output_path /bench/prediction.csv
+          end=$(date +%s); runtime=$((end-start)); echo "$runtime" > "$RUNNER_TEMP/v3/runtime.txt"
+          docker run --rm --network none -i -v "$RUNNER_TEMP/v3/bench:/bench:ro" "$ORGANIZER_IMAGE" python - <<'PY'
+          import numpy as np,pandas as pd
+          p=pd.read_csv('/bench/prediction.csv'); m=pd.read_parquet('/bench/matches.parquet')
+          assert len(p)==len(m)==275000 and list(p.columns)==['id1','id2','predict']; assert p[['id1','id2']].equals(m); assert np.isfinite(p.predict).all() and p.predict.between(0,1).all() and p.predict.nunique()>100
+          print('v3_offline_output_ok','rows',len(p),'unique_scores',p.predict.nunique())
+          PY
+      - name: Persist retained v3 privately and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          root=Path(os.environ['RUNNER_TEMP'])/'v3'; m=json.loads((root/'neural/metrics.json').read_text()); man=json.loads((root/'neural/manifest.json').read_text()); runtime=int((root/'runtime.txt').read_text()); archive=root/'ecup-v3-submission.zip'
+          payload={
+            'benchmark_pairs':275000,'cpu_offline_runtime_seconds':runtime,'organizer_private_limit_seconds':780,'organizer_target_gpu':'NVIDIA H100 80GB','organizer_image':os.environ['ORGANIZER_IMAGE'],'offline_network_disabled':True,
+            'submission_zip_bytes':archive.stat().st_size,'submission_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'validation_macro_ap':m['selected_macro_average_precision'],'delta_vs_v2':m['delta_vs_v2'],'selected_candidate':m['selected_candidate'],'selected_model_stage':m['selected_model_stage'],'hard_negative_mining':m['hard_negative_mining'],'category_alphas':man['category_alphas'],'neural_training_seconds':m['total_seconds'],'neural_source_prefix':os.environ['NEURAL_PREFIX'],'structured_source_prefix':os.environ['STRUCTURED_PREFIX'],'source_sha':os.environ['GITHUB_SHA']}
+          path=root/'v3-package-metrics.json'; path.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8'); print(json.dumps(payload,ensure_ascii=False,indent=2))
+          api=HfApi(token=os.environ['HF_TOKEN']); repo=os.environ['HF_REPO_ID']
+          for local,remote in ((archive,'submissions/v3/ecup-v3-submission.zip'),(path,'submissions/v3/v3-package-metrics.json')):
+            api.upload_file(path_or_fileobj=str(local),path_in_repo=remote,repo_id=repo,repo_type='dataset',commit_message=f'Store retained E-CUP v3 artifact: {remote}')
+          visible=set(api.list_repo_files(repo_id=repo,repo_type='dataset')); required={'submissions/v3/ecup-v3-submission.zip','submissions/v3/v3-package-metrics.json'}; missing=required-visible
+          if missing: raise RuntimeError(f'private v3 artifact verification failed: {sorted(missing)}')
+          print('private_v3_submission_verified')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v3-organizer-package-metrics
+          path: ${{ runner.temp }}/v3/v3-package-metrics.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Cleanup all private runner material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/v3"

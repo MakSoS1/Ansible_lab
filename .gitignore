@@ -1,0 +1,21 @@
+# E-CUP private/local artifacts
+.agent-memory/
+*.db
+*.sqlite
+*.sqlite3
+*.parquet
+*.joblib
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+
+# Generated submission/runtime archives
+*.zip
+
+# Python
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+.DS_Store

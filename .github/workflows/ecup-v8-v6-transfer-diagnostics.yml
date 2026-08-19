@@ -1,0 +1,105 @@
+name: E-CUP v8 v6 transfer diagnostics
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-v6-transfer-diagnostics.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      V6_OOF: experiments/v6/teacher-gate/95/0202787447cc/v6-teacher-gate-95-oof.parquet
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download v6 OOF and canonical human inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$RUNNER_TEMP/v8-v6diag"; mkdir -p "$tmp"
+          for f in matches.parquet items_human.parquet "$V6_OOF"; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" \
+              -o "$tmp/$(basename "$f")"
+          done
+      - name: Reproduce exact v6 candidate and apply fixed v5 graph plus prevalence stress
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np, pandas as pd
+          from sklearn.metrics import average_precision_score
+          from ecup_matching.ml.v5_evaluation import macro_ap_report
+          from ecup_matching.ml.v7_frozen_split import load_frozen_split_manifest
+          from ecup_matching.ml.run_v5_pretrained_biencoder import development_rows_and_folds
+          from ecup_matching.ml.v8_graph import graph_features, graph_rescore
+
+          EXPECTED=0.6006003614522999
+          PREV_RATIO=0.566880890615799
+          root=Path(os.environ['RUNNER_TEMP'])/'v8-v6diag'
+          matches=pd.read_parquet(root/'matches.parquet',columns=['id1','id2','target'])
+          items=pd.read_parquet(root/'items_human.parquet',columns=['id','category']).drop_duplicates('id')
+          oof=pd.read_parquet(root/'v6-teacher-gate-95-oof.parquet')
+          manifest=load_frozen_split_manifest(); dev,folds=development_rows_and_folds(manifest,total_rows=len(matches))
+          dev=np.asarray(dev,int); folds=np.asarray(folds,int); row_to_fold=dict(zip(dev.tolist(),folds.tolist()))
+          rows=oof['row_index'].to_numpy(int) if 'row_index' in oof else dev
+          work=matches.iloc[rows].reset_index(drop=True); work['fold']=[row_to_fold[int(r)] for r in rows]
+          catmap=dict(zip(items.id.tolist(),items.category.astype(str).tolist())); work['category']=work.id1.map(catmap)
+          candidates=[]
+          excluded={'row_index','fold','target','category','id1','id2'}
+          for c in oof.columns:
+            if c in excluded or not pd.api.types.is_numeric_dtype(oof[c]): continue
+            s=oof[c].to_numpy(float)
+            if len(s)!=len(work) or not np.isfinite(s).all(): continue
+            try: m=float(macro_ap_report(work,s,strict_official=True)['macro_average_precision'])
+            except Exception: continue
+            candidates.append((abs(m-EXPECTED),c,m))
+          candidates.sort()
+          print('V8_V6_SCORE_CANDIDATES='+json.dumps(candidates[:10],ensure_ascii=False))
+          if not candidates or candidates[0][0]>1e-10: raise RuntimeError(f'cannot reproduce v6 exact metric: {candidates[:5]}')
+          score_col=candidates[0][1]; score=oof[score_col].to_numpy(float); base=candidates[0][2]
+
+          gf=graph_features(work[['id1','id2','category']],score)
+          graph=graph_rescore(score,gf,reciprocal_best_bonus=0,reciprocal_top3_bonus=0,endpoint_rank_weight=.02,ambiguity_penalty=.01)
+          graph_full=float(macro_ap_report(work,graph,strict_official=True)['macro_average_precision'])
+          per_fold=[]
+          for f in range(5):
+            mask=work.fold.to_numpy()==f
+            b=float(macro_ap_report(work.loc[mask].reset_index(drop=True),score[mask])['macro_average_precision'])
+            g=float(macro_ap_report(work.loc[mask].reset_index(drop=True),graph[mask])['macro_average_precision'])
+            per_fold.append({'fold':f,'base':b,'graph':g,'delta':g-b})
+
+          y=work.target.to_numpy(np.int8); cats=work.category.astype(str).to_numpy(); categories=sorted(np.unique(cats).tolist())
+          plan={}
+          for cat in categories:
+            idx=np.flatnonzero(cats==cat); yy=y[idx]; p=float(yy.mean()); tp=p*PREV_RATIO
+            neg=int((yy==0).sum()); pos=int((yy==1).sum()); keep=min(pos,max(1,int(round(tp*neg/max(1e-12,1-tp)))))
+            plan[cat]=(np.flatnonzero((cats==cat)&(y==0)),np.flatnonzero((cats==cat)&(y==1)),keep)
+          trials=[]
+          for seed in range(2026,2076):
+            rng=np.random.default_rng(seed); aps=[]
+            for cat in categories:
+              neg,pos,keep=plan[cat]; sel=np.concatenate([neg,rng.choice(pos,size=keep,replace=False)])
+              aps.append(float(average_precision_score(y[sel],score[sel])))
+            trials.append(float(np.mean(aps)))
+          arr=np.asarray(trials)
+          out={'diagnostic_only':True,'score_col':score_col,'base_macro_ap':base,
+               'fixed_graph_macro_ap':graph_full,'fixed_graph_delta':graph_full-base,'graph_per_fold':per_fold,
+               'prevalence_stressed_mean':float(arr.mean()),'prevalence_stressed_std':float(arr.std(ddof=1)),
+               'prevalence_ratio_proxy':PREV_RATIO,'true_test_prevalence_claimed':False,'gold_opened':False}
+          print('V8_V6_TRANSFER='+json.dumps(out,ensure_ascii=False,sort_keys=True))
+          PY

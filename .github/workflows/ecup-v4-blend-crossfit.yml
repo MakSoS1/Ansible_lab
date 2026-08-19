@@ -1,0 +1,140 @@
+name: E-CUP v4 blend crossfit
+
+on:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v4-blend-crossfit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  crossfit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      V3_VALIDATION: experiments/v3/neural/2d31cb18a06e/validation_predictions.parquet
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install minimal stack
+        run: python -m pip install 'pandas>=2.2,<3' 'pyarrow>=17,<24' 'scikit-learn>=1.5,<2' 'huggingface_hub>=0.34,<1'
+      - name: Cross-fit on unseen validation components
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          from huggingface_hub import hf_hub_download
+          from sklearn.model_selection import GroupKFold
+          from ecup_matching.ml.metrics import macro_average_precision
+          from ecup_matching.ml.v3_selection import select_best_blend
+          from ecup_matching.ml.train_v4_reranker import shrink_category_alphas
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'v4crossfit'
+          root.mkdir(parents=True, exist_ok=True)
+          path = Path(hf_hub_download(
+              repo_id=os.environ['HF_REPO_ID'], repo_type='dataset',
+              filename=os.environ['V3_VALIDATION'], token=os.environ['HF_TOKEN'],
+              local_dir=root,
+          ))
+          df = pd.read_parquet(path).reset_index(drop=True)
+          required = {'id1','id2','target','category','selected_neural','v2b-weak-curriculum'}
+          missing = required - set(df.columns)
+          if missing:
+              raise RuntimeError(f'missing columns: {sorted(missing)}')
+          assert len(df) == 73131
+
+          parent = {}
+          rank = {}
+          def find(x):
+              parent.setdefault(x, x); rank.setdefault(x, 0)
+              while parent[x] != x:
+                  parent[x] = parent[parent[x]]
+                  x = parent[x]
+              return x
+          def union(a,b):
+              ra, rb = find(a), find(b)
+              if ra == rb: return
+              if rank[ra] < rank[rb]: ra, rb = rb, ra
+              parent[rb] = ra
+              if rank[ra] == rank[rb]: rank[ra] += 1
+          for a,b in df[['id1','id2']].itertuples(index=False, name=None):
+              union(a,b)
+          groups = np.asarray([find(a) for a in df['id1']], dtype=object)
+          y = df['target'].to_numpy(float)
+          cat = df['category'].astype(str).to_numpy()
+          structured = df['v2b-weak-curriculum'].to_numpy(float)
+          neural = df['selected_neural'].to_numpy(float)
+          grid = tuple(v/40 for v in range(41))
+          priors = (250,500,1000,2000,4000,8000)
+
+          splitter = GroupKFold(n_splits=5)
+          oof_global = np.zeros(len(df), dtype=float)
+          oof_by_prior = {p: np.zeros(len(df), dtype=float) for p in priors}
+          fold_reports = []
+          for fold, (tr, va) in enumerate(splitter.split(df, y, groups), 1):
+              global_fit = select_best_blend(structured[tr], neural[tr], y[tr], cat[tr], alphas=grid)
+              ga = float(global_fit['alpha_neural'])
+              oof_global[va] = (1-ga)*structured[va] + ga*neural[va]
+              raw = {}; support = {}
+              train_cats = set(cat[tr])
+              for c in sorted(set(cat)):
+                  mask_local = cat[tr] == c
+                  if c not in train_cats or int(mask_local.sum()) < 2:
+                      raw[c] = ga; support[c] = int(mask_local.sum()); continue
+                  local = select_best_blend(
+                      structured[tr][mask_local], neural[tr][mask_local], y[tr][mask_local], cat[tr][mask_local], alphas=grid
+                  )
+                  raw[c] = float(local['alpha_neural']); support[c] = int(mask_local.sum())
+              for prior in priors:
+                  alphas = shrink_category_alphas(raw, global_alpha=ga, category_support=support, prior_strength=prior)
+                  for c in set(cat[va]):
+                      m = va[cat[va] == c]
+                      a = alphas.get(c, ga)
+                      oof_by_prior[prior][m] = (1-a)*structured[m] + a*neural[m]
+              fold_reports.append({'fold': fold, 'train_rows': int(len(tr)), 'valid_rows': int(len(va)), 'global_alpha': ga})
+
+          global_macro, global_per = macro_average_precision(y, oof_global, cat)
+          candidates = []
+          for prior, score in oof_by_prior.items():
+              macro, per = macro_average_precision(y, score, cat)
+              candidates.append({
+                  'prior_strength': prior,
+                  'macro_average_precision': float(macro),
+                  'delta_vs_crossfit_global': float(macro-global_macro),
+                  'delta_vs_retained_v3_full_validation': float(macro-0.5254642645846543),
+                  'per_category_ap': per,
+              })
+          best = max(candidates, key=lambda x:x['macro_average_precision'])
+          payload = {
+              'version':'v4-blend-component-crossfit',
+              'rows':int(len(df)),
+              'components':int(len(set(groups))),
+              'folds':fold_reports,
+              'crossfit_global_macro_ap':float(global_macro),
+              'crossfit_global_per_category_ap':global_per,
+              'candidates':candidates,
+              'best':best,
+              'full_validation_shrunk_prior250_macro_ap':0.5291958847698244,
+          }
+          out = root/'crossfit_metrics.json'
+          out.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(payload,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload safe crossfit metrics
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ecup-v4-blend-crossfit
+          path: ${{ runner.temp }}/v4crossfit/crossfit_metrics.json
+          if-no-files-found: error
+          retention-days: 7

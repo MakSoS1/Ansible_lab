@@ -1,0 +1,54 @@
+name: E-CUP v8 locate exact v6 OOF
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-find-v6-exact.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.11'}
+      - run: python -m pip install 'huggingface_hub>=1.0,<2'
+      - name: Find metric artifact closest to exact final v6
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from huggingface_hub import HfApi, hf_hub_download
+          TARGET=0.6006003614522999
+          api=HfApi(token=os.environ['HF_TOKEN']); repo=os.environ['HF_REPO_ID']
+          files=api.list_repo_files(repo,repo_type='dataset')
+          metrics=[f for f in files if f.startswith('experiments/v6/') and f.endswith('-metrics.json')]
+          hits=[]
+          for f in metrics:
+              try:
+                  p=hf_hub_download(repo_id=repo,repo_type='dataset',filename=f,token=os.environ['HF_TOKEN'])
+                  d=json.load(open(p))
+              except Exception:
+                  continue
+              def walk(x,prefix=''):
+                  if isinstance(x,dict):
+                      for k,v in x.items(): yield from walk(v,prefix+'.'+k if prefix else k)
+                  elif isinstance(x,(int,float)) and not isinstance(x,bool):
+                      yield prefix,float(x)
+              for k,v in walk(d):
+                  dist=abs(v-TARGET)
+                  if dist<0.02:
+                      hits.append((dist,f,k,v))
+          hits.sort()
+          for row in hits[:30]: print('V8_V6_METRIC_HIT='+json.dumps(row,ensure_ascii=False))
+          exact=[h for h in hits if h[0]<1e-10]
+          if not exact: raise RuntimeError('no exact v6 metric artifact found')
+          print('V8_V6_EXACT_METRIC='+json.dumps(exact[0],ensure_ascii=False))
+          PY

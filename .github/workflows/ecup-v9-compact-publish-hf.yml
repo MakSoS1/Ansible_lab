@@ -1,0 +1,132 @@
+name: E-CUP v9 compact publish keeper to HF
+
+on:
+  push:
+    branches: [ecup-v9-compact]
+    paths:
+      - .github/v9-compact-publish-ready.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      ARCHIVE_NAME: ecup-v9-compact-fp16storage-0.5970059311-submission.zip
+      ARCHIVE_URL: https://github.com/MakSoS1/Ansible_lab/releases/download/ecup-v9-compact-6ba133ce25f7/ecup-v9-compact-fp16storage-0.5970059311-submission.zip
+      EXPECTED_SHA: aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345
+      EXPECTED_BYTES: '596925132'
+      HF_ARCHIVE_PATH: submissions/v9/compact/ecup-v9-compact-fp16storage-0.5970059311-submission.zip
+      HF_MANIFEST_PATH: submissions/v9/compact/V9_COMPACT_KEEPER.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+
+      - name: Require publication gate and HF token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/v9-compact-publish-ready.json
+          test -n "${HF_TOKEN:-}" || { echo '::error::HF_TOKEN missing'; exit 1; }
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('.github/v9-compact-publish-ready.json').read_text())
+          assert p['archive_sha256']=='aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345'
+          assert p['archive_bytes']==596925132
+          assert p['equivalence']['run_id']==31675338174
+          assert p['equivalence']['spearman_rank_correlation'] >= 0.99999
+          assert p['runtime_e2e']['both_passed'] is True
+          assert p['runtime_e2e']['public']['passed'] is True
+          assert p['runtime_e2e']['private']['passed'] is True
+          assert p['leaderboard_score'] is None
+          print('publication_gate_verified')
+          PY
+
+      - name: Download exact compact release bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 20 --retry-all-errors "$ARCHIVE_URL" -o "$ARCHIVE_NAME"
+          test "$(stat -c '%s' "$ARCHIVE_NAME")" = "$EXPECTED_BYTES"
+          echo "$EXPECTED_SHA  $ARCHIVE_NAME" | sha256sum -c --strict
+
+      - name: Install Hugging Face client
+        run: python -m pip install 'huggingface_hub>=1.0,<2'
+
+      - name: Upload exact compact keeper and evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from huggingface_hub import HfApi, CommitOperationAdd
+
+          gate=json.loads(Path('.github/v9-compact-publish-ready.json').read_text())
+          archive=Path(os.environ['ARCHIVE_NAME'])
+          manifest={
+              'version':'v9-compact',
+              'status':'submission-candidate',
+              'archive':archive.name,
+              'bytes':archive.stat().st_size,
+              'sha256':os.environ['EXPECTED_SHA'],
+              'source_v9':{
+                  'archive':'ecup-v9-gate40-fp16-graph-0.5970059311-submission.zip',
+                  'bytes':1251659961,
+                  'sha256':'925456cde1e47c50dc0141ce64bed5ef00d9f574152f285869ebea2db6935782',
+                  'platform_result':'Container did not finish in time',
+                  'submission_status':'rejected-for-submission-runtime-risk',
+              },
+              'validation':{
+                  'gate40_strict_oof_macro_ap':0.595505427416499,
+                  'fold_local_graph_strict_oof_macro_ap':0.597005931143384,
+                  'target_stress_mean':0.4515676235464289,
+                  'leaderboard_score':None,
+                  'leaderboard_score_claimed':False,
+              },
+              'compaction':{
+                  'method':'FP16 safetensors storage for contrastive and teacher floating tensors; non-floating tensors preserved; runtime bytecode removed',
+                  'source_bytes':1251659961,
+                  'compact_bytes':596925132,
+                  'bytes_saved':654734829,
+                  'size_ratio':596925132/1251659961,
+              },
+              'equivalence':gate['equivalence'],
+              'runtime_e2e':gate['runtime_e2e'],
+              'organizer_image':'odsai/ecup26-matching-baseline:1.0',
+              'gpu':'NVIDIA GeForce RTX 2060 SUPER',
+              'release_tag':'ecup-v9-compact-6ba133ce25f7',
+              'sealed_gold_opened':False,
+              'gold_rows_scored':0,
+          }
+          manifest_path=Path('V9_COMPACT_KEEPER.json')
+          manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2,sort_keys=True)+'\n')
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          api.create_commit(
+              repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',
+              operations=[
+                  CommitOperationAdd(path_in_repo=os.environ['HF_ARCHIVE_PATH'],path_or_fileobj=str(archive)),
+                  CommitOperationAdd(path_in_repo=os.environ['HF_MANIFEST_PATH'],path_or_fileobj=str(manifest_path)),
+              ],
+              commit_message='Publish E-CUP v9 compact runtime-hardened keeper',
+          )
+          visible=set(api.list_repo_files(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset'))
+          for remote in (os.environ['HF_ARCHIVE_PATH'],os.environ['HF_MANIFEST_PATH']):
+              if remote not in visible: raise RuntimeError(f'HF verification failed: {remote}')
+              print('verified_hf',remote)
+          print('hf_repo',os.environ['HF_REPO_ID'])
+          print('archive_sha256',os.environ['EXPECTED_SHA'])
+          PY
+
+      - name: Upload publication manifest evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v9-compact-hf-publish-${{ github.run_id }}
+          path: V9_COMPACT_KEEPER.json
+          retention-days: 14

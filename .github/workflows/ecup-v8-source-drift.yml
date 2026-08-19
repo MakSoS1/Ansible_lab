@@ -1,0 +1,42 @@
+name: E-CUP v8 source drift diagnostic
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths:
+      - .github/workflows/ecup-v8-source-drift.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+    steps:
+      - name: Compare exact bytes from HF mirror and organizer source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          org='https://storage.yandexcloud.net/ozon-ecup-2026/Matching'
+          for f in matches.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" \
+              -o "$tmp/hf-$f"
+            curl -fL --retry 5 --retry-all-errors "$org/$f" -o "$tmp/org-$f"
+            hf_size="$(stat -c %s "$tmp/hf-$f")"
+            org_size="$(stat -c %s "$tmp/org-$f")"
+            hf_sha="$(sha256sum "$tmp/hf-$f" | awk '{print $1}')"
+            org_sha="$(sha256sum "$tmp/org-$f" | awk '{print $1}')"
+            same=false; [[ "$hf_sha" == "$org_sha" ]] && same=true
+            printf 'V8_SOURCE_DRIFT file=%s hf_size=%s org_size=%s hf_sha256=%s org_sha256=%s identical=%s\n' \
+              "$f" "$hf_size" "$org_size" "$hf_sha" "$org_sha" "$same"
+          done

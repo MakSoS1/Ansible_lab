@@ -1,0 +1,68 @@
+{
+  "version": "v9-compact",
+  "archive": "ecup-v9-compact-fp16storage-0.5970059311-submission.zip",
+  "archive_bytes": 596925132,
+  "archive_sha256": "aabe663502b9dafe5b925347c3908d6bfe731045467aa85029da6255fbc78345",
+  "release_tag": "ecup-v9-compact-6ba133ce25f7",
+  "equivalence": {
+    "run_id": 31675338174,
+    "rows": 20000,
+    "mean_abs_delta": 0.00016378653597360943,
+    "p99_abs_delta": 0.0019011406844106082,
+    "p999_abs_delta": 0.008163265306122325,
+    "max_abs_delta": 0.10074231177094373,
+    "pearson_correlation": 0.9999931722281602,
+    "spearman_rank_correlation": 0.9999931451822124,
+    "top_fraction_overlap": {
+      "0.01": 1.0,
+      "0.05": 0.999,
+      "0.10": 0.999,
+      "0.25": 0.9996
+    },
+    "original_seconds": 91.352614853,
+    "compact_seconds": 81.015456088,
+    "output_valid": true
+  },
+  "runtime_e2e": {
+    "run_id": 31675903851,
+    "artifact_id": 9171929877,
+    "timer_scope": "safe ZIP extraction + docker inference + output validation; network download and fixture preparation excluded",
+    "both_passed": true,
+    "public": {
+      "rows": 115000,
+      "extract_seconds": 5.234229078,
+      "inference_seconds": 287.592726358,
+      "validation_seconds": 0.738098444,
+      "total_seconds": 293.569452608,
+      "acceptance_seconds": 330.0,
+      "headroom_seconds": 36.430547391999994,
+      "return_code": 0,
+      "output_valid": true,
+      "unique_scores": 108264,
+      "passed": true
+    },
+    "private": {
+      "rows": 275000,
+      "extract_seconds": 5.714303003,
+      "inference_seconds": 640.236212537,
+      "validation_seconds": 0.992280967,
+      "total_seconds": 646.947129008,
+      "acceptance_seconds": 700.0,
+      "headroom_seconds": 53.05287099199995,
+      "return_code": 0,
+      "output_valid": true,
+      "unique_scores": 271298,
+      "passed": true
+    }
+  },
+  "validation": {
+    "gate40_strict_oof_macro_ap": 0.595505427416499,
+    "fold_local_graph_strict_oof_macro_ap": 0.597005931143384,
+    "target_stress_mean": 0.4515676235464289,
+    "metrics_inherited_not_remeasured_after_storage_compaction": true
+  },
+  "leaderboard_score": null,
+  "leaderboard_score_claimed": false,
+  "sealed_gold_opened": false,
+  "gold_rows_scored": 0
+}

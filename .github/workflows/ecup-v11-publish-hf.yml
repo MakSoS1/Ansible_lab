@@ -1,0 +1,132 @@
+name: E-CUP v11 publish exact keeper to HF
+
+on:
+  push:
+    branches: [ecup-v11-fastlex]
+    paths:
+      - '.github/workflows/ecup-v11-publish-hf.yml'
+      - 'ecup_matching/experiments/v11/V11_HF_PUBLISH_REQUEST.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  SOURCE_PATH: submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+  TARGET_PREFIX: submissions/v11/final
+  TARGET_NAME: ecup-v11-faststack-graph-0.5950413763-submission.zip
+  EXPECTED_SHA: 0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a
+  EXPECTED_BYTES: '480249754'
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Download exact canonical payload from private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          python -m pip install -q 'huggingface_hub>=1.0,<2'
+          python - <<'PY'
+          import os, shutil
+          from huggingface_hub import hf_hub_download
+          src=hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=os.environ['SOURCE_PATH'],token=os.environ['HF_TOKEN'],force_download=True)
+          dst=os.path.join(os.environ['RUNNER_TEMP'],os.environ['TARGET_NAME'])
+          shutil.copyfile(src,dst)
+          print('source_local',dst)
+          PY
+          test "$(stat -c '%s' "$RUNNER_TEMP/$TARGET_NAME")" = "$EXPECTED_BYTES"
+          test "$(sha256sum "$RUNNER_TEMP/$TARGET_NAME" | awk '{print $1}')" = "$EXPECTED_SHA"
+
+      - name: Verify submission contract and create v11 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          z=Path(os.environ['RUNNER_TEMP'])/os.environ['TARGET_NAME']
+          with zipfile.ZipFile(z) as a:
+              assert a.testzip() is None
+              names=a.namelist(); assert len(names)==len(set(names))
+              assert {'run.py','metadata.json','NO_TEACHER_KEEPER.json'} <= set(names)
+              assert json.loads(a.read('metadata.json')) == {'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+              assert not any(n.startswith('model_v5_teacher/') for n in names)
+              assert any(n.startswith('model_v5_contrastive/') for n in names)
+              for info in a.infolist():
+                  p=PurePosixPath(info.filename)
+                  assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
+                  assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
+          manifest={
+              'version':'v11','status':'submission-ready','candidate':'no_teacher+frozen_graph-faststack',
+              'filename':os.environ['TARGET_NAME'],'bytes':int(os.environ['EXPECTED_BYTES']),'sha256':os.environ['EXPECTED_SHA'],
+              'payload_identity':'byte-identical to fixed v10 no-teacher keeper',
+              'strict_raw_oof_macro_ap':0.5931387077244183,'strict_graph_oof_macro_ap':0.5950413762943735,
+              'target_stress_graph_mean':0.44961526826354,
+              'runtime_gate':{'run_id':31712095181,'device':'NVIDIA GeForce RTX 2060 SUPER','timer_scope':'ZIP extraction + Docker inference + output validation','public_115k_wall_seconds':161.9069420099986,'private_275k_wall_seconds':379.24445236499014,'public_acceptance_seconds':180.0,'private_acceptance_seconds':420.0,'passed':True},
+              'verification':{'run_id':31712646355,'tests_passed':450,'tests_skipped':6,'memory_policy':'OK'},
+              'teacher_checkpoint_packaged':False,'sealed_gold_opened':False,'sealed_gold_rows_scored':0,'leaderboard_score':None,
+          }
+          Path('/tmp/V11_KEEPER.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(manifest,sort_keys=True))
+          PY
+
+      - name: Publish exact bytes and manifest to private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from huggingface_hub import CommitOperationAdd, HfApi
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          archive=os.path.join(os.environ['RUNNER_TEMP'],os.environ['TARGET_NAME'])
+          ops=[
+              CommitOperationAdd(path_in_repo=f"{os.environ['TARGET_PREFIX']}/{os.environ['TARGET_NAME']}",path_or_fileobj=archive),
+              CommitOperationAdd(path_in_repo=f"{os.environ['TARGET_PREFIX']}/V11_KEEPER.json",path_or_fileobj='/tmp/V11_KEEPER.json'),
+          ]
+          info=api.create_commit(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',operations=ops,commit_message='v11: publish runtime-gated faststack keeper')
+          print('V11_HF_COMMIT='+info.oid)
+          PY
+
+      - name: Re-download v11 canonical bytes and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, shutil
+          from huggingface_hub import HfApi, hf_hub_download
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; prefix=os.environ['TARGET_PREFIX']; name=os.environ['TARGET_NAME']
+          required={f'{prefix}/{name}',f'{prefix}/V11_KEEPER.json'}
+          files=set(HfApi(token=token).list_repo_files(repo_id=repo,repo_type='dataset'))
+          missing=required-files
+          if missing: raise SystemExit(f'missing after publish: {sorted(missing)}')
+          src=hf_hub_download(repo_id=repo,repo_type='dataset',filename=f'{prefix}/{name}',token=token,force_download=True)
+          shutil.copyfile(src,os.path.join(os.environ['RUNNER_TEMP'],'v11-canonical.zip'))
+          PY
+          test "$(stat -c '%s' "$RUNNER_TEMP/v11-canonical.zip")" = "$EXPECTED_BYTES"
+          observed="$(sha256sum "$RUNNER_TEMP/v11-canonical.zip" | awk '{print $1}')"
+          echo "V11_CANONICAL_SHA=$observed"
+          test "$observed" = "$EXPECTED_SHA"
+          echo 'V11_HF_CANONICAL_VERIFIED'
+
+      - name: Remove temporary benchmark GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view ecup-v11-bench >/dev/null 2>&1; then
+            gh release delete ecup-v11-bench --cleanup-tag -y
+          fi
+          echo 'TEMP_BENCH_RELEASE_CLEANED'

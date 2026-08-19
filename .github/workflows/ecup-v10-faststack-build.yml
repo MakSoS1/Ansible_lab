@@ -1,0 +1,208 @@
+name: E-CUP v10 no-teacher faststack build
+
+on:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - '.github/workflows/ecup-v10-faststack-build.yml'
+      - 'ecup_matching/submission/predict_v10_faststack.py'
+      - 'ecup_matching/submission/v10_text_cache.py'
+      - 'ecup_matching/submission/run_v10_faststack.py'
+      - 'ecup_matching/ml/run_v10_faststack_production.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  V5_ARCHIVE_PATH: submissions/v5/0.6018115534/ecup-v5-category-hgb-fusion-0.6018115534-submission.zip
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  ANCHOR_PREFIX: experiments/v5/fixed-blend/8a017cc12776
+  TYPED_PREFIX: experiments/v5/typed-explicit-fusion/681ce53c6967
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+  FINAL_NAME: ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - name: Install build stack
+        run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Re-run v10 contracts
+        run: python -m pytest -q ecup_matching/tests/test_v10_faststack.py ecup_matching/tests/test_v6_fast_ablation.py ecup_matching/tests/test_v5_category_shrunk.py ecup_matching/tests/test_v5_hgb_stack.py
+      - name: Download immutable data, OOFs and exact v5 production archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/out" "$RUNNER_TEMP/pkg"
+          curl -fL --retry 10 --retry-all-errors "$BASE_URL/matches.parquet" -o "$RUNNER_TEMP/data/matches.parquet"
+          curl -fL --retry 10 --retry-all-errors "$BASE_URL/items_human.parquet" -o "$RUNNER_TEMP/data/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; root=os.environ['RUNNER_TEMP']
+          paths=[
+            f"{os.environ['VALIDATION_PREFIX']}/split-manifest.json",
+            f"{os.environ['ANCHOR_PREFIX']}/v5-fixed-blend-oof.parquet",
+            f"{os.environ['TYPED_PREFIX']}/v5-typed-explicit-fusion-oof.parquet",
+            os.environ['V5_ARCHIVE_PATH'],
+          ]
+          for p in paths:
+            print(hf_hub_download(repo_id=repo,repo_type='dataset',filename=p,token=token,local_dir=os.path.join(root,'private')))
+          PY
+          V5="$RUNNER_TEMP/private/$V5_ARCHIVE_PATH"
+          test -s "$V5"
+          sha256sum "$V5" | tee "$RUNNER_TEMP/out/V5_SOURCE_SHA256.txt"
+      - name: Production-only no-teacher meta refit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u -m ecup_matching.ml.run_v10_faststack_production \
+            --raw-oof-macro-ap 0.5931387077244183 \
+            --graph-oof-macro-ap 0.5950413762943735 \
+            --target-stress-graph-mean 0.44961526826354 \
+            --items "$RUNNER_TEMP/data/items_human.parquet" \
+            --matches "$RUNNER_TEMP/data/matches.parquet" \
+            --manifest "$RUNNER_TEMP/private/$VALIDATION_PREFIX/split-manifest.json" \
+            --anchor-oof "$RUNNER_TEMP/private/$ANCHOR_PREFIX/v5-fixed-blend-oof.parquet" \
+            --typed-fusion-oof "$RUNNER_TEMP/private/$TYPED_PREFIX/v5-typed-explicit-fusion-oof.parquet" \
+            --category-output "$RUNNER_TEMP/out/model_v10_category_shrunk.json" \
+            --hgb-output "$RUNNER_TEMP/out/model_v10_hgb_meta.joblib" \
+            --metadata-output "$RUNNER_TEMP/out/NO_TEACHER_KEEPER.json" \
+            --expected-split-sha "$SPLIT_SHA"
+      - name: Patch exact v5 production package into v10 faststack
+        shell: bash
+        run: |
+          set -euo pipefail
+          V5="$RUNNER_TEMP/private/$V5_ARCHIVE_PATH"
+          unzip -q "$V5" -d "$RUNNER_TEMP/pkg"
+          rm -rf "$RUNNER_TEMP/pkg/model_v5_teacher"
+          rm -f "$RUNNER_TEMP/pkg/model_v5_category_hgb_metadata.json" \
+                "$RUNNER_TEMP/pkg/model_v5_category_shrunk.json" \
+                "$RUNNER_TEMP/pkg/model_v5_hgb_meta.joblib" \
+                "$RUNNER_TEMP/pkg/run.py"
+          mkdir -p "$RUNNER_TEMP/pkg/ecup_matching/submission" "$RUNNER_TEMP/pkg/ecup_matching/ml"
+          cp ecup_matching/submission/predict_v10_faststack.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
+          cp ecup_matching/submission/predict_v6.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
+          cp ecup_matching/submission/v10_text_cache.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
+          cp ecup_matching/submission/v6_fast.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
+          cp ecup_matching/submission/v6_parallel.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
+          cp ecup_matching/submission/v6_text_cache.py "$RUNNER_TEMP/pkg/ecup_matching/submission/"
+          cp ecup_matching/ml/v6_teacher_gate.py "$RUNNER_TEMP/pkg/ecup_matching/ml/"
+          cp ecup_matching/ml/v6_fast_ablation.py "$RUNNER_TEMP/pkg/ecup_matching/ml/"
+          cp ecup_matching/ml/v8_graph.py "$RUNNER_TEMP/pkg/ecup_matching/ml/"
+          cp ecup_matching/submission/run_v10_faststack.py "$RUNNER_TEMP/pkg/run.py"
+          cp "$RUNNER_TEMP/out/model_v10_category_shrunk.json" "$RUNNER_TEMP/pkg/"
+          cp "$RUNNER_TEMP/out/model_v10_hgb_meta.joblib" "$RUNNER_TEMP/pkg/"
+          cp "$RUNNER_TEMP/out/NO_TEACHER_KEEPER.json" "$RUNNER_TEMP/pkg/"
+          find "$RUNNER_TEMP/pkg" -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find "$RUNNER_TEMP/pkg" -type f -name '*.pyc' -delete
+          test ! -e "$RUNNER_TEMP/pkg/model_v5_teacher"
+          test -f "$RUNNER_TEMP/pkg/model_v5_contrastive/model.safetensors"
+          test -f "$RUNNER_TEMP/pkg/model_v5_structured.joblib"
+          test -f "$RUNNER_TEMP/pkg/ecup_matching/submission/v10_text_cache.py"
+          test -f "$RUNNER_TEMP/pkg/metadata.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          pkg=Path(os.environ['RUNNER_TEMP'])/'pkg'
+          metadata=json.loads((pkg/'metadata.json').read_text(encoding='utf-8'))
+          expected={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+          assert metadata == expected, (metadata, expected)
+          print('platform_metadata_contract_ok', metadata)
+          PY
+      - name: Import and archive contract smoke
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$RUNNER_TEMP/pkg" python - <<'PY'
+          import json, inspect, os
+          from pathlib import Path
+          from ecup_matching.submission.predict_v10_faststack import assert_no_teacher_assets, predict_to_csv_v10_faststack
+          pkg=Path(os.environ['RUNNER_TEMP'])/'pkg'
+          assert_no_teacher_assets(pkg)
+          assert 'teacher_model_dir' not in inspect.signature(predict_to_csv_v10_faststack).parameters
+          m=json.loads((pkg/'NO_TEACHER_KEEPER.json').read_text())
+          assert m['candidate']=='no_teacher'
+          assert abs(m['strict_graph_oof_macro_ap']-0.5950413762943735)<1e-12
+          assert m['selection_gold_metric_opened'] is False and m['selection_gold_rows_scored']==0
+          assert m['teacher_checkpoint_required'] is False
+          print('v10_faststack_import_contract_ok')
+          PY
+          find "$RUNNER_TEMP/pkg" -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find "$RUNNER_TEMP/pkg" -type f -name '*.pyc' -delete
+          (cd "$RUNNER_TEMP/pkg" && zip -q -r -9 "$GITHUB_WORKSPACE/$FINAL_NAME" .)
+          python - <<'PY'
+          import json, os, stat, zipfile, hashlib
+          from pathlib import Path, PurePosixPath
+          z=Path(os.environ['FINAL_NAME'])
+          sha=hashlib.sha256(z.read_bytes()).hexdigest(); size=z.stat().st_size
+          with zipfile.ZipFile(z) as a:
+            assert a.testzip() is None
+            names=a.namelist(); assert len(names)==len(set(names))
+            required={'metadata.json','run.py','model_v5_structured.joblib','model_v5_contrastive/model.safetensors','model_v10_category_shrunk.json','model_v10_hgb_meta.joblib','NO_TEACHER_KEEPER.json','ecup_matching/submission/predict_v10_faststack.py','ecup_matching/submission/v10_text_cache.py','ecup_matching/ml/v8_graph.py'}
+            assert required <= set(names), sorted(required-set(names))
+            metadata=json.loads(a.read('metadata.json').decode('utf-8'))
+            assert metadata == {'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+            assert not any(n.startswith('model_v5_teacher/') for n in names)
+            assert not any('__pycache__' in n or n.endswith('.pyc') for n in names)
+            for info in a.infolist():
+              p=PurePosixPath(info.filename); assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
+              assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
+          report={'filename':z.name,'sha256':sha,'bytes':size,'strict_raw_oof_macro_ap':0.5931387077244183,'strict_graph_oof_macro_ap':0.5950413762943735,'target_stress_graph_mean':0.44961526826354,'candidate':'no_teacher','teacher_checkpoint_packaged':False,'cpu_gpu_overlap':True,'contrastive_only_text_cache':True,'platform_metadata_contract':True,'sealed_gold_opened':False,'leaderboard_score':None,'leaderboard_score_claimed':False}
+          Path('V10_BUILD_RESULT.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          Path('SHA256SUMS.txt').write_text(f'{sha}  {z.name}\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+          sha256sum -c SHA256SUMS.txt
+      - name: Publish exact candidate only to private Hugging Face
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from huggingface_hub import CommitOperationAdd, HfApi
+          repo = os.environ['HF_REPO_ID']
+          token = os.environ['HF_TOKEN']
+          short = os.environ['GITHUB_SHA'][:12]
+          prefix = f"submissions/v10/candidates/{short}"
+          files = [os.environ['FINAL_NAME'], 'V10_BUILD_RESULT.json', 'SHA256SUMS.txt']
+          api = HfApi(token=token)
+          api.create_commit(
+              repo_id=repo,
+              repo_type='dataset',
+              operations=[CommitOperationAdd(path_in_repo=f"{prefix}/{p}", path_or_fileobj=p) for p in files],
+              commit_message=f"Store E-CUP v10 candidate {short} on private HF",
+          )
+          visible = set(api.list_repo_files(repo_id=repo, repo_type='dataset'))
+          for p in files:
+              remote = f"{prefix}/{p}"
+              if remote not in visible:
+                  raise RuntimeError(f"private HF verification failed: {remote}")
+              print('verified_private_hf', remote)
+          PY
+      - name: Upload build evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v10-faststack-build-${{ github.run_id }}
+          path: |
+            V10_BUILD_RESULT.json
+            SHA256SUMS.txt
+            ${{ runner.temp }}/out/NO_TEACHER_KEEPER.json
+            ${{ runner.temp }}/out/model_v10_category_shrunk.json
+            ${{ runner.temp }}/out/model_v10_hgb_meta.joblib
+          retention-days: 14

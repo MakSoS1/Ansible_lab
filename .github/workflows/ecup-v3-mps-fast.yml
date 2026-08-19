@@ -1,0 +1,110 @@
+name: E-CUP v3 fast Apple MPS candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-mps-fast.yml
+
+permissions:
+  contents: read
+
+jobs:
+  train-v3-fast:
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      PREPARED_PREFIX: experiments/v3/prepared/13edb087498b
+      PYTORCH_ENABLE_MPS_FALLBACK: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned stack and verify MPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet \
+            'torch==2.9.1' 'transformers==4.57.1' 'huggingface_hub>=0.34,<1' \
+            'pandas>=2.2,<3' 'pyarrow>=17,<24' 'scikit-learn>=1.5,<2' \
+            'safetensors>=0.4,<1' 'pytest>=8.3,<10'
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+          python - <<'PY'
+          import platform, torch
+          assert platform.machine()=='arm64' and torch.backends.mps.is_available()
+          x=torch.randn(1024,1024,device='mps'); _=x@x; torch.mps.synchronize()
+          print('fast_mps_ok')
+          PY
+      - name: Require token and fetch prepared data
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          mkdir -p "$RUNNER_TEMP/v3-prepared" "$RUNNER_TEMP/v3-neural"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          root=Path(os.environ['RUNNER_TEMP'])/'v3-prepared'; prefix=os.environ['PREPARED_PREFIX']
+          for name in ('train_examples.parquet','validation_examples.parquet','structured_validation_predictions.parquet'):
+              remote=f'{prefix}/{name}'
+              p=Path(hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=remote,token=os.environ['HF_TOKEN'],local_dir=root))
+              print('downloaded',remote,p.stat().st_size)
+          PY
+      - name: Train fast stage1 plus mined stage2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.ml.train_v3_reranker \
+            --train "$RUNNER_TEMP/v3-prepared/$PREPARED_PREFIX/train_examples.parquet" \
+            --validation "$RUNNER_TEMP/v3-prepared/$PREPARED_PREFIX/validation_examples.parquet" \
+            --structured-validation "$RUNNER_TEMP/v3-prepared/$PREPARED_PREFIX/structured_validation_predictions.parquet" \
+            --output-dir "$RUNNER_TEMP/v3-neural" \
+            --model cointegrated/rubert-tiny2 \
+            --max-length 144 \
+            --train-batch-size 32 \
+            --eval-batch-size 128 \
+            --stage1-steps 600 \
+            --stage2-steps 120 \
+            --stage1-lr 3e-5 \
+            --stage2-lr 1e-5 \
+            --hard-negative-count 10000
+      - name: Validate and upload fast candidate privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          root=Path(os.environ['RUNNER_TEMP'])/'v3-neural'
+          m=json.loads((root/'metrics.json').read_text()); man=json.loads((root/'manifest.json').read_text())
+          assert m['validation_item_overlap']==0 and m['validation_rows']==73131
+          print('fast_selected_macro_ap',m['selected_macro_average_precision'])
+          print('fast_delta_vs_v2',m['delta_vs_v2'])
+          print('fast_candidate',m['selected_candidate'])
+          print('fast_alphas',man['category_alphas'])
+          sha=os.environ['GITHUB_SHA'][:12]; prefix=f'experiments/v3/neural-fast/{sha}'
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          api.upload_folder(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',folder_path=str(root),path_in_repo=prefix,commit_message=f'Store fast E-CUP v3 MPS candidate {sha}')
+          visible=set(api.list_repo_files(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset'))
+          for rel in ('metrics.json','manifest.json','validation_predictions.parquet','model/model.safetensors'):
+              assert f'{prefix}/{rel}' in visible
+          print('fast_neural_prefix',prefix)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v3-fast-mps-metrics
+          path: |
+            ${{ runner.temp }}/v3-neural/metrics.json
+            ${{ runner.temp }}/v3-neural/manifest.json
+          retention-days: 14
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/v3-prepared" "$RUNNER_TEMP/v3-neural"

@@ -1,0 +1,75 @@
+name: E-CUP v5 OOF combo
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths: [.github/workflows/ecup-v5-oof-combo.yml, ecup_matching/ml/run_v5_oof_combo.py]
+permissions: {contents: read}
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  CATEGORY_PREFIX: experiments/v5/category/e885961388d1
+  WEIGHTED_PREFIX: experiments/v5/weighted-specialists/9df24f7ee133/aggregate
+  PRETRAINED_PREFIX: experiments/v5/pretrained/d812ad8d6a00
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+jobs:
+  combo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env: {HF_TOKEN: "${{ secrets.HF_TOKEN }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11', cache: pip, cache-dependency-path: ecup_matching/requirements-ci.txt}
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download aggregate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/out"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/matches.parquet" "$BASE_URL/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/items_human.parquet" "$BASE_URL/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; root=os.environ['RUNNER_TEMP']
+          paths=[
+            f"{os.environ['VALIDATION_PREFIX']}/split-manifest.json",
+            f"{os.environ['CATEGORY_PREFIX']}/v5b-category-oof.parquet",
+            f"{os.environ['WEIGHTED_PREFIX']}/v5b-weighted-specialist-oof.parquet",
+            f"{os.environ['PRETRAINED_PREFIX']}/v5c-pretrained-oof.parquet",
+          ]
+          for path in paths:
+            print(hf_hub_download(repo_id=repo,repo_type='dataset',filename=path,token=token,local_dir=os.path.join(root,'private')))
+          PY
+      - name: Crossfit combo
+        shell: bash
+        run: |
+          python -m ecup_matching.ml.run_v5_oof_combo \
+            --items "$RUNNER_TEMP/data/items_human.parquet" --matches "$RUNNER_TEMP/data/matches.parquet" \
+            --manifest "$RUNNER_TEMP/private/$VALIDATION_PREFIX/split-manifest.json" \
+            --category-oof "$RUNNER_TEMP/private/$CATEGORY_PREFIX/v5b-category-oof.parquet" \
+            --weighted-oof "$RUNNER_TEMP/private/$WEIGHTED_PREFIX/v5b-weighted-specialist-oof.parquet" \
+            --pretrained-oof "$RUNNER_TEMP/private/$PRETRAINED_PREFIX/v5c-pretrained-oof.parquet" \
+            --output-dir "$RUNNER_TEMP/out" --expected-split-sha "$SPLIT_SHA"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          m=json.loads((Path(os.environ['RUNNER_TEMP'])/'out'/'v5-combo-metrics.json').read_text())
+          print('base',m['base_oof_macro_ap']);print('combo',m['combo_oof_macro_ap']);print('delta',m['delta_vs_base']);print('folds',[(x['fold'],x['delta_vs_base']) for x in m['fold_reports']])
+          assert m['gold_metric_opened'] is False
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: ecup-v5-oof-combo-metrics, path: "${{ runner.temp }}/out/v5-combo-metrics.json", retention-days: 14}
+      - name: Persist private combo OOF
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          api=HfApi(token=os.environ['HF_TOKEN']);out=Path(os.environ['RUNNER_TEMP'])/'out';prefix=f"experiments/v5/combo/{os.environ['GITHUB_SHA'][:12]}"
+          for n in ('v5-combo-metrics.json','v5-combo-oof.parquet'): api.upload_file(path_or_fileobj=str(out/n),path_in_repo=f'{prefix}/{n}',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message=f'Store v5 combo {n}')
+          print('private_prefix',prefix)
+          PY

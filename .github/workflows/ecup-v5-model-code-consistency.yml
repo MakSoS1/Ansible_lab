@@ -1,0 +1,88 @@
+name: E-CUP v5 target-free model-code consistency
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v5-model-code-consistency.yml
+      - ecup_matching/ml/run_v5_model_code_consistency.py
+      - ecup_matching/ml/v5_model_code_consistency.py
+      - ecup_matching/ml/textnorm.py
+permissions: {contents: read}
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  VALIDATION_PREFIX: experiments/v5/validation/93e439633099
+  ANCHOR_PREFIX: experiments/v5/fixed-blend/8a017cc12776
+  SPLIT_SHA: aae58fb40f7cd481995bfa46b8bc5602134ad8779efb939a68a0ea0fbabeb55b
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+jobs:
+  model-code-consistency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Verify model-code contract
+        run: python -m pytest ecup_matching/tests/test_v5_model_code_consistency.py ecup_matching/tests/test_metrics.py ecup_matching/tests/test_v5_evaluation.py -q
+      - name: Download immutable inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/out"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/matches.parquet" "$BASE_URL/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/data/items_human.parquet" "$BASE_URL/items_human.parquet"
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          repo=os.environ['HF_REPO_ID'];token=os.environ['HF_TOKEN'];root=os.environ['RUNNER_TEMP']
+          for filename in (f"{os.environ['VALIDATION_PREFIX']}/split-manifest.json",f"{os.environ['ANCHOR_PREFIX']}/v5-fixed-blend-oof.parquet"):
+              print(hf_hub_download(repo_id=repo,repo_type='dataset',filename=filename,token=token,local_dir=os.path.join(root,'private')))
+          PY
+      - name: Evaluate one predeclared model-code fusion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.ml.run_v5_model_code_consistency \
+            --items "$RUNNER_TEMP/data/items_human.parquet" \
+            --matches "$RUNNER_TEMP/data/matches.parquet" \
+            --manifest "$RUNNER_TEMP/private/$VALIDATION_PREFIX/split-manifest.json" \
+            --anchor-oof "$RUNNER_TEMP/private/$ANCHOR_PREFIX/v5-fixed-blend-oof.parquet" \
+            --output-dir "$RUNNER_TEMP/out" \
+            --expected-split-sha "$SPLIT_SHA"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          m=json.loads((Path(os.environ['RUNNER_TEMP'])/'out'/'v5-model-code-consistency-metrics.json').read_text())
+          assert m['gold_metric_opened'] is False and m['gold_rows_scored']==0 and m['target_fitted_blender'] is False
+          print('anchor',m['anchor_macro_average_precision'])
+          print('model_direct',m['model_code_consistency_macro_average_precision'],'nonzero_rate',m['model_code_nonzero_rate'])
+          print('candidate',m['candidate_macro_average_precision'],'delta',m['delta_vs_anchor'],'min_fold_delta',m['min_fold_delta_vs_anchor'],'eligible',m['keep_eligible'],'target_0_60_reached',m['target_0_60_reached'])
+          print('folds',[(x['fold'],x['delta_vs_anchor']) for x in m['fold_reports']])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v5-model-code-consistency-metrics
+          path: ${{ runner.temp }}/out/v5-model-code-consistency-metrics.json
+          retention-days: 14
+      - name: Persist model-code evidence privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+          api=HfApi(token=os.environ['HF_TOKEN']);out=Path(os.environ['RUNNER_TEMP'])/'out';prefix=f"experiments/v5/model-code-consistency/{os.environ['GITHUB_SHA'][:12]}"
+          for name in ('v5-model-code-consistency-metrics.json','v5-model-code-consistency-oof.parquet'):
+              api.upload_file(path_or_fileobj=str(out/name),path_in_repo=f'{prefix}/{name}',repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',commit_message=f'Store v5 model code consistency {name}')
+          print('private_prefix',prefix)
+          PY
+      - if: always()
+        run: rm -rf "$RUNNER_TEMP/data" "$RUNNER_TEMP/private" "$RUNNER_TEMP/out"

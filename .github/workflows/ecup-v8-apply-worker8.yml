@@ -1,0 +1,46 @@
+name: E-CUP v8 apply measured worker8 policy
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-apply-worker8.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ecup-v8-hardsku
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Apply deterministic one-line runtime policy patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('ecup_matching/submission/predict_v6.py')
+          s=p.read_text(encoding='utf-8')
+          old='    structured_workers = resolve_worker_count()\n'
+          new='    structured_workers = resolve_worker_count(8)\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one auto worker policy, found {s.count(old)}')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          python -m compileall -q ecup_matching/submission/predict_v6.py
+          git diff --check
+          git diff -- ecup_matching/submission/predict_v6.py
+      - name: Commit measured worker policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ecup_matching/submission/predict_v6.py
+          git commit -m 'perf: use measured eight-worker production policy'
+          git push origin HEAD:ecup-v8-hardsku

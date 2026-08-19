@@ -1,0 +1,108 @@
+name: E-CUP publish verified v5 fallback to Hugging Face
+
+on:
+  push:
+    branches: [ecup-v5-meta-060]
+    paths:
+      - .github/workflows/ecup-v5-publish-fallback-hf.yml
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  SOURCE_RUN_ID: '31518731642'
+  SOURCE_ARTIFACT_ID: '9112337546'
+  SOURCE_ARTIFACT_NAME: ecup-v5-six-signal-best-submission
+  SUBMISSION_NAME: ecup-v5-six-signal-0.5975445721-submission.zip
+  SUBMISSION_SHA256: ee6fec40fe7e79095c33b5a2ed8a1c6cb40e01c3a8e90850c7459d5f1afad06e
+  HF_PREFIX: submissions/v5/0.5975445721
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download exact successful Actions artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v5"
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+            -o "$RUNNER_TEMP/v5/actions-artifact.zip"
+          unzip -q "$RUNNER_TEMP/v5/actions-artifact.zip" -d "$RUNNER_TEMP/v5/extracted"
+          find "$RUNNER_TEMP/v5/extracted" -maxdepth 2 -type f -printf '%P %s bytes\n' | sort
+
+      - name: Verify inner competition ZIP byte-for-byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          submission="$RUNNER_TEMP/v5/extracted/$SUBMISSION_NAME"
+          test -f "$submission"
+          observed="$(sha256sum "$submission" | awk '{print $1}')"
+          echo "expected=$SUBMISSION_SHA256"
+          echo "observed=$observed"
+          test "$observed" = "$SUBMISSION_SHA256"
+          unzip -t "$submission" >/dev/null
+
+      - name: Upload exact submission ZIP and provenance to private HF dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'huggingface_hub>=1.0,<2'
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from huggingface_hub import HfApi
+
+          root=Path(os.environ['RUNNER_TEMP'])/'v5'/'extracted'
+          submission=root/os.environ['SUBMISSION_NAME']
+          observed=hashlib.sha256(submission.read_bytes()).hexdigest()
+          expected=os.environ['SUBMISSION_SHA256']
+          if observed != expected:
+              raise RuntimeError(f'submission sha mismatch: {observed} != {expected}')
+
+          provenance={
+              'version':'v5-six-signal-fallback',
+              'strict_oof_macro_ap':0.5975445721449741,
+              'source_repository':os.environ['GITHUB_REPOSITORY'],
+              'source_run_id':int(os.environ['SOURCE_RUN_ID']),
+              'source_artifact_id':int(os.environ['SOURCE_ARTIFACT_ID']),
+              'source_artifact_name':os.environ['SOURCE_ARTIFACT_NAME'],
+              'submission_filename':submission.name,
+              'submission_sha256':observed,
+              'organizer_image':'odsai/ecup26-matching-baseline:1.0',
+              'offline_smoke_passed':True,
+          }
+          provenance_path=root/'PROVENANCE-HF.json'
+          provenance_path.write_text(json.dumps(provenance,ensure_ascii=False,indent=2,sort_keys=True),encoding='utf-8')
+          sha_path=root/'SHA256SUMS-HF.txt'
+          sha_path.write_text(f"{observed}  {submission.name}\n",encoding='utf-8')
+
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          prefix=os.environ['HF_PREFIX']
+          for path in (submission, provenance_path, sha_path):
+              api.upload_file(
+                  path_or_fileobj=str(path),
+                  path_in_repo=f'{prefix}/{path.name}',
+                  repo_id=os.environ['HF_REPO_ID'],
+                  repo_type='dataset',
+                  commit_message=f'Publish verified E-CUP v5 fallback: {path.name}',
+              )
+          print('hf_repo',os.environ['HF_REPO_ID'])
+          print('hf_prefix',prefix)
+          print('submission',submission.name)
+          print('sha256',observed)
+          PY
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/v5"

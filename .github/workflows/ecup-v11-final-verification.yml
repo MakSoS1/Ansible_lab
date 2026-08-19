@@ -1,0 +1,23 @@
+name: E-CUP v11 final verification
+on:
+  push:
+    branches: [ecup-v11-fastlex]
+    paths: ['.github/workflows/ecup-v11-final-verification.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Full tests
+        run: python -m pytest ecup_matching/tests -q
+      - name: Memory policy
+        run: python scripts/memory_policy.py

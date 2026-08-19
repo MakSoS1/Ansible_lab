@@ -1,0 +1,49 @@
+name: E-CUP v3 organizer neural environment probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-organizer-env-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull exact organizer image
+        run: docker pull odsai/ecup26-matching-baseline:1.0
+      - name: Probe neural dependencies and device interfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -i --network none odsai/ecup26-matching-baseline:1.0 python - <<'PY'
+          import importlib.util, json, sys
+          packages = ['torch','transformers','sentence_transformers','tokenizers','safetensors','numpy','pandas','sklearn','joblib']
+          result = {'python': sys.version, 'packages': {}}
+          for name in packages:
+              spec = importlib.util.find_spec(name)
+              if spec is None:
+                  result['packages'][name] = None
+                  continue
+              module = __import__(name)
+              result['packages'][name] = getattr(module, '__version__', 'present')
+          if result['packages']['torch'] is not None:
+              import torch
+              result['cuda_available_on_cpu_probe'] = bool(torch.cuda.is_available())
+              result['torch_cuda_version'] = torch.version.cuda
+          print(json.dumps(result, indent=2))
+          PY
+      - name: Probe offline import of local model APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -i --network none odsai/ecup26-matching-baseline:1.0 python - <<'PY'
+          from transformers import AutoModelForSequenceClassification, AutoTokenizer
+          print('transformers_sequence_classifier_api_ok')
+          PY

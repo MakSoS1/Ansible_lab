@@ -1,0 +1,49 @@
+name: E-CUP v7 neural quality CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-v7-neural]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecup-v7-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: v7 targeted unit tests
+        run: |
+          python -m pytest \
+            ecup_matching/tests/test_v7_frozen_split.py \
+            ecup_matching/tests/test_v7_neural_contract.py \
+            ecup_matching/tests/test_v7_neural_training.py \
+            ecup_matching/tests/test_v7_identity2.py \
+            ecup_matching/tests/test_v5_item_text.py \
+            ecup_matching/tests/test_v5_teacher2_objective.py \
+            -q
+      - name: import complete v7 CUDA drivers
+        run: |
+          python - <<'PY'
+          import ecup_matching.ml.benchmark_v7_cuda
+          import ecup_matching.ml.run_v7_outer_oof
+          import ecup_matching.ml.run_v7_outer_oof_fast
+          import ecup_matching.ml.run_v7_outer_oof_frozen
+          import ecup_matching.ml.run_v7_fold0_probe
+          import ecup_matching.ml.run_v7_fold0_probe_frozen
+          print('v7_gpu_driver_imports_ok')
+          PY
+      - name: memory policy
+        run: python scripts/memory_policy.py

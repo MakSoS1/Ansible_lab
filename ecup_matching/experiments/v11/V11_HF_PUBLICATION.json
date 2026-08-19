@@ -1,0 +1,17 @@
+{
+  "version": "v11",
+  "status": "canonical-private-hf-published",
+  "repo": "Maksim123321/e-cup-2026-matching-private",
+  "run_id": 31727189671,
+  "job_id": 94538392482,
+  "hf_commit": "4c2c59d25501ea0813d8a01ff06402635cb31e7b",
+  "archive_path": "submissions/v11/final/ecup-v11-faststack-graph-0.5950413763-submission.zip",
+  "manifest_path": "submissions/v11/final/V11_KEEPER.json",
+  "archive_bytes": 480249754,
+  "archive_sha256": "0d91c8790c9bcaaf3a5e1fb120ed55e179090cad71bac87a796d9294e4ad110a",
+  "canonical_archive_redownloaded_after_publish": true,
+  "canonical_sha256_verified_after_redownload": true,
+  "temporary_github_benchmark_release_removed": true,
+  "sealed_gold_opened": false,
+  "leaderboard_score": null
+}

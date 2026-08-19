@@ -1,0 +1,7 @@
+huggingface_hub>=1.0,<2
+requests>=2.32,<3
+pandas>=2.2,<3
+pyarrow>=17,<24
+scikit-learn>=1.5,<2
+pytest>=8.3,<10
+safetensors>=0.4,<1

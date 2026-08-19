@@ -1,0 +1,48 @@
+name: E-CUP v10 TDD contracts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - ".github/workflows/ecup-v10-tdd.yml"
+      - "ecup_matching/ci/runtime_closure.py"
+      - "ecup_matching/ml/v10_distill.py"
+      - "ecup_matching/ml/v10_student_contract.py"
+      - "ecup_matching/ml/run_v10_outer_oof_frozen_fastinfer.py"
+      - "ecup_matching/ml/run_v10_production_frozen.py"
+      - "ecup_matching/submission/v10_contract.py"
+      - "ecup_matching/submission/predict_v10.py"
+      - "ecup_matching/submission/run_v10.py"
+      - "ecup_matching/build_submission_v10.py"
+      - "ecup_matching/tests/test_v10_distill.py"
+      - "ecup_matching/tests/test_v10_submission_contract.py"
+      - "ecup_matching/tests/test_v10_runtime_contract.py"
+      - "ecup_matching/tests/test_v10_build_submission.py"
+      - "ecup_matching/tests/test_v10_student_training_contract.py"
+      - "ecup_matching/tests/test_v10_production_wrapper.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: v10 targeted contracts
+        run: |
+          python -m pytest -q \
+            ecup_matching/tests/test_v10_distill.py \
+            ecup_matching/tests/test_v10_submission_contract.py \
+            ecup_matching/tests/test_v10_runtime_contract.py \
+            ecup_matching/tests/test_v10_build_submission.py \
+            ecup_matching/tests/test_v10_student_training_contract.py \
+            ecup_matching/tests/test_v10_production_wrapper.py

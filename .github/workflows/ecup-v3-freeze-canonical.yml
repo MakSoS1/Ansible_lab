@@ -1,0 +1,68 @@
+name: E-CUP v3 freeze canonical artifact
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-freeze-canonical.yml
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  EXPECTED_SHA256: b833ceb203f8cc7d87517257df8ee5e0a2590075db0ecd2932b8281950015660
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install HF client and require token
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'huggingface_hub>=1,<2'
+          test -n "${HF_TOKEN:-}"
+      - name: Freeze exact verified bytes under immutable SHA path
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v3-freeze"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from huggingface_hub import HfApi, hf_hub_download
+
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; expected=os.environ['EXPECTED_SHA256']
+          root=Path(os.environ['RUNNER_TEMP'])/'v3-freeze'
+          zip_path=Path(hf_hub_download(repo_id=repo,repo_type='dataset',filename='submissions/v3/ecup-v3-submission.zip',token=token,local_dir=root))
+          metrics_path=Path(hf_hub_download(repo_id=repo,repo_type='dataset',filename='submissions/v3/v3-package-metrics.json',token=token,local_dir=root))
+          actual=hashlib.sha256(zip_path.read_bytes()).hexdigest()
+          metrics=json.loads(metrics_path.read_text())
+          assert actual==expected, (actual,expected)
+          assert metrics['submission_sha256']==expected
+          assert metrics['validation_macro_ap']==0.5254642645846543
+          assert metrics['offline_smoke_neural_pairs']==10000
+          prefix=f'submissions/v3/canonical/{expected}'
+          api=HfApi(token=token)
+          api.upload_file(path_or_fileobj=str(zip_path),path_in_repo=f'{prefix}/ecup-v3-submission.zip',repo_id=repo,repo_type='dataset',commit_message=f'Freeze canonical E-CUP v3 ZIP {expected}')
+          api.upload_file(path_or_fileobj=str(metrics_path),path_in_repo=f'{prefix}/v3-package-metrics.json',repo_id=repo,repo_type='dataset',commit_message=f'Freeze canonical E-CUP v3 evidence {expected}')
+          visible=set(api.list_repo_files(repo_id=repo,repo_type='dataset'))
+          required={f'{prefix}/ecup-v3-submission.zip',f'{prefix}/v3-package-metrics.json'}
+          missing=required-visible
+          if missing: raise RuntimeError(f'immutable freeze verification failed: {sorted(missing)}')
+          print('immutable_v3_sha256',actual)
+          print('immutable_v3_prefix',prefix)
+          print('immutable_v3_private_hf_verified')
+          PY
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/v3-freeze"

@@ -1,0 +1,27 @@
+name: E-CUP v11 FastLex TDD
+
+on:
+  push:
+    branches: [ecup-v11-fastlex]
+    paths:
+      - 'ecup_matching/ml/v11_*.py'
+      - 'ecup_matching/tests/test_v11_*.py'
+      - '.github/workflows/ecup-v10-faststack-tdd.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - run: python -m pytest ecup_matching/tests/test_v11_fastlex.py ecup_matching/tests/test_v11_sparse_channels.py ecup_matching/tests/test_v11_weighted_overlap.py -q

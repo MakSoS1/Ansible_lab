@@ -1,0 +1,159 @@
+name: E-CUP v3 private neural data preparation
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_train_rows:
+        description: Compact authoritative-human neural training row budget
+        required: false
+        default: '180000'
+  push:
+    branches: [ecup-matching-2026]
+    paths:
+      - .github/workflows/ecup-v3-prepare.yml
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      HF_XET_HIGH_PERFORMANCE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - name: Install dependencies
+        run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Verify repository and memory policy
+        run: |
+          python -m pytest ecup_matching/tests -q
+          python scripts/memory_policy.py
+      - name: Require private HF token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo '::error::Missing HF_TOKEN'; exit 1; }
+      - name: Download only human organizer data and v2 validation anchor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v3-input" "$RUNNER_TEMP/v3-prepared"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          repo = os.environ['HF_REPO_ID']
+          token = os.environ['HF_TOKEN']
+          root = Path(os.environ['RUNNER_TEMP']) / 'v3-input'
+          for remote in (
+              'items_human.parquet',
+              'matches.parquet',
+              'experiments/v2/structured/3ad39ca999e0/validation_predictions.parquet',
+          ):
+              local = hf_hub_download(
+                  repo_id=repo,
+                  repo_type='dataset',
+                  filename=remote,
+                  token=token,
+                  local_dir=root,
+              )
+              print(f'downloaded {remote} bytes={Path(local).stat().st_size}')
+          PY
+      - name: Build fast human-only leakage-safe serialized examples
+        shell: bash
+        env:
+          MAX_TRAIN_ROWS: ${{ inputs.max_train_rows || '180000' }}
+        run: |
+          set -euo pipefail
+          python -m ecup_matching.v3_prepare \
+            --human-only \
+            --human-items "$RUNNER_TEMP/v3-input/items_human.parquet" \
+            --human-matches "$RUNNER_TEMP/v3-input/matches.parquet" \
+            --output-dir "$RUNNER_TEMP/v3-prepared" \
+            --max-train-rows "$MAX_TRAIN_ROWS" \
+            --max-attrs 10 \
+            --max-chars 700 \
+            --priority-fraction 0.60
+          cp "$RUNNER_TEMP/v3-input/experiments/v2/structured/3ad39ca999e0/validation_predictions.parquet" \
+             "$RUNNER_TEMP/v3-prepared/structured_validation_predictions.parquet"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import pandas as pd
+          root = Path(os.environ['RUNNER_TEMP']) / 'v3-prepared'
+          manifest = json.loads((root / 'manifest.json').read_text())
+          train = pd.read_parquet(root / 'train_examples.parquet')
+          valid = pd.read_parquet(root / 'validation_examples.parquet')
+          structured = pd.read_parquet(root / 'structured_validation_predictions.parquet')
+          assert manifest['mode'] == 'human-only'
+          assert manifest['weak_rows'] == 0
+          assert manifest['validation_item_overlap'] == 0
+          assert len(valid) == 73131
+          assert len(train) == int(manifest['train_rows'])
+          assert len(structured) == len(valid)
+          assert 'v2b-weak-curriculum' in structured.columns
+          assert (train['source'] == 'human').all()
+          print('prepared_contract_ok')
+          print('train_rows', len(train))
+          print('validation_rows', len(valid))
+          print('human_positive_rows_retained', manifest['human_positive_rows_retained'])
+          print('priority_category_counts', manifest['priority_category_counts'])
+          print('train_bytes', (root / 'train_examples.parquet').stat().st_size)
+          print('validation_bytes', (root / 'validation_examples.parquet').stat().st_size)
+          PY
+      - name: Upload prepared neural data to private HF and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import CommitOperationAdd, HfApi
+          repo = os.environ['HF_REPO_ID']
+          token = os.environ['HF_TOKEN']
+          sha = os.environ['GITHUB_SHA'][:12]
+          prefix = f'experiments/v3/prepared/{sha}'
+          root = Path(os.environ['RUNNER_TEMP']) / 'v3-prepared'
+          names = [
+              'train_examples.parquet',
+              'validation_examples.parquet',
+              'structured_validation_predictions.parquet',
+              'manifest.json',
+          ]
+          api = HfApi(token=token)
+          api.create_commit(
+              repo_id=repo,
+              repo_type='dataset',
+              operations=[
+                  CommitOperationAdd(path_in_repo=f'{prefix}/{name}', path_or_fileobj=str(root / name))
+                  for name in names
+              ],
+              commit_message=f'Prepare E-CUP v3 human-only neural data {sha}',
+          )
+          visible = set(api.list_repo_files(repo_id=repo, repo_type='dataset'))
+          for name in names:
+              remote = f'{prefix}/{name}'
+              if remote not in visible:
+                  raise RuntimeError(f'private HF verification failed: {remote}')
+              print('verified_private_hf', remote)
+          print('prepared_prefix', prefix)
+          PY
+      - name: Upload non-secret preparation manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecup-v3-prepared-manifest
+          path: ${{ runner.temp }}/v3-prepared/manifest.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Cleanup private runner data
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/v3-input" "$RUNNER_TEMP/v3-prepared"

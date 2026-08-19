@@ -1,0 +1,60 @@
+name: E-CUP v10 exact checkpoint provenance audit
+
+on:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - '.github/workflows/ecup-v10-license-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  HF_ARCHIVE_PATH: submissions/v10/final/ecup-v10-no-teacher-graph-0.5950413763-submission.zip
+  EXPECTED_SHA256: 6cebc276f45fc52247db054eb83d2a8110b25d4407cc34b0d5b148a4773c321d
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.11'}
+      - name: Inspect exact packaged checkpoint metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'huggingface_hub>=1.0,<2'
+          python - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          p=Path(hf_hub_download(repo_id=os.environ['HF_REPO_ID'], repo_type='dataset', filename=os.environ['HF_ARCHIVE_PATH'], token=os.environ['HF_TOKEN']))
+          sha=hashlib.sha256(p.read_bytes()).hexdigest(); assert sha==os.environ['EXPECTED_SHA256']
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              cfg=json.loads(z.read('model_v5_contrastive/config.json')) if 'model_v5_contrastive/config.json' in names else None
+              tok=json.loads(z.read('model_v5_contrastive/tokenizer_config.json')) if 'model_v5_contrastive/tokenizer_config.json' in names else None
+              prod=json.loads(z.read('model_v5_contrastive/production-metadata.json')) if 'model_v5_contrastive/production-metadata.json' in names else None
+          report={
+            'archive_sha256':sha,
+            'config_name_or_path': None if cfg is None else cfg.get('_name_or_path'),
+            'model_type': None if cfg is None else cfg.get('model_type'),
+            'architectures': None if cfg is None else cfg.get('architectures'),
+            'tokenizer_name_or_path': None if tok is None else tok.get('name_or_path'),
+            'production_metadata': prod,
+          }
+          Path('V10_CHECKPOINT_PROVENANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,sort_keys=True)+'\n')
+          print('PROVENANCE='+json.dumps(report,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v10-checkpoint-provenance-${{ github.run_id }}
+          path: V10_CHECKPOINT_PROVENANCE.json
+          retention-days: 14

@@ -1,0 +1,197 @@
+name: E-CUP v8 distribution shift audit
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths:
+      - ".github/workflows/ecup-v8-distribution-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download pair tables and human item metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          mkdir -p "$RUNNER_TEMP/v8-audit"
+          for f in matches.parquet matches_llm.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" \
+              -o "$RUNNER_TEMP/v8-audit/$f"
+          done
+      - name: Measure prevalence proxy and candidate-graph shift
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          import pyarrow.parquet as pq
+          from huggingface_hub import HfApi
+          from ecup_matching.ml.v8_distribution import (
+              binary_prevalence,
+              candidate_graph_summary,
+              category_distribution_report,
+              human_excluded_llm_mask,
+              target_distribution,
+          )
+
+          root=Path(os.environ['RUNNER_TEMP'])/'v8-audit'
+          human_path=root/'matches.parquet'
+          llm_path=root/'matches_llm.parquet'
+          items_path=root/'items_human.parquet'
+          human_pf=pq.ParquetFile(human_path)
+          llm_pf=pq.ParquetFile(llm_path)
+          print('V8_SCHEMA', json.dumps({
+              'matches': human_pf.schema_arrow.names,
+              'matches_llm': llm_pf.schema_arrow.names,
+              'human_rows': human_pf.metadata.num_rows,
+              'llm_rows': llm_pf.metadata.num_rows,
+          }, ensure_ascii=False, sort_keys=True))
+
+          human=pd.read_parquet(human_path, columns=['id1','id2','target'])
+          human_ids=set(human['id1'].tolist()) | set(human['id2'].tolist())
+          items=pd.read_parquet(items_path, columns=['id','category']).drop_duplicates('id')
+          human_categories=dict(zip(items['id'].tolist(), items['category'].astype(str).tolist()))
+          human_by_category=category_distribution_report(human, human_categories)
+
+          # Full LLM target statistics are streamed; candidate graph uses a deterministic
+          # prefix sample so the diagnostic cannot accidentally OOM a hosted runner.
+          llm_target_count=0
+          llm_target_sum=0.0
+          llm_target_sumsq=0.0
+          exact0=exact1=lt005=gt095=mid=0
+          quantile_sample=[]
+          excluded_rows=0
+          total_rows=0
+          graph_parts=[]
+          graph_limit=1_000_000
+          category_present='category' in llm_pf.schema_arrow.names
+          llm_category_parts=[]
+          rng=np.random.default_rng(2026)
+          reservoir_cap=1_000_000
+          reservoir=[]
+          seen=0
+          cols=['id1','id2','target'] + (['category'] if category_present else [])
+          for batch in llm_pf.iter_batches(batch_size=262_144, columns=cols):
+              df=batch.to_pandas()
+              t=pd.to_numeric(df['target'], errors='raise').to_numpy(float)
+              if not np.isfinite(t).all(): raise RuntimeError('nonfinite LLM target')
+              n=len(df); total_rows += n; llm_target_count += n
+              llm_target_sum += float(t.sum()); llm_target_sumsq += float(np.square(t).sum())
+              exact0 += int(np.sum(t==0)); exact1 += int(np.sum(t==1))
+              lt005 += int(np.sum(t<.05)); gt095 += int(np.sum(t>.95)); mid += int(np.sum((t>=.2)&(t<=.8)))
+              excluded_rows += int(human_excluded_llm_mask(df, human_ids).sum())
+              if sum(len(x) for x in graph_parts) < graph_limit:
+                  need=graph_limit-sum(len(x) for x in graph_parts)
+                  graph_parts.append(df[['id1','id2']].head(need).copy())
+              if category_present and sum(len(x) for x in llm_category_parts) < graph_limit:
+                  need=graph_limit-sum(len(x) for x in llm_category_parts)
+                  llm_category_parts.append(df[['target','category']].head(need).copy())
+              # Deterministic reservoir for approximate quantiles without holding 11M floats.
+              for value in t:
+                  seen += 1
+                  if len(reservoir) < reservoir_cap:
+                      reservoir.append(float(value))
+                  else:
+                      j=int(rng.integers(0, seen))
+                      if j < reservoir_cap: reservoir[j]=float(value)
+
+          mean=llm_target_sum/max(llm_target_count,1)
+          variance=max(0.0, llm_target_sumsq/max(llm_target_count,1)-mean*mean)
+          r=np.asarray(reservoir,float)
+          llm_dist={
+              'rows': int(llm_target_count), 'target_mean': float(mean), 'std_population': float(np.sqrt(variance)),
+              'frac_eq_0': exact0/llm_target_count, 'frac_eq_1': exact1/llm_target_count,
+              'frac_lt_005': lt005/llm_target_count, 'frac_gt_095': gt095/llm_target_count,
+              'frac_020_080': mid/llm_target_count,
+              'extreme_pseudo_positive_fraction': gt095/max(1,gt095+lt005),
+              'quantiles_approx_reservoir_1m': {str(q):float(np.quantile(r,q)) for q in [0,.01,.05,.1,.25,.5,.75,.9,.95,.99,1]},
+              'quantile_sample_rows': int(len(r)),
+              'true_binary_prevalence_claimed': False,
+          }
+          graph_sample=pd.concat(graph_parts, ignore_index=True)
+          graph_human=candidate_graph_summary(human[['id1','id2']])
+          graph_llm=candidate_graph_summary(graph_sample)
+
+          llm_by_category=None
+          if category_present:
+              cat_sample=pd.concat(llm_category_parts, ignore_index=True)
+              llm_by_category={}
+              for cat,g in cat_sample.groupby('category', sort=True):
+                  t=pd.to_numeric(g['target']).to_numpy(float)
+                  lo=int(np.sum(t<.05)); hi=int(np.sum(t>.95))
+                  llm_by_category[str(cat)]={
+                      'sample_rows':int(len(g)), 'target_mean':float(np.mean(t)),
+                      'frac_lt_005':float(np.mean(t<.05)), 'frac_gt_095':float(np.mean(t>.95)),
+                      'extreme_pseudo_positive_fraction':float(hi/max(1,hi+lo)),
+                      'true_binary_prevalence_claimed':False,
+                  }
+
+          # Aggregate diagnosis. Strong confirmation requires BOTH lower pseudo-positive rate
+          # and denser retrieval graph; soft target mean alone is never sufficient.
+          human_prev=binary_prevalence(human)
+          pseudo=llm_dist['extreme_pseudo_positive_fraction']
+          density_ratio=graph_llm['mean_endpoint_degree']/max(graph_human['mean_endpoint_degree'],1e-12)
+          prevalence_ratio=pseudo/max(human_prev,1e-12)
+          if pseudo < human_prev*0.70 and density_ratio > 1.25:
+              diagnosis='CONFIRMED'
+          elif pseudo < human_prev*0.85 or density_ratio > 1.15:
+              diagnosis='PARTIAL'
+          else:
+              diagnosis='REJECTED'
+
+          api=HfApi(token=os.environ['HF_TOKEN'])
+          paths=api.list_repo_files(repo_id=os.environ['HF_REPO_ID'], repo_type='dataset')
+          artifact_keywords=('oof','submission','probe','v5','v6','v7','metric','score')
+          reusable=[p for p in paths if any(k in p.lower() for k in artifact_keywords)]
+          payload={
+              'diagnostic_only': True,
+              'hypothesis':'human manual-label prevalence/candidate distribution differs from retrieval-like LLM pool',
+              'diagnosis':diagnosis,
+              'human_binary_prevalence':float(human_prev),
+              'human_target':target_distribution(human),
+              'human_by_category':human_by_category,
+              'llm_target':llm_dist,
+              'llm_by_category_sample_if_native_category_exists':llm_by_category,
+              'llm_category_column_present':bool(category_present),
+              'llm_human_item_excluded_rows':int(excluded_rows),
+              'llm_human_item_excluded_fraction':float(excluded_rows/max(1,total_rows)),
+              'human_candidate_graph':graph_human,
+              'llm_candidate_graph_prefix_1m':graph_llm,
+              'candidate_degree_density_ratio_llm_sample_vs_human':float(density_ratio),
+              'extreme_pseudo_positive_ratio_llm_vs_human':float(prevalence_ratio),
+              'reusable_private_artifact_paths':reusable[:300],
+              'sealed_gold_opened':False,
+          }
+          out=root/'v8-distribution-audit.json'
+          out.write_text(json.dumps(payload,ensure_ascii=False,indent=2,sort_keys=True),encoding='utf-8')
+          print('V8_DISTRIBUTION_AUDIT='+json.dumps(payload,ensure_ascii=False,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v8-distribution-audit
+          path: ${{ runner.temp }}/v8-audit/v8-distribution-audit.json
+          retention-days: 14

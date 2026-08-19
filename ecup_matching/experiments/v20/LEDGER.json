@@ -1,0 +1,39 @@
+{
+  "version": "v20-ledger-v1",
+  "external_anchors": {
+    "v7": {"human_fold0": 0.7023802626117305, "public_lb": 0.3655833314},
+    "v12": {"human_fold0": 0.70592978103087, "public_lb": 0.379811620418641},
+    "v13B": {"human_fold0": 0.7086611386, "public_lb": 0.37837816527590995},
+    "v14": {"human_fold0": 0.7065769713851786, "public_lb": 0.38032704703111925}
+  },
+  "history": [
+    {"version": "v1", "idea": "structured HGB", "local": 0.4961654895, "outcome": "baseline"},
+    {"version": "v2", "idea": "product-aware structured + filtered weak", "local": 0.5010008995, "outcome": "keep", "note": "naive hard-negative weighting rejected"},
+    {"version": "v3", "idea": "rubert-tiny2 pair reranker blend", "local": 0.5254642646, "outcome": "keep", "note": "model-mined hard-negative stage rejected"},
+    {"version": "v4", "idea": "cross-fit category routing", "local": 0.5276431099, "outcome": "keep-small"},
+    {"version": "v5", "idea": "six-signal + category/HGB rank fusion", "strict_oof": 0.6018115534, "outcome": "quality-keeper"},
+    {"version": "v6", "idea": "runtime-constrained teacher gate", "strict_oof": 0.6006003615, "outcome": "runtime-keeper"},
+    {"version": "v7", "idea": "identity-first RuBERT pair CrossEncoder", "human_fold0": 0.7023802626, "public_lb": 0.3655833314, "outcome": "runtime-family-parent"},
+    {"version": "v9-v11", "idea": "graph/faststack/runtime hardening", "outcome": "runtime work", "note": "later graph remeasurement found no quality gain"},
+    {"version": "v12", "idea": "more useful weak supervision in pure-GPU RuBERT", "human_fold0": 0.7059297810, "public_lb": 0.379811620418641, "outcome": "external jump"},
+    {"version": "v13B", "idea": "group weak/listwise/all-soft variants", "human_fold0": 0.7086611386, "public_lb": 0.37837816527590995, "outcome": "reject-external-vs-v12"},
+    {"version": "v14", "idea": "category-gated residual", "human_fold0": 0.7065769714, "public_lb": 0.38032704703111925, "outcome": "current external keeper"},
+    {"version": "v14-alt", "idea": "late interaction/token-cross/Granite", "outcome": "reject", "note": "all materially below RuBERT parent"},
+    {"version": "v15", "idea": "typed/category residual over RuBERT", "human_fold0": 0.7014872395, "outcome": "reject-local-parent", "note": "+0.004085 vs same human-only teacher but below v12"},
+    {"version": "v16", "idea": "graph rescoring", "best_delta": 0.0000171, "outcome": "closed", "note": "97.08% items degree one; old graph config mildly harmful"},
+    {"version": "v17", "idea": "weak exposure + weak holdout", "outcome": "measured", "note": "control human 0.7017637364; weak 0.6973930799 -> 0.6565798751 after human"},
+    {"version": "v18", "idea": "quality-aware weak/hard+broad/augmentation/full-encoder/EMA", "outcome": "queued"},
+    {"version": "v19", "idea": "post-human low-LR weak refresh", "outcome": "queued"}
+  ],
+  "do_not_repeat_without_new_evidence": [
+    "naive static hard-negative weighting",
+    "hard-negative-only second stage",
+    "graph rescoring on human edge topology",
+    "Granite as production parent",
+    "late-interaction/token-cross replacement of RuBERT parent",
+    "single-fold tiny-delta selection",
+    "single-teacher self-confidence admission"
+  ],
+  "sealed_gold_opened": false,
+  "gold_rows_scored": 0
+}

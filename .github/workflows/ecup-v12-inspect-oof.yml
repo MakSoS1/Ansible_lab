@@ -1,0 +1,44 @@
+name: E-CUP v12 inspect saved OOF signals
+
+on:
+  push:
+    branches: [ecup-v12-puregpu-main]
+    paths:
+      - '.github/workflows/ecup-v12-inspect-oof.yml'
+      - 'ecup_matching/ml/v12_inspect_oof.py'
+
+permissions:
+  contents: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  OOF_PATH: experiments/v6/fast-ablation/no_contrastive/6a1e61a2d068/v6-fast-no_contrastive-oof.parquet
+  BASE_URL: https://storage.yandexcloud.net/ozon-ecup-2026/Matching
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'huggingface_hub>=1,<2' 'pandas<3' 'pyarrow<24' 'numpy<3' 'scikit-learn<2'
+      - name: Download saved OOF and public data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v12"
+          python - <<'PY'
+          import os, shutil
+          from huggingface_hub import hf_hub_download
+          src=hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=os.environ['OOF_PATH'],token=os.environ['HF_TOKEN'])
+          shutil.copyfile(src,os.path.join(os.environ['RUNNER_TEMP'],'v12','oof.parquet'))
+          PY
+          curl -fL --retry 5 --retry-all-errors "$BASE_URL/matches.parquet" -o "$RUNNER_TEMP/v12/matches.parquet"
+          curl -fL --retry 5 --retry-all-errors "$BASE_URL/items_human.parquet" -o "$RUNNER_TEMP/v12/items.parquet"
+      - name: Inspect scores
+        run: python -m ecup_matching.ml.v12_inspect_oof --oof "$RUNNER_TEMP/v12/oof.parquet" --matches "$RUNNER_TEMP/v12/matches.parquet" --items "$RUNNER_TEMP/v12/items.parquet"

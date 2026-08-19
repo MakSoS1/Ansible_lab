@@ -1,0 +1,73 @@
+name: E-CUP v8 publish immutable test-like fixture
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-publish-testlike-fixture.yml]
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  SOURCE_RUN_ID: '31607362368'
+  ARTIFACT_NAME: v8-testlike-fixture-50k
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  HF_PATH: experiments/v8/testlike/fixture-50k-seed2026
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - run: python -m pip install 'huggingface_hub>=1.0,<2'
+      - name: Download exact fixture artifact from source run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir fixture
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir fixture
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('fixture')
+          expected={
+            'test.parquet':'e9dc05af79c7ac3fad552b70c6bcee105d733fb96a8ac80e77c8bda937e6b3a2',
+            'test_items.parquet':'d2b66d0dba300b78dd5661f4b4184eb1696eb6c840dfd90b50071a220c2cc311',
+            'labels.parquet':'2824a8c7d3d720bddbb9bda1460a53f34a63e8a7253b0a088d13102f578a17da',
+          }
+          for name,want in expected.items():
+              p=root/name; h=hashlib.sha256(p.read_bytes()).hexdigest()
+              if h!=want: raise RuntimeError(f'{name} sha mismatch {h} != {want}')
+          meta=json.loads((root/'metadata.json').read_text())
+          if meta['rows']!=50000 or meta['category_count']!=20 or not meta['complete_anchor_groups'] or meta['human_item_overlap']!=0:
+              raise RuntimeError('fixture metadata contract failed')
+          print('V8_FIXTURE_PREUPLOAD_OK='+json.dumps(meta,ensure_ascii=False,sort_keys=True))
+          PY
+      - name: Upload exact bytes to private HF experiment path
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          HfApi(token=os.environ['HF_TOKEN']).upload_folder(
+              repo_id=os.environ['HF_REPO_ID'],
+              repo_type='dataset',
+              folder_path='fixture',
+              path_in_repo=os.environ['HF_PATH'],
+              commit_message='v8: publish immutable grouped retrieval-like fixture',
+          )
+          print('V8_FIXTURE_HF_PATH='+os.environ['HF_PATH'])
+          PY

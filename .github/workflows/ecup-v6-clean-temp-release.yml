@@ -1,0 +1,23 @@
+name: E-CUP v6 cleanup temporary benchmark release
+
+on:
+  push:
+    branches: [ecup-v6-fast]
+    paths:
+      - .github/workflows/ecup-v6-clean-temp-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete temporary v6 benchmark release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete ecup-v6-benchmark-72d489d9bb3a \
+            --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes

@@ -1,0 +1,136 @@
+name: E-CUP v8 immutable grouped test-like fixture
+
+on:
+  push:
+    branches: [ecup-v8-hardsku]
+    paths: [.github/workflows/ecup-v8-build-testlike-fixture.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+      MAX_ROWS: '50000'
+      SEED: '2026'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ecup_matching/requirements-ci.txt
+      - run: python -m pip install -r ecup_matching/requirements-ci.txt
+      - name: Download retrieval pairs and item tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}"
+          root="$RUNNER_TEMP/v8-testlike"; mkdir -p "$root"
+          for f in matches_llm.parquet items.parquet items_human.parquet; do
+            curl -fL --retry 5 --retry-all-errors -H "Authorization: Bearer $HF_TOKEN" \
+              "https://huggingface.co/datasets/${HF_REPO_ID}/resolve/main/${f}?download=true" \
+              -o "$root/$f"
+          done
+      - name: Build complete-anchor fixture and exact item subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          import pyarrow as pa
+          import pyarrow.compute as pc
+          import pyarrow.parquet as pq
+          from ecup_matching.ml.v8_testlike import build_testlike_slice
+
+          root=Path(os.environ['RUNNER_TEMP'])/'v8-testlike'
+          out=root/'fixture'; out.mkdir(exist_ok=True)
+          max_rows=int(os.environ['MAX_ROWS']); seed=int(os.environ['SEED'])
+
+          # LLM pair table is only three primitive columns; loading it once is
+          # bounded and lets the canonical group-preserving sampler own selection.
+          llm=pd.read_parquet(root/'matches_llm.parquet', columns=['id1','id2','target'])
+          human=pd.read_parquet(root/'items_human.parquet', columns=['id'])
+          human_ids=set(human['id'].tolist())
+          sample=build_testlike_slice(llm,human_ids,max_rows=max_rows,seed=seed)
+          del llm, human
+
+          # Submission input never contains the pseudo target.
+          test=sample[['id1','id2']].copy().reset_index(drop=True)
+          test.insert(0,'id',np.arange(len(test),dtype=np.int64))
+          test.to_parquet(out/'test.parquet',index=False)
+
+          used=set(sample['id1'].tolist()) | set(sample['id2'].tolist())
+          values=pa.array(list(used))
+          pf=pq.ParquetFile(root/'items.parquet')
+          id_index=pf.schema_arrow.get_field_index('id')
+          if id_index < 0: raise RuntimeError('items.parquet has no id column')
+          selected=[]
+          for batch in pf.iter_batches(batch_size=65536):
+              mask=pc.is_in(batch.column(id_index), value_set=values)
+              if pc.any(mask).as_py(): selected.append(batch.filter(mask))
+          if not selected: raise RuntimeError('no fixture items selected')
+          table=pa.Table.from_batches(selected, schema=pf.schema_arrow)
+          ids=table.column('id').to_pylist()
+          if len(ids)!=len(set(ids)): raise RuntimeError('duplicate ids in selected item table')
+          if set(ids)!=used:
+              missing=used-set(ids); extra=set(ids)-used
+              raise RuntimeError(f'item subset mismatch missing={len(missing)} extra={len(extra)}')
+          pq.write_table(table,out/'test_items.parquet',compression='zstd')
+
+          item_df=table.select(['id','category']).to_pandas()
+          catmap=dict(zip(item_df['id'].tolist(),item_df['category'].astype(str).tolist()))
+          labels=sample[['id1','id2','target']].copy().reset_index(drop=True)
+          labels.insert(0,'id',np.arange(len(labels),dtype=np.int64))
+          labels['category']=labels['id1'].map(catmap)
+          right=labels['id2'].map(catmap)
+          if labels['category'].isna().any() or right.isna().any(): raise RuntimeError('fixture category mapping missing')
+          if not np.array_equal(labels['category'].astype(str).to_numpy(),right.astype(str).to_numpy()):
+              raise RuntimeError('fixture contains cross-category pair')
+          labels.to_parquet(out/'labels.parquet',index=False)
+
+          def sha(path):
+              h=hashlib.sha256()
+              with open(path,'rb') as f:
+                  for chunk in iter(lambda:f.read(1024*1024),b''): h.update(chunk)
+              return h.hexdigest()
+          group_sizes=labels.groupby('id1',sort=False).size()
+          t=labels['target'].to_numpy(float); lo=int((t<.05).sum()); hi=int((t>.95).sum())
+          meta={
+              'diagnostic_only':True,
+              'selection_seed':seed,
+              'requested_max_rows':max_rows,
+              'rows':int(len(labels)),
+              'anchors':int(labels['id1'].nunique()),
+              'unique_items':int(len(used)),
+              'complete_anchor_groups':True,
+              'min_candidates_per_anchor':int(group_sizes.min()),
+              'mean_candidates_per_anchor':float(group_sizes.mean()),
+              'p99_candidates_per_anchor':float(group_sizes.quantile(.99)),
+              'max_candidates_per_anchor':int(group_sizes.max()),
+              'categories':sorted(labels['category'].astype(str).unique().tolist()),
+              'category_count':int(labels['category'].nunique()),
+              'extreme_negative_rows':lo,
+              'extreme_positive_rows':hi,
+              'extreme_pseudo_positive_fraction':float(hi/max(1,hi+lo)),
+              'true_test_prevalence_claimed':False,
+              'human_item_overlap':0,
+              'gold_opened':False,
+              'sha256':{p.name:sha(p) for p in [out/'test.parquet',out/'test_items.parquet',out/'labels.parquet']},
+          }
+          (out/'metadata.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2,sort_keys=True),encoding='utf-8')
+          print('V8_TESTLIKE_FIXTURE='+json.dumps(meta,ensure_ascii=False,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v8-testlike-fixture-50k
+          path: ${{ runner.temp }}/v8-testlike/fixture/
+          retention-days: 14

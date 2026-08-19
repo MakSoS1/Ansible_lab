@@ -1,0 +1,63 @@
+name: E-CUP v18 M1/MPS smoke
+
+on:
+  push:
+    branches: [ecup-v18-strengthening]
+    paths:
+      - v18_m1_smoke_job.json
+      - ecup_matching/ml/v18_*.py
+      - ecup_matching/ml/run_v18_*.py
+      - tests/test_v18_*.py
+      - .github/workflows/ecup-v18-m1-smoke.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecup-v18-m1-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Show Apple Silicon and install test stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          uname -m
+          python3 -VV
+          python3 -m pip install -q --upgrade pip
+          python3 -m pip install -q pytest pandas numpy pyarrow torch transformers scikit-learn
+      - name: Probe MPS capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, platform, torch
+          payload = {
+              'machine': platform.machine(),
+              'torch_version': torch.__version__,
+              'mps_built': bool(torch.backends.mps.is_built()),
+              'mps_available': bool(torch.backends.mps.is_available()),
+              'selected_device': 'mps' if torch.backends.mps.is_available() else 'cpu',
+          }
+          print('V18_M1_CAPABILITY=' + json.dumps(payload, sort_keys=True))
+          open('/tmp/v18-m1-capability.json','w').write(json.dumps(payload, indent=2, sort_keys=True)+'\n')
+          PY
+      - name: Compile v18 modules
+        run: python3 -m py_compile ecup_matching/ml/v18_*.py ecup_matching/ml/run_v18_*.py
+      - name: Run v18 tests
+        run: python3 -m pytest -q tests/test_v18_*.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        continue-on-error: true
+        with:
+          name: v18-m1-smoke-${{ github.run_id }}
+          path: /tmp/v18-m1-capability.json
+          retention-days: 7
+          if-no-files-found: warn

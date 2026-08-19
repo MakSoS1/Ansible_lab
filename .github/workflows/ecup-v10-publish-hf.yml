@@ -1,0 +1,196 @@
+name: E-CUP v10 publish fixed keeper to HF
+
+on:
+  push:
+    branches: [ecup-v10-distilled-fast]
+    paths:
+      - 'ecup_matching/experiments/v10/V10_HF_PUBLISH_REQUEST.json'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  HF_REPO_ID: Maksim123321/e-cup-2026-matching-private
+  HF_PREFIX: submissions/v10/final
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Read frozen fixed keeper request
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('ecup_matching/experiments/v10/V10_HF_PUBLISH_REQUEST.json')
+          r=json.loads(p.read_text())
+          required=('candidate_hf_path','filename','sha256','bytes','source_sha','platform_preflight_run_id','runtime_gate_run_id','public_115k_wall_seconds','private_275k_wall_seconds')
+          missing=[k for k in required if r.get(k) in (None,'')]
+          if missing: raise SystemExit(f'missing keeper request fields: {missing}')
+          if r.get('platform_preflight_passed') is not True: raise SystemExit('platform preflight is not frozen as passed')
+          if r.get('runtime_gate_passed') is not True: raise SystemExit('prior unchanged-payload runtime gate is not frozen as passed')
+          if r.get('executable_payload_identity_to_runtime_gated_archive') is not True: raise SystemExit('executable payload identity not proven')
+          if r.get('metadata_driven_launcher_smoke_passed') is not True: raise SystemExit('metadata launcher smoke not passed')
+          if r.get('teacher_checkpoint_packaged') is not False: raise SystemExit('teacher checkpoint contract violated')
+          if float(r['public_115k_wall_seconds']) >= 330: raise SystemExit('115k internal acceptance gate violated')
+          if float(r['private_275k_wall_seconds']) >= 700: raise SystemExit('275k internal acceptance gate violated')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              for key,env in [('candidate_hf_path','CANDIDATE_HF_PATH'),('filename','ARCHIVE_NAME'),('sha256','ARCHIVE_SHA'),('bytes','ARCHIVE_BYTES')]:
+                  f.write(f'{env}={r[key]}\n')
+          print(json.dumps(r,indent=2,sort_keys=True))
+          PY
+
+      - name: Require successful exact platform preflight run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id="$(python -c "import json; print(json.load(open('ecup_matching/experiments/v10/V10_HF_PUBLISH_REQUEST.json'))['platform_preflight_run_id'])")"
+          python - "$run_id" <<'PY'
+          import json, os, sys, urllib.request
+          run_id=sys.argv[1]
+          req=urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+              headers={'Authorization':f"Bearer {os.environ['GH_TOKEN']}",'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},
+          )
+          with urllib.request.urlopen(req) as r: data=json.load(r)
+          print('preflight_run',data['id'],data['status'],data['conclusion'],data['head_branch'])
+          if data['status']!='completed' or data['conclusion']!='success': raise SystemExit('platform preflight run is not successful')
+          if data['head_branch']!='ecup-v10-distilled-fast': raise SystemExit('platform preflight branch mismatch')
+          PY
+
+      - name: Download and verify exact candidate bytes from private HF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'huggingface_hub>=1.0,<2'
+          python - <<'PY'
+          import os, shutil
+          from huggingface_hub import hf_hub_download
+          src=hf_hub_download(repo_id=os.environ['HF_REPO_ID'],repo_type='dataset',filename=os.environ['CANDIDATE_HF_PATH'],token=os.environ['HF_TOKEN'])
+          dst=os.path.join(os.environ['RUNNER_TEMP'],os.environ['ARCHIVE_NAME'])
+          shutil.copyfile(src,dst)
+          print('candidate_local',dst)
+          PY
+          test "$(stat -c '%s' "$RUNNER_TEMP/$ARCHIVE_NAME")" = "$ARCHIVE_BYTES"
+          test "$(sha256sum "$RUNNER_TEMP/$ARCHIVE_NAME" | awk '{print $1}')" = "$ARCHIVE_SHA"
+          python - "$RUNNER_TEMP/$ARCHIVE_NAME" <<'PY'
+          import json,stat,sys,zipfile
+          from pathlib import PurePosixPath
+          z=sys.argv[1]
+          expected={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+          with zipfile.ZipFile(z) as a:
+              assert a.testzip() is None
+              names=a.namelist(); assert len(names)==len(set(names))
+              assert {'metadata.json','run.py','NO_TEACHER_KEEPER.json'} <= set(names)
+              assert json.loads(a.read('metadata.json'))==expected
+              assert not any(n.startswith('model_v5_teacher/') for n in names)
+              for info in a.infolist():
+                  p=PurePosixPath(info.filename)
+                  assert not p.is_absolute() and '..' not in p.parts and '\\' not in info.filename
+                  assert not stat.S_ISLNK((info.external_attr>>16)&0xffff)
+          print('exact_fixed_archive_contract_ok')
+          PY
+
+      - name: Build final HF keeper manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('ecup_matching/experiments/v10/V10_HF_PUBLISH_REQUEST.json').read_text())
+          keeper={
+            'version':'v10',
+            'status':'completed',
+            'candidate':'no_teacher+frozen_graph',
+            'filename':r['filename'],
+            'bytes':int(r['bytes']),
+            'sha256':r['sha256'],
+            'source_sha':r['source_sha'],
+            'candidate_hf_path':r['candidate_hf_path'],
+            'strict_raw_oof_macro_ap':0.5931387077244183,
+            'strict_graph_oof_macro_ap':0.5950413762943735,
+            'target_stress_graph_mean':0.44961526826354,
+            'teacher_checkpoint_packaged':False,
+            'cpu_gpu_overlap':True,
+            'contrastive_only_text_cache':True,
+            'platform_contract':{'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'},
+            'platform_preflight_run_id':int(r['platform_preflight_run_id']),
+            'metadata_driven_launcher_smoke_passed':True,
+            'executable_payload_identity_to_runtime_gated_archive':True,
+            'runtime_gate_run_id':int(r['runtime_gate_run_id']),
+            'runtime_evidence_inherited_only_for_byte_identical_executable_payload':True,
+            'public_115k_wall_seconds':float(r['public_115k_wall_seconds']),
+            'private_275k_wall_seconds':float(r['private_275k_wall_seconds']),
+            'public_115k_internal_acceptance_seconds':330.0,
+            'private_275k_internal_acceptance_seconds':700.0,
+            'organizer_nominal_public_seconds':360.0,
+            'organizer_nominal_private_seconds':780.0,
+            'gpu':'NVIDIA GeForce RTX 2060 SUPER',
+            'gpu_regate_note':'A fresh private-HF GPU re-gate was attempted but the private gpu-dispatch repository lacks HF_TOKEN; no inference ran in that attempt.',
+            'sealed_gold_opened':False,
+            'sealed_gold_rows_scored':0,
+            'leaderboard_score':None,
+            'leaderboard_score_claimed':False,
+          }
+          Path('/tmp/V10_KEEPER.json').write_text(json.dumps(keeper,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(keeper,indent=2,sort_keys=True))
+          PY
+
+      - name: Replace canonical keeper and manifest on private HF dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from huggingface_hub import CommitOperationAdd, HfApi
+          api=HfApi(token=os.environ['HF_TOKEN']); repo=os.environ['HF_REPO_ID']; prefix=os.environ['HF_PREFIX']
+          archive=os.path.join(os.environ['RUNNER_TEMP'],os.environ['ARCHIVE_NAME'])
+          ops=[
+              CommitOperationAdd(path_in_repo=f"{prefix}/{os.environ['ARCHIVE_NAME']}",path_or_fileobj=archive),
+              CommitOperationAdd(path_in_repo=f'{prefix}/V10_KEEPER.json',path_or_fileobj='/tmp/V10_KEEPER.json'),
+          ]
+          info=api.create_commit(repo_id=repo,repo_type='dataset',operations=ops,commit_message='v10: replace broken package with metadata-correct keeper')
+          print('hf_commit',info.oid)
+          PY
+
+      - name: Re-download canonical HF bytes and prove replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/canonical.zip"
+          python - <<'PY'
+          import json, os, shutil, zipfile
+          from huggingface_hub import HfApi, hf_hub_download
+          repo=os.environ['HF_REPO_ID']; token=os.environ['HF_TOKEN']; prefix=os.environ['HF_PREFIX']; name=os.environ['ARCHIVE_NAME']
+          files=set(HfApi(token=token).list_repo_files(repo_id=repo,repo_type='dataset'))
+          required={f'{prefix}/{name}',f'{prefix}/V10_KEEPER.json'}
+          missing=required-files
+          if missing: raise SystemExit(f'HF relist failed: {sorted(missing)}')
+          src=hf_hub_download(repo_id=repo,repo_type='dataset',filename=f'{prefix}/{name}',token=token,force_download=True)
+          dst=os.path.join(os.environ['RUNNER_TEMP'],'canonical.zip'); shutil.copyfile(src,dst)
+          with zipfile.ZipFile(dst) as z:
+              metadata=json.loads(z.read('metadata.json'))
+              assert metadata=={'image':'odsai/ecup26-matching-baseline:1.0','entry_point':'python -u run.py'}
+          print('canonical_hf_metadata_ok',metadata)
+          PY
+          test "$(stat -c '%s' "$RUNNER_TEMP/canonical.zip")" = "$ARCHIVE_BYTES"
+          observed="$(sha256sum "$RUNNER_TEMP/canonical.zip" | awk '{print $1}')"
+          echo "canonical_hf_sha256=$observed"
+          test "$observed" = "$ARCHIVE_SHA"
+          echo 'HF_CANONICAL_REPLACEMENT_VERIFIED'
