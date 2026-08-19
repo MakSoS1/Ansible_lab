@@ -184,22 +184,22 @@ def score_pair(
     coverage = float(len(got) / len(joined)) if len(joined) else 0.0
     throughput = min(float(first_report.get("rows_per_second", 0.0)), float(second_report.get("rows_per_second", 0.0)))
 
+    first_name = str(first_report.get("model_id", ""))
+    second_name = str(second_report.get("model_id", ""))
     failed: list[str] = []
     if not bool(first_report.get("eligible")) or not bool(second_report.get("eligible")):
         failed.append("teacher_eligibility")
     if str(first_report.get("family", "")) == str(second_report.get("family", "")):
         failed.append("independent_family")
-    if (
-        str(first_report.get("model_id", "")) == str(second_report.get("model_id", ""))
-        and str(first_report.get("revision", "")) == str(second_report.get("revision", ""))
-    ):
+    if first_name == second_name and str(first_report.get("revision", "")) == str(second_report.get("revision", "")):
         failed.append("independent_revision")
     if len(got) == 0:
         failed.append("consensus_coverage")
 
     return {
-        "version": "v20-teacher-pair-score-v1",
-        "teacher_models": [str(first_report.get("model_id", "")), str(second_report.get("model_id", ""))],
+        "version": "v20-teacher-pair-score-v2",
+        "teachers": [first_name, second_name],
+        "teacher_models": [first_name, second_name],
         "teacher_revisions": [str(first_report.get("revision", "")), str(second_report.get("revision", ""))],
         "teacher_families": [str(first_report.get("family", "")), str(second_report.get("family", ""))],
         "consensus_precision": float(overall["precision"] or 0.0),
