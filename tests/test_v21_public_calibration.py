@@ -68,3 +68,5 @@ def test_calibration_rejects_nonfinite_or_nonpositive_anchor_gap() -> None:
         calibrate_candidate_public_lb(anchors, candidate_proxy=0.9)
     with pytest.raises(ValueError):
         calibrate_candidate_public_lb(_anchors(), candidate_proxy=float("nan"))
+
+# Synchronization marker: v21 PR preflight registered on default branch.
