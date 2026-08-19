@@ -13,7 +13,7 @@ from ecup_matching.ml.v20_teacher_backend import (
 def test_http_backend_requires_loopback_endpoint():
     spec = TeacherBackendSpec(
         name="qwen35-q4",
-        family="qwen35",
+        family="qwen",
         model_id="Qwen/Qwen3.5-4B",
         revision="a" * 40,
         backend="openai-http",
@@ -56,10 +56,10 @@ def test_transformers_backend_rejects_quantized_file_fields():
         validate_backend_spec(spec)
 
 
-def test_openai_request_is_deterministic_and_json_constrained():
+def test_openai_request_is_deterministic_json_constrained_and_nonthinking():
     spec = TeacherBackendSpec(
         name="qwen35-q4",
-        family="qwen35",
+        family="qwen",
         model_id="Qwen/Qwen3.5-4B",
         revision="d" * 40,
         backend="openai-http",
@@ -80,6 +80,8 @@ def test_openai_request_is_deterministic_and_json_constrained():
     assert payload["seed"] == 2026
     assert payload["max_tokens"] == 128
     assert payload["response_format"]["type"] == "json_object"
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["reasoning_effort"] == "none"
     assert payload["messages"] == [
         {"role": "system", "content": "SYSTEM"},
         {"role": "user", "content": "USER"},
@@ -94,7 +96,7 @@ def test_extract_openai_text_reads_chat_completion_shape():
 def test_revision_and_file_hash_must_be_exact():
     spec = TeacherBackendSpec(
         name="qwen",
-        family="qwen35",
+        family="qwen",
         model_id="Qwen/Qwen3.5-4B",
         revision="main",
         backend="openai-http",
