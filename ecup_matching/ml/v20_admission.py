@@ -4,7 +4,6 @@ import hashlib
 import math
 from typing import Iterable
 
-import numpy as np
 import pandas as pd
 
 from .v20_policy import V20Policy
@@ -169,22 +168,25 @@ def build_hierarchical_policy(
         floor = policy.positive_precision_lcb if pred_value == 1 else policy.negative_precision_lcb
         labels[str(pred_value)] = _supported_precision_record(group, floor=floor, min_support=min_support)
 
-    reasons: dict[str, dict[str, object]] = {}
+    # Canonical semantic gate: reason x predicted label. A semantic reason can
+    # legitimately contain both MATCH and NON_MATCH decisions; each decision
+    # direction must prove its own precision instead of invalidating the whole reason.
+    reason_labels: dict[str, dict[str, dict[str, object]]] = {}
+    reason_diagnostics: dict[str, dict[str, object]] = {}
     for reason, group in work.groupby(work["reason_code"].astype(str), sort=True):
-        predicted = sorted(set(group["pred"].astype(int)))
-        if len(predicted) != 1:
-            rec = _supported_precision_record(
-                group,
-                floor=max(policy.positive_precision_lcb, policy.negative_precision_lcb),
-                min_support=min_support,
+        by_label: dict[str, dict[str, object]] = {}
+        for pred_value in (0, 1):
+            pred_group = group.loc[group["pred"].astype(int) == pred_value]
+            floor = policy.positive_precision_lcb if pred_value == 1 else policy.negative_precision_lcb
+            by_label[str(pred_value)] = _supported_precision_record(
+                pred_group, floor=floor, min_support=min_support
             )
-            rec["mixed_predicted_labels"] = True
-            rec["pass"] = False
-        else:
-            floor = policy.positive_precision_lcb if predicted[0] == 1 else policy.negative_precision_lcb
-            rec = _supported_precision_record(group, floor=floor, min_support=min_support)
-            rec["mixed_predicted_labels"] = False
-        reasons[str(reason)] = rec
+        reason_labels[str(reason)] = by_label
+        reason_diagnostics[str(reason)] = {
+            "support": int(len(group)),
+            "passing_labels": [label for label, rec in by_label.items() if bool(rec.get("pass"))],
+            "pass_any_label": any(bool(rec.get("pass")) for rec in by_label.values()),
+        }
 
     categories: dict[str, dict[str, object]] = {}
     for category, group in work.groupby(work["category"].astype(str), sort=True):
@@ -198,10 +200,11 @@ def build_hierarchical_policy(
     )
 
     return {
-        "version": "v20-hierarchical-admission-v1",
+        "version": "v20-hierarchical-admission-v2",
         "policy": policy.__dict__,
         "predicted_labels": labels,
-        "reasons": reasons,
+        "reason_labels": reason_labels,
+        "reason_diagnostics": reason_diagnostics,
         "categories": categories,
         "critical_family": critical_record,
         "audit_rows": int(len(work)),
@@ -212,6 +215,28 @@ def _row_value(row: object, name: str, default=None):
     if isinstance(row, dict):
         return row.get(name, default)
     return getattr(row, name, default)
+
+
+def _reason_label_record(
+    report: dict[str, object], reason: str, pred: str
+) -> dict[str, object]:
+    version = str(report.get("version", ""))
+    if version == "v20-hierarchical-admission-v2":
+        return dict(dict(dict(report.get("reason_labels") or {}).get(reason) or {}).get(pred) or {})
+    # Read-only compatibility for earlier evidence. New policies are never emitted in v1.
+    if version == "v20-hierarchical-admission-v1":
+        return dict(dict(report.get("reasons") or {}).get(reason) or {})
+    return {}
+
+
+def reason_has_any_passing_label(reason: str, report: dict[str, object]) -> bool:
+    version = str(report.get("version", ""))
+    if version == "v20-hierarchical-admission-v2":
+        buckets = dict(dict(report.get("reason_labels") or {}).get(reason) or {})
+        return any(bool(dict(rec).get("pass", False)) for rec in buckets.values())
+    if version == "v20-hierarchical-admission-v1":
+        return bool(dict(dict(report.get("reasons") or {}).get(reason) or {}).get("pass", False))
+    return False
 
 
 def row_passes_hierarchical_policy(
@@ -226,11 +251,10 @@ def row_passes_hierarchical_policy(
     category = str(_row_value(row, "category", ""))
 
     labels = dict(policy_report.get("predicted_labels") or {})
-    reasons = dict(policy_report.get("reasons") or {})
     categories = dict(policy_report.get("categories") or {})
     if not bool(dict(labels.get(pred) or {}).get("pass", False)):
         return False
-    if not bool(dict(reasons.get(reason) or {}).get("pass", False)):
+    if not bool(_reason_label_record(policy_report, reason, pred).get("pass", False)):
         return False
     if not bool(dict(categories.get(category) or {}).get("pass", False)):
         return False
@@ -254,7 +278,7 @@ def hierarchical_reliability(
     category = str(_row_value(row, "category", ""))
     records = [
         dict(dict(policy_report.get("predicted_labels") or {}).get(pred) or {}),
-        dict(dict(policy_report.get("reasons") or {}).get(reason) or {}),
+        _reason_label_record(policy_report, reason, pred),
         dict(dict(policy_report.get("categories") or {}).get(category) or {}),
     ]
     if reason in CRITICAL_REASONS:
@@ -331,6 +355,7 @@ __all__ = [
     "wilson_lower_bound",
     "build_fold_safe_audit_split",
     "build_hierarchical_policy",
+    "reason_has_any_passing_label",
     "row_passes_hierarchical_policy",
     "hierarchical_reliability",
     "admit_strata",
