@@ -1,4 +1,4 @@
-"""D3/D4: combine two teacher logs, calibrate on human truth, then admit only approved generated strata."""
+"""D3/D4: calibrate two-teacher consensus on human truth, then hierarchically admit generated labels."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .v20_admission import admit_strata
+from .v20_admission import admit_strata, build_hierarchical_policy, hierarchical_reliability
 from .v20_policy import V20Policy, policy_sha256
 from .v20_teacher import TeacherDecision, consensus_label
 
@@ -37,7 +37,10 @@ def _consensus_frame(pairs: pd.DataFrame, first: dict, second: dict) -> tuple[pd
     review = []
     for row in pairs.itertuples(index=False):
         key = (int(row.id1), int(row.id2))
-        result = consensus_label(first.get(key), second.get(key), deterministic_reason=str(getattr(row, "reason_code", "OTHER")))
+        result = consensus_label(
+            first.get(key), second.get(key),
+            deterministic_reason=str(getattr(row, "reason_code", "OTHER")),
+        )
         base = {
             "id1": key[0], "id2": key[1],
             "category": str(getattr(row, "category", "")),
@@ -72,9 +75,12 @@ def run_audit(*, pairs_path: Path, teacher1: Path, teacher2: Path, output_dir: P
     else:
         audit_rows = pd.DataFrame(columns=["stratum", "category", "reason_code", "truth", "pred"])
     policy = V20Policy()
-    admission = admit_strata(audit_rows, policy)
+    legacy = admit_strata(audit_rows, policy)
+    hierarchical = build_hierarchical_policy(audit_rows, policy)
+    admission = dict(legacy)
     admission.update({
-        "version": "v20-admission-policy-v1",
+        "version": "v20-admission-policy-v2",
+        "hierarchical": hierarchical,
         "policy_sha256": policy_sha256(policy),
         "teacher1_manifest": str(teacher1.with_suffix(".manifest.json")),
         "teacher2_manifest": str(teacher2.with_suffix(".manifest.json")),
@@ -83,16 +89,11 @@ def run_audit(*, pairs_path: Path, teacher1: Path, teacher2: Path, output_dir: P
     })
     accepted.to_parquet(output_dir / "human-consensus.parquet", index=False)
     review.to_parquet(output_dir / "human-active-review.parquet", index=False)
-    (output_dir / "admission-policy.json").write_text(json.dumps(admission, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    (output_dir / "admission-policy.json").write_text(
+        json.dumps(admission, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return admission
-
-
-def _stratum_reliability(entry: dict[str, object], target: int) -> float:
-    by_label = dict(entry.get("by_predicted_label") or {})
-    rec = by_label.get(str(int(target)))
-    if not rec:
-        return 0.0
-    return float(rec.get("lcb", 0.0))
 
 
 def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admission_path: Path, output_dir: Path) -> dict[str, object]:
@@ -101,15 +102,13 @@ def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admissio
     first, second = _read_jsonl(teacher1), _read_jsonl(teacher2)
     accepted, review = _consensus_frame(pairs, first, second)
     policy = json.loads(admission_path.read_text(encoding="utf-8"))
-    admitted_map = dict(policy.get("strata") or {})
+    hierarchical = dict(policy.get("hierarchical") or {})
+    if hierarchical.get("version") != "v20-hierarchical-admission-v1":
+        raise RuntimeError("v20.1 candidates require hierarchical admission policy")
     rows = []
     rejected_policy = 0
     for row in accepted.itertuples(index=False):
-        entry = admitted_map.get(str(row.stratum), {})
-        if not bool(entry.get("admitted", False)):
-            rejected_policy += 1
-            continue
-        reliability = _stratum_reliability(entry, int(row.target))
+        reliability = hierarchical_reliability(row, hierarchical)
         if reliability <= 0:
             rejected_policy += 1
             continue
@@ -118,7 +117,7 @@ def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admissio
             "category": str(row.category), "stratum": str(row.stratum),
             "reason_code": str(row.reason_code), "admitted": True,
             "stratum_reliability": reliability,
-            "label_origin": "two_teacher_human_calibrated",
+            "label_origin": "two_teacher_hierarchical_calibrated",
             "teacher_ids": json.dumps(row.teacher_ids),
             "teacher_revisions": json.dumps(row.teacher_revisions),
             "prompt_sha256": json.dumps(row.prompt_sha256),
@@ -131,12 +130,14 @@ def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admissio
     admitted.to_parquet(output_dir / "admitted_labels.parquet", index=False)
     review.to_parquet(output_dir / "active_review.parquet", index=False)
     report = {
-        "version": "v20-generated-admission-v1", "candidate_rows": int(len(pairs)),
+        "version": "v20-generated-admission-v2", "candidate_rows": int(len(pairs)),
         "teacher_consensus_rows": int(len(accepted)), "admitted_rows": int(len(admitted)),
         "policy_rejected_rows": int(rejected_policy), "teacher_review_rows": int(len(review)),
         "admission_policy_sha256": policy.get("policy_sha256"), "sealed_gold_opened": False,
     }
-    (output_dir / "generated-admission.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    (output_dir / "generated-admission.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return report
 
 
@@ -155,8 +156,10 @@ def main() -> int:
     if a.mode == "audit":
         run_audit(pairs_path=a.pairs, teacher1=a.teacher1, teacher2=a.teacher2, output_dir=a.output_dir)
     else:
-        run_candidates(pairs_path=a.pairs, teacher1=a.teacher1, teacher2=a.teacher2,
-                       admission_path=a.admission_policy, output_dir=a.output_dir)
+        run_candidates(
+            pairs_path=a.pairs, teacher1=a.teacher1, teacher2=a.teacher2,
+            admission_path=a.admission_policy, output_dir=a.output_dir,
+        )
     return 0
 
 
