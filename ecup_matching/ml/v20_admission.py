@@ -155,12 +155,6 @@ def build_hierarchical_policy(
     audit_rows: pd.DataFrame,
     policy: V20Policy | None = None,
 ) -> dict[str, object]:
-    """Calibrate teacher consensus at the reliability levels actually reused for candidates.
-
-    Unlike the legacy fine-stratum gate, this pools evidence by predicted label,
-    teacher reason, category and the critical-conflict family. Wilson floors are
-    unchanged; only support fragmentation is removed.
-    """
     policy = policy or V20Policy()
     required = {"truth", "pred", "reason_code", "category"}
     if not required.issubset(audit_rows.columns):
@@ -173,16 +167,15 @@ def build_hierarchical_policy(
     for pred_value in (0, 1):
         group = work.loc[work["pred"].astype(int) == pred_value]
         floor = policy.positive_precision_lcb if pred_value == 1 else policy.negative_precision_lcb
-        labels[str(pred_value)] = _supported_precision_record(
-            group, floor=floor, min_support=min_support
-        )
+        labels[str(pred_value)] = _supported_precision_record(group, floor=floor, min_support=min_support)
 
     reasons: dict[str, dict[str, object]] = {}
     for reason, group in work.groupby(work["reason_code"].astype(str), sort=True):
         predicted = sorted(set(group["pred"].astype(int)))
         if len(predicted) != 1:
             rec = _supported_precision_record(
-                group, floor=max(policy.positive_precision_lcb, policy.negative_precision_lcb),
+                group,
+                floor=max(policy.positive_precision_lcb, policy.negative_precision_lcb),
                 min_support=min_support,
             )
             rec["mixed_predicted_labels"] = True
@@ -215,21 +208,22 @@ def build_hierarchical_policy(
     }
 
 
+def _row_value(row: object, name: str, default=None):
+    if isinstance(row, dict):
+        return row.get(name, default)
+    return getattr(row, name, default)
+
+
 def row_passes_hierarchical_policy(
     row: object,
     policy_report: dict[str, object],
 ) -> bool:
-    def value(name: str, default=None):
-        if isinstance(row, dict):
-            return row.get(name, default)
-        return getattr(row, name, default)
-
     try:
-        pred = str(int(value("pred", value("target"))))
+        pred = str(int(_row_value(row, "pred", _row_value(row, "target"))))
     except (TypeError, ValueError):
         return False
-    reason = str(value("reason_code", ""))
-    category = str(value("category", ""))
+    reason = str(_row_value(row, "reason_code", ""))
+    category = str(_row_value(row, "category", ""))
 
     labels = dict(policy_report.get("predicted_labels") or {})
     reasons = dict(policy_report.get("reasons") or {})
@@ -244,6 +238,29 @@ def row_passes_hierarchical_policy(
         if not bool(dict(policy_report.get("critical_family") or {}).get("pass", False)):
             return False
     return True
+
+
+def hierarchical_reliability(
+    row: object,
+    policy_report: dict[str, object],
+) -> float:
+    if not row_passes_hierarchical_policy(row, policy_report):
+        return 0.0
+    try:
+        pred = str(int(_row_value(row, "pred", _row_value(row, "target"))))
+    except (TypeError, ValueError):
+        return 0.0
+    reason = str(_row_value(row, "reason_code", ""))
+    category = str(_row_value(row, "category", ""))
+    records = [
+        dict(dict(policy_report.get("predicted_labels") or {}).get(pred) or {}),
+        dict(dict(policy_report.get("reasons") or {}).get(reason) or {}),
+        dict(dict(policy_report.get("categories") or {}).get(category) or {}),
+    ]
+    if reason in CRITICAL_REASONS:
+        records.append(dict(policy_report.get("critical_family") or {}))
+    lcbs = [float(record.get("lcb", 0.0)) for record in records]
+    return float(min(lcbs)) if lcbs else 0.0
 
 
 def admit_strata(audit_rows: pd.DataFrame, policy: V20Policy | None = None) -> dict[str, object]:
@@ -315,5 +332,6 @@ __all__ = [
     "build_fold_safe_audit_split",
     "build_hierarchical_policy",
     "row_passes_hierarchical_policy",
+    "hierarchical_reliability",
     "admit_strata",
 ]
