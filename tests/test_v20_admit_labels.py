@@ -73,9 +73,17 @@ def test_candidates_use_hierarchical_reliability_not_legacy_stratum_gate(tmp_pat
         "version": "v20-admission-policy-v2",
         "policy_sha256": "d" * 64,
         "hierarchical": {
-            "version": "v20-hierarchical-admission-v1",
+            "version": "v20-hierarchical-admission-v2",
             "predicted_labels": {"0": {"pass": True, "lcb": 0.996}},
-            "reasons": {"MODEL_CONFLICT": {"pass": True, "lcb": 0.997}},
+            "reason_labels": {
+                "MODEL_CONFLICT": {
+                    "0": {"pass": True, "lcb": 0.997},
+                    "1": {"pass": False, "lcb": 0.0},
+                }
+            },
+            "reason_diagnostics": {
+                "MODEL_CONFLICT": {"support": 1, "passing_labels": ["0"], "pass_any_label": True}
+            },
             "categories": {"x": {"pass": True, "lcb": 0.980}},
             "critical_family": {"pass": True, "lcb": 0.960},
         },
