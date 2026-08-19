@@ -7,22 +7,24 @@ from pathlib import Path
 
 import pandas as pd
 
-from .v20_admission import CRITICAL_REASONS
+from .v20_admission import CRITICAL_REASONS, reason_has_any_passing_label
 
 
 def _hierarchical(policy: dict[str, object]) -> dict[str, object]:
     report = dict(policy.get("hierarchical") or {})
-    if report.get("version") != "v20-hierarchical-admission-v1":
-        raise ValueError("candidate queue requires v20.1 hierarchical policy")
+    if report.get("version") not in {"v20-hierarchical-admission-v1", "v20-hierarchical-admission-v2"}:
+        raise ValueError("candidate queue requires a supported v20 hierarchical policy")
     return report
 
 
 def _preinference_pass(row: object, report: dict[str, object]) -> bool:
     reason = str(getattr(row, "reason_code"))
     category = str(getattr(row, "category"))
-    reasons = dict(report.get("reasons") or {})
     categories = dict(report.get("categories") or {})
-    if not bool(dict(reasons.get(reason) or {}).get("pass", False)):
+    # Candidate rows are target-free at this stage. Keep a reason if at least
+    # one calibrated predicted-label bucket can be trusted; exact reason×label
+    # admission happens only after teacher consensus produces a prediction.
+    if not reason_has_any_passing_label(reason, report):
         return False
     if not bool(dict(categories.get(category) or {}).get("pass", False)):
         return False
@@ -57,7 +59,7 @@ def filter_candidate_queue(
         keep.append(all(passed))
     out = candidates.loc[keep].copy().reset_index(drop=True)
     report = {
-        "version": "v20-staged-candidate-queue-v1",
+        "version": "v20-staged-candidate-queue-v2",
         "input_rows": int(len(candidates)),
         "output_rows": int(len(out)),
         "rejected_rows": int(len(candidates) - len(out)),
