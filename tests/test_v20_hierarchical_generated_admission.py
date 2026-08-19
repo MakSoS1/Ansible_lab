@@ -22,10 +22,11 @@ def _audit() -> pd.DataFrame:
 def test_candidate_reliability_is_minimum_of_all_applicable_gates():
     report = build_hierarchical_policy(_audit(), V20Policy())
     row = {"target": 0, "reason_code": "MODEL_CONFLICT", "category": "phones"}
+    assert report["version"] == "v20-hierarchical-admission-v2"
     assert row_passes_hierarchical_policy(row, report) is True
     expected = min(
         report["predicted_labels"]["0"]["lcb"],
-        report["reasons"]["MODEL_CONFLICT"]["lcb"],
+        report["reason_labels"]["MODEL_CONFLICT"]["0"]["lcb"],
         report["categories"]["phones"]["lcb"],
         report["critical_family"]["lcb"],
     )
@@ -35,9 +36,11 @@ def test_candidate_reliability_is_minimum_of_all_applicable_gates():
 def test_reliability_is_zero_when_any_gate_fails():
     report = build_hierarchical_policy(_audit(), V20Policy())
     broken = dict(report)
-    broken["reasons"] = dict(report["reasons"])
-    broken["reasons"]["MODEL_CONFLICT"] = dict(report["reasons"]["MODEL_CONFLICT"])
-    broken["reasons"]["MODEL_CONFLICT"]["pass"] = False
+    broken["reason_labels"] = {
+        key: {label: dict(rec) for label, rec in by_label.items()}
+        for key, by_label in report["reason_labels"].items()
+    }
+    broken["reason_labels"]["MODEL_CONFLICT"]["0"]["pass"] = False
     row = {"target": 0, "reason_code": "MODEL_CONFLICT", "category": "phones"}
     assert hierarchical_reliability(row, broken) == 0.0
 
