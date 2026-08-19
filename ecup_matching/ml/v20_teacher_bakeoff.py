@@ -91,6 +91,7 @@ def score_teacher(
     coverage = float(covered.sum() / total) if total else 0.0
     peak_vram = float(runtime_manifest.get("peak_vram_gib", float("inf")))
     rows_per_second = float(runtime_manifest.get("rows_per_second", 0.0))
+    revision = str(runtime_manifest.get("revision") or runtime_manifest.get("resolved_revision") or "")
 
     failed: list[str] = []
     if json_valid_rate + 1e-15 < TEACHER_JSON_VALID_MIN:
@@ -109,7 +110,7 @@ def score_teacher(
     return {
         "version": "v20-teacher-score-v1",
         "model_id": str(runtime_manifest.get("model_id", "")),
-        "revision": str(runtime_manifest.get("revision", "")),
+        "revision": revision,
         "family": str(runtime_manifest.get("family", "")),
         "backend": str(runtime_manifest.get("backend", "")),
         "quantization": str(runtime_manifest.get("quantization", "")),
