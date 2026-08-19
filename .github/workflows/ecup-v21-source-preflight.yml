@@ -28,7 +28,7 @@ jobs:
           PY
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: f4a6f0473109a0e777bf1a46b08df0c4389ff522
+          ref: 17a97e5828a53560c8037ce7c1e2924391fd075f
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
