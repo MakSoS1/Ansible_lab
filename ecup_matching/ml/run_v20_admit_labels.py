@@ -79,7 +79,7 @@ def run_audit(*, pairs_path: Path, teacher1: Path, teacher2: Path, output_dir: P
     hierarchical = build_hierarchical_policy(audit_rows, policy)
     admission = dict(legacy)
     admission.update({
-        "version": "v20-admission-policy-v2",
+        "version": "v20-admission-policy-v3",
         "hierarchical": hierarchical,
         "policy_sha256": policy_sha256(policy),
         "teacher1_manifest": str(teacher1.with_suffix(".manifest.json")),
@@ -103,8 +103,8 @@ def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admissio
     accepted, review = _consensus_frame(pairs, first, second)
     policy = json.loads(admission_path.read_text(encoding="utf-8"))
     hierarchical = dict(policy.get("hierarchical") or {})
-    if hierarchical.get("version") != "v20-hierarchical-admission-v1":
-        raise RuntimeError("v20.1 candidates require hierarchical admission policy")
+    if hierarchical.get("version") != "v20-hierarchical-admission-v2":
+        raise RuntimeError("v20.3 candidates require hierarchical admission policy v2")
     rows = []
     rejected_policy = 0
     for row in accepted.itertuples(index=False):
@@ -117,7 +117,7 @@ def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admissio
             "category": str(row.category), "stratum": str(row.stratum),
             "reason_code": str(row.reason_code), "admitted": True,
             "stratum_reliability": reliability,
-            "label_origin": "two_teacher_hierarchical_calibrated",
+            "label_origin": "two_teacher_hierarchical_calibrated_v2",
             "teacher_ids": json.dumps(row.teacher_ids),
             "teacher_revisions": json.dumps(row.teacher_revisions),
             "prompt_sha256": json.dumps(row.prompt_sha256),
@@ -130,7 +130,7 @@ def run_candidates(*, pairs_path: Path, teacher1: Path, teacher2: Path, admissio
     admitted.to_parquet(output_dir / "admitted_labels.parquet", index=False)
     review.to_parquet(output_dir / "active_review.parquet", index=False)
     report = {
-        "version": "v20-generated-admission-v2", "candidate_rows": int(len(pairs)),
+        "version": "v20-generated-admission-v3", "candidate_rows": int(len(pairs)),
         "teacher_consensus_rows": int(len(accepted)), "admitted_rows": int(len(admitted)),
         "policy_rejected_rows": int(rejected_policy), "teacher_review_rows": int(len(review)),
         "admission_policy_sha256": policy.get("policy_sha256"), "sealed_gold_opened": False,
