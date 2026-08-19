@@ -6,7 +6,7 @@ from ecup_matching.ml.run_v20_teacher_label import SYSTEM_RU, build_arg_parser
 def test_teacher_prompt_is_russian_but_keeps_machine_schema_keys():
     lower = SYSTEM_RU.lower()
     assert "товар" in lower
-    assert "один и тот же" in lower
+    assert "одним и тем же" in lower
     assert "verdict" in SYSTEM_RU
     assert "reason_code" in SYSTEM_RU
     assert "UNCERTAIN" in SYSTEM_RU
