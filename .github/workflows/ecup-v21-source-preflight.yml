@@ -43,6 +43,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           python3 - <<'PY'
           import json,os,urllib.request
@@ -52,6 +53,3 @@ jobs:
           req=urllib.request.Request(f'https://api.github.com/repos/{repo}/statuses/{sha}',data=payload,method='POST',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'ecup-v21-preflight'})
           urllib.request.urlopen(req,timeout=30).read()
           PY
-        env:
-          GH_TOKEN: ${{ github.token }}
-          JOB_STATUS: ${{ job.status }}
