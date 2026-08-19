@@ -102,4 +102,4 @@ def test_candidates_use_hierarchical_reliability_not_legacy_stratum_gate(tmp_pat
     admitted = pd.read_parquet(tmp_path / "admitted" / "admitted_labels.parquet")
     assert admitted.iloc[0]["target"] == 0
     assert admitted.iloc[0]["stratum_reliability"] == 0.960
-    assert admitted.iloc[0]["label_origin"] == "two_teacher_hierarchical_calibrated"
+    assert admitted.iloc[0]["label_origin"] == "two_teacher_hierarchical_calibrated_v2"
