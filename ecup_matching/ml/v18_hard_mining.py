@@ -57,6 +57,13 @@ def select_disagreement_hard_examples(
     work["_hard_prediction"] = pred
     work["_stable_row"] = np.arange(len(work), dtype=np.int64)
 
+    # Tiny deterministic jitter breaks exact disagreement ties while retaining
+    # a reproducible order for the same seed. It must exist before groupby:
+    # pandas materializes the grouped frames, so columns added later are absent
+    # from those group frames and cannot be used by sort_values.
+    rng = np.random.default_rng(int(seed))
+    work["_tie"] = rng.random(len(work)) * 1e-12
+
     take_total = min(int(max_rows), len(work))
     hard_budget = min(take_total, max(1, int(math.ceil(take_total * 0.5))))
     broad_budget = take_total - hard_budget
@@ -64,11 +71,6 @@ def select_disagreement_hard_examples(
     hard_quota = max(1, int(math.ceil(hard_budget / max(1, len(groups)))))
     selected_indices: list[int] = []
     selected_set: set[int] = set()
-
-    # Tiny deterministic jitter breaks exact disagreement ties while retaining
-    # a reproducible order for the same seed.
-    rng = np.random.default_rng(int(seed))
-    work["_tie"] = rng.random(len(work)) * 1e-12
 
     # Part 1: model-disagreement examples, approximately category/class balanced.
     for _, group in groups:
