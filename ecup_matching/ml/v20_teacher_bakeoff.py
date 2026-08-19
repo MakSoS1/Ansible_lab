@@ -169,9 +169,12 @@ def score_pair(
         & pred_a.isin([0, 1])
         & pred_b.isin([0, 1])
     )
-    consensus = valid & (pred_a == pred_b) & (
-        joined["reason_a"].fillna("").astype(str) == joined["reason_b"].fillna("").astype(str)
-    )
+    reason_a = joined["reason_a"].fillna("").astype(str)
+    reason_b = joined["reason_b"].fillna("").astype(str)
+    deterministic_reason = joined["reason_code"].fillna("").astype(str)
+    reason_agreement = reason_a == reason_b
+    checker_compatible = deterministic_reason.isin(["OTHER", "SPARSE_EVIDENCE"]) | (reason_a == deterministic_reason)
+    consensus = valid & (pred_a == pred_b) & reason_agreement & checker_compatible
     got = joined.loc[consensus].copy()
     got["pred"] = pred_a.loc[consensus].astype(int)
 
