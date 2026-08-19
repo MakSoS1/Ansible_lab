@@ -53,6 +53,15 @@ def test_high_quality_teacher_is_eligible():
     assert report["positive"]["lcb"] >= 0.94
 
 
+def test_resolved_revision_from_runtime_manifest_is_preserved():
+    truth = _truth()
+    runtime = _runtime("Qwen/Qwen3.5-4B", "qwen35")
+    runtime.pop("revision")
+    runtime["resolved_revision"] = "f" * 40
+    report = score_teacher(truth, _labels(truth), runtime)
+    assert report["revision"] == "f" * 40
+
+
 def test_teacher_over_vram_cap_fails_closed():
     truth = _truth()
     report = score_teacher(truth, _labels(truth), _runtime("too-big", "huge", vram=7.9))
