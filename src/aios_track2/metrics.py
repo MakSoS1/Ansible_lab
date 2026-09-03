@@ -15,7 +15,10 @@ def evaluate_surrogate(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, floa
     scale = float(np.nanmax(y) - np.nanmin(y))
     nrmse = rmse / max(scale, 1e-12)
     smape = float(np.mean(2 * np.abs(err) / np.maximum(np.abs(y) + np.abs(p), 1e-12)))
-    return {"mae": mae, "rmse": rmse, "nrmse": nrmse, "smape": smape}
+    centered = y - np.mean(y)
+    total_variance = float(np.sum(centered**2))
+    r2 = 1.0 - float(np.sum(err**2)) / max(total_variance, 1e-12)
+    return {"mae": mae, "rmse": rmse, "nrmse": nrmse, "smape": smape, "r2": r2}
 
 
 def ranking_metrics(true_npv: np.ndarray, predicted_npv: np.ndarray, *, top_k: int = 10) -> dict[str, float]:
