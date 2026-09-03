@@ -78,7 +78,7 @@ def test_base_config_has_track2_contract() -> None:
     assert cfg.seed == 42
     assert cfg.economic_start == date(2007, 1, 1)
     assert cfg.max_wlpr_m3_day == 500.0
-    assert cfg.hf_dataset_id == "MakSoS1/aios-track2-runs"
+    assert cfg.hf_dataset_id == "<HF_TOKEN_OWNER>/aios-track2-runs"
 ```
 
 - [ ] **Step 2: Run the isolated test and confirm import failure**
@@ -122,7 +122,7 @@ def load_config(path: Path) -> AppConfig:
 seed: 42
 economic_start: 2007-01-01
 max_wlpr_m3_day: 500.0
-hf_dataset_id: MakSoS1/aios-track2-runs
+hf_dataset_id: <HF_TOKEN_OWNER>/aios-track2-runs
 paths:
   deck: aios-track2/work/model-z/BASE.DATA
   work_dir: runs/local
@@ -750,7 +750,7 @@ Commit: `git commit -m "feat: add AIOS dashboard and reproducible package"`
 
 **Interfaces:**
 - Every workflow accepts `config_path`, `seed` and `dataset_revision` where applicable.
-- Every producing workflow uploads `manifest.json` to `MakSoS1/aios-track2-runs/runs/<git_sha>-<github_run_id>/`.
+- Every producing workflow uploads `manifest.json` to `<HF_TOKEN_OWNER>/aios-track2-runs/runs/<git_sha>-<github_run_id>/`.
 
 - [ ] **Step 1: Write static workflow policy tests**
 
