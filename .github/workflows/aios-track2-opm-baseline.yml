@@ -22,6 +22,7 @@ jobs:
     env:
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
+      PYTHONPATH: src
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,8 +31,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Track 2 and OPM Python bindings
-        run: python -m pip install -e '.[hf]' 'opm==2026.4'
+      - name: Install OPM Python bindings only
+        run: python -m pip install 'opm==2026.4'
       - name: Install OPM Flow 2026.04
         run: |
           sudo apt-get update -y
@@ -40,21 +41,19 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y libopm-simulators-bin
           flow --version
-      - name: Run immutable Model Z baseline
+      - name: Run immutable Model Z baseline with OPM-compatible parser mode
         shell: bash
         run: |
+          mkdir -p runs/baseline
           set -o pipefail
-          python scripts/opm_baseline.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' --output runs/baseline --timeout 9000 | tee runs/baseline-run.json
+          python scripts/opm_baseline.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' --output runs/baseline --timeout 9000 --parsing-strictness low | tee runs/baseline/baseline-run.json
       - name: Inspect OPM summary contract
         shell: bash
         run: |
           set -o pipefail
-          python scripts/inspect_opm_summary.py runs/baseline --output runs/baseline/summary-contract.json | tee runs/summary-contract.log
+          python scripts/inspect_opm_summary.py runs/baseline --output runs/baseline/summary-contract.json | tee runs/baseline/summary-contract.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: model-z-opm-baseline
-          path: |
-            runs/baseline
-            runs/baseline-run.json
-            runs/summary-contract.log
+          path: runs/baseline

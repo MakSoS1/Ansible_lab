@@ -15,6 +15,7 @@ def main() -> None:
     ap.add_argument("archive", type=Path)
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--timeout", type=int, default=7200)
+    ap.add_argument("--parsing-strictness", choices=("normal", "low"), default="low")
     args = ap.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="model-z-baseline-") as td:
@@ -22,7 +23,15 @@ def main() -> None:
         with zipfile.ZipFile(args.archive) as zf:
             zf.extractall(root)
         deck, meta = find_root_deck(root)
-        result = run_flow(FlowRequest(deck=deck, output_dir=args.output, timeout_seconds=args.timeout))
+        extra_args = (f"--parsing-strictness={args.parsing_strictness}",)
+        result = run_flow(
+            FlowRequest(
+                deck=deck,
+                output_dir=args.output,
+                extra_args=extra_args,
+                timeout_seconds=args.timeout,
+            )
+        )
         manifest = {
             "status": result.status,
             "returncode": result.returncode,
@@ -31,6 +40,7 @@ def main() -> None:
             "stderr_sha256": result.stderr_sha256,
             "dimensions": meta["dimensions"],
             "well_count": meta["well_count"],
+            "flow_args": list(extra_args),
             "output_files": [str(p) for p in result.output_files],
         }
         (args.output / "baseline-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

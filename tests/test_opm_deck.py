@@ -24,12 +24,13 @@ END
     ]
 
 
-def test_opm_adapter_hashes_output_and_never_uses_shell(tmp_path: Path) -> None:
+def test_opm_adapter_hashes_output_never_uses_shell_and_persists_logs(tmp_path: Path) -> None:
     fake = tmp_path / "fake_flow.py"
     fake.write_text(
         "from pathlib import Path\n"
         "import sys\n"
         "out=Path(sys.argv[2]); out.mkdir(parents=True, exist_ok=True)\n"
+        "(out/'ARGS.txt').write_text(' '.join(sys.argv[3:]))\n"
         "(out/'CASE.UNSMRY').write_bytes(b'fixture')\n"
         "print('OPM FLOW FIXTURE OK')\n",
         encoding="utf-8",
@@ -41,9 +42,12 @@ def test_opm_adapter_hashes_output_and_never_uses_shell(tmp_path: Path) -> None:
             deck=deck,
             output_dir=tmp_path / "out",
             executable=(sys.executable, str(fake)),
+            extra_args=("--parsing-strictness=low",),
             timeout_seconds=10,
         )
     )
     assert result.status == "success"
     assert len(result.stdout_sha256) == 64
     assert any(p.name == "CASE.UNSMRY" for p in result.output_files)
+    assert (tmp_path / "out" / "flow.stdout.log").read_text().strip() == "OPM FLOW FIXTURE OK"
+    assert (tmp_path / "out" / "ARGS.txt").read_text() == "--parsing-strictness=low"
