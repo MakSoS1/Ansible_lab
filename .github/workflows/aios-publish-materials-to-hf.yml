@@ -16,7 +16,6 @@ jobs:
     timeout-minutes: 120
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_DATASET_ID: MakSoS1/aios-track2-runs
     steps:
       - name: Check out repository and Git LFS recordings
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -31,6 +30,9 @@ jobs:
 
       - name: Install Hugging Face CLI
         run: python -m pip install --disable-pip-version-check huggingface_hub==0.36.0
+
+      - name: Resolve the dataset under the authenticated HF account
+        run: python scripts/resolve_hf_dataset.py
 
       - name: Verify the upload boundary
         shell: bash
