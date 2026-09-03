@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/aios_track2/**'
       - 'scripts/inspect_model_z.py'
+      - 'scripts/diagnose_model_z_wells.py'
       - 'scripts/validate_model_z.py'
       - 'aios-track2/materials/41_Model_Z_final_OPM.zip'
       - '.github/workflows/aios-track2-modelz-smoke.yml'
@@ -39,9 +40,15 @@ jobs:
         run: |
           python scripts/inspect_model_z.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' --extract-to /tmp/model-z | tee model-z-inventory.json
           flow --version
+      - name: Diagnose complete well inventory
+        run: |
+          python scripts/diagnose_model_z_wells.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' | tee model-z-wells.json
       - name: Contract-check real Model Z
         run: python scripts/validate_model_z.py 'aios-track2/materials/41_Model_Z_final_OPM.zip'
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: model-z-inventory
-          path: model-z-inventory.json
+          path: |
+            model-z-inventory.json
+            model-z-wells.json

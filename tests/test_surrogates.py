@@ -27,6 +27,12 @@ def test_temporal_models_keep_batch_time_well_axes() -> None:
     assert tcn(x).shape == (2, 7, 5, 3)
 
 
+def test_gru_output_is_contiguous_for_mps_losses() -> None:
+    x = torch.randn(2, 7, 5, 4)
+    output = GRUSurrogate(4, 3, hidden=12)(x)
+    assert output.is_contiguous()
+
+
 def test_graph_temporal_model_couples_wells() -> None:
     adjacency = torch.tensor(
         [[1.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]]

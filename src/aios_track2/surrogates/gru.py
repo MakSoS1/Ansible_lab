@@ -17,4 +17,4 @@ class GRUSurrogate(nn.Module):
         z = x.permute(0, 2, 1, 3).reshape(b * w, t, f)
         h, _ = self.gru(z)
         y = self.head(h).reshape(b, w, t, -1).permute(0, 2, 1, 3)
-        return y
+        return y.contiguous()
