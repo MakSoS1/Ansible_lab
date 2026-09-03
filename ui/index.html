@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AIOS Track 2 Control Room</title>
+  <style>
+    body{font:15px system-ui;margin:0;background:#111;color:#eee} main{max-width:1100px;margin:auto;padding:32px}
+    h1{font-size:32px} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .card{background:#1d1d1d;border:1px solid #333;border-radius:12px;padding:16px} .muted{color:#aaa}
+    code{color:#c9e1ff} table{width:100%;border-collapse:collapse} td,th{padding:8px;border-bottom:1px solid #333;text-align:left}
+  </style>
+</head>
+<body><main>
+<h1>AIOS Track 2 · Model Z</h1><p class="muted">Суррогат → constrained search → OPM validation → exact NPV</p>
+<div class="grid"><div class="card"><b>Hard gate</b><p>WLPR ≤ 500, pressure, role transitions, infrastructure.</p></div>
+<div class="card"><b>Truth source</b><p>Final score only from OPM + deterministic economics.</p></div>
+<div class="card"><b>Active learning</b><p>Value + uncertainty + novelty determine next OPM runs.</p></div></div>
+<h2>Top-5 strategies</h2><table id="strategies"><thead><tr><th>Name</th><th>Surrogate</th><th>Optimizer</th><th>Role</th></tr></thead><tbody></tbody></table>
+<script>fetch('/api/strategies').then(r=>r.json()).then(xs=>{document.querySelector('#strategies tbody').innerHTML=xs.map(x=>`<tr><td><code>${x.name}</code></td><td>${x.surrogate}</td><td>${x.optimizer}</td><td>${x.purpose}</td></tr>`).join('')})</script>
+</main></body></html>
