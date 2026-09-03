@@ -1,0 +1,4 @@
+name: linear
+alpha: 1.0
+n_bootstrap: 8
+seed: 42

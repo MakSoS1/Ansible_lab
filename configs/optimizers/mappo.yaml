@@ -1,0 +1,10 @@
+name: mappo
+episodes: 24
+horizon: 8
+gamma: 0.99
+clip: 0.2
+actor_lr: 0.0005
+critic_lr: 0.001
+uncertainty_penalty: 1.0
+seed: 42
+promotion_seeds: [11, 23, 42, 71, 101]

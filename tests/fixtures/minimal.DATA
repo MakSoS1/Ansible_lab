@@ -1,0 +1,9 @@
+RUNSPEC
+DIMENS
+ 3 2 1 /
+SCHEDULE
+WELSPECS
+ 'P1' 'G' 1 1 1* 'OIL' /
+ 'I1' 'G' 3 2 1* 'WATER' /
+/
+END
