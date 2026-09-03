@@ -1,0 +1,23 @@
+source_file,decision,public_destination,private_hf,reason
+6_Приложение1.docx,publish,materials/,yes,Blank agreement template without filled personal data
+11_Хакатон_AIOS_—_распределение_по_командам.pdf,exclude,,no,Participant names roles and Telegram identifiers
+12_Хакатон_AIOS_—_команды_по_трекам.pdf,exclude,,no,Participant names and team membership
+14_AIOS_команды_финальный_список_update.pdf,exclude,,no,Updated participant names and team membership
+21_AIOS_Онбординг (4).pptx,publish,materials/,yes,Hackathon onboarding
+24_AIOS_Лекция.pptx,publish,materials/,yes,AI and surrogate lecture slides
+27_3. AIOS_Лекция_Разработка.pdf,publish,materials/,yes,Reservoir development lecture slides
+28_Model_Y (3).zip,publish,materials/,yes,Organizer example reservoir model
+29_Model_Z.zip,publish,materials/,yes,Organizer Track 2 reservoir model
+30_Методика_расчета_ЧДД.docx,publish,materials/,yes,Original NPV methodology
+31_AIOS_трекеры_для_участников.pdf,exclude,,no,Team to tracker mapping and contacts
+34_Методика_расчета_ЧДД_скорректированная.docx,publish,materials/,yes,Corrected NPV methodology
+35_CHDD_PYTHON.zip,publish,materials/,yes,Organizer NPV calculator and fixtures
+41_Model_Z_final_OPM.zip,publish,materials/,yes,Final OPM-compatible Model Z
+42_Техническое_задание_хакатона_«AIOS».docx,publish,materials/,yes,Formal technical assignment
+47_Расчет ЧДД через тНавигатор Model_Z.csv,publish,materials/,yes,Model Z reference economics
+48_Расчет ЧДД через OPM Flow Model_Z.xlsx,publish,materials/,yes,Model Z OPM reference economics
+49_Расчет ЧДД через OPM Flow Model_Y.xlsx,publish,materials/,yes,Model Y OPM reference economics
+50_Расчет ЧДД через тНавигатор Model_Y.xlsx,publish,materials/,yes,Model Y tNavigator reference economics
+Запись_встречи_10_08_2026_14_00_05_запись.webm,publish,recordings/,yes,Lecture recording checked by sampled frames
+Запись_встречи_11_08_2026_14_05_21_запись.webm,publish,recordings/,yes,Lecture recording checked by sampled frames
+Запись_встречи_12_08_2026_14_48_47_запись.webm,publish,recordings/,yes,Lecture recording checked by sampled frames

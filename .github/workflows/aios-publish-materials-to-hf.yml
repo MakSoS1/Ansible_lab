@@ -1,0 +1,77 @@
+name: Publish AIOS materials to private HF dataset
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aios-materials-hf-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_DATASET_ID: MakSoS1/aios-track2-runs
+    steps:
+      - name: Check out repository and Git LFS recordings
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Install Hugging Face CLI
+        run: python -m pip install --disable-pip-version-check huggingface_hub==0.36.0
+
+      - name: Verify the upload boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN}"
+          test "$(find aios-track2/materials -maxdepth 1 -type f | wc -l | tr -d ' ')" = "15"
+          test "$(find aios-track2/recordings -maxdepth 1 -type f -name '*.webm' | wc -l | tr -d ' ')" = "3"
+          test "$(find aios-track2/transcripts/cleaned -maxdepth 1 -type f -name '*.md' | wc -l | tr -d ' ')" = "3"
+          test "$(find aios-track2/transcripts/raw -maxdepth 1 -type f | wc -l | tr -d ' ')" = "15"
+          ! find aios-track2 -type f \( -name '11_Хакатон_AIOS_*' -o -name '12_Хакатон_AIOS_*' -o -name '14_AIOS_команды_*' -o -name '31_AIOS_трекеры_*' \) | grep -q .
+          shasum -a 256 -c aios-track2/manifests/SHA256SUMS
+
+      - name: Upload the cleaned package to a private dataset
+        run: |
+          hf upload-large-folder "${HF_DATASET_ID}" aios-track2 \
+            --repo-type dataset \
+            --private \
+            --num-workers 4
+
+      - name: Verify dataset visibility and inventory
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          dataset_id = os.environ["HF_DATASET_ID"]
+          info = api.dataset_info(dataset_id, files_metadata=True)
+          assert info.private is True, "Dataset must remain private"
+          names = {item.rfilename for item in info.siblings}
+          required = {
+              "README.md",
+              "manifests/SHA256SUMS",
+              "manifests/source-inventory.csv",
+              "recordings/Запись_встречи_10_08_2026_14_00_05_запись.webm",
+              "recordings/Запись_встречи_11_08_2026_14_05_21_запись.webm",
+              "recordings/Запись_встречи_12_08_2026_14_48_47_запись.webm",
+          }
+          missing = sorted(required - names)
+          assert not missing, f"Missing dataset files: {missing}"
+          print(json.dumps({"dataset": dataset_id, "private": info.private, "files": len(names)}))
+          PY

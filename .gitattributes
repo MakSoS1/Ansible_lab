@@ -1,0 +1,3 @@
+aios-track2/recordings/*.webm filter=lfs diff=lfs merge=lfs -text
+aios-track2/materials/** -diff
+aios-track2/transcripts/raw/** -diff
