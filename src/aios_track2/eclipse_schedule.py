@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shlex
+from datetime import date, datetime
 
 
 def _width(token: str) -> int:
@@ -28,7 +29,24 @@ def _numeric(token: str) -> float | None:
         return None
 
 
-def _rewrite_record(record: str, keyword: str, producer_scale: dict[str, float], injector_scale: dict[str, float], max_wlpr: float) -> str:
+def _parse_eclipse_date(record: str) -> date | None:
+    clean = re.sub(r"--.*$", "", record, flags=re.M).strip().rstrip("/").strip()
+    clean = clean.replace("'", "").replace('"', "")
+    for pattern in ("%d %b %Y", "%d %B %Y"):
+        try:
+            return datetime.strptime(clean, pattern).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _rewrite_record(
+    record: str,
+    keyword: str,
+    producer_scale: dict[str, float],
+    injector_scale: dict[str, float],
+    max_wlpr: float,
+) -> str:
     stripped = re.sub(r"--.*$", "", record, flags=re.M).strip()
     if not stripped.endswith("/"):
         return record
@@ -73,19 +91,45 @@ def scale_schedule_text(
     producer_scale: dict[str, float],
     injector_scale: dict[str, float],
     max_wlpr: float = 500.0,
+    effective_from: date | None = None,
 ) -> str:
-    """Scale active WCONPROD/WCONINJE targets while preserving all other schedule logic.
+    """Scale WCON targets without changing pre-optimization history.
 
-    The routine deliberately modifies only records whose control mode has an explicit numeric
-    active target. Defaults, pressure limits, dates, group controls and unrelated wells are left
-    unchanged. This makes DoE perturbations much safer than regenerating the entire history.
+    When ``effective_from`` is supplied, records are modified only after a DATES record reaches
+    that date. WCON records before the first known date are left untouched. This preserves the
+    historical reservoir state while still allowing post-2007 DoE perturbations.
     """
     lines = text.splitlines(keepends=True)
     out: list[str] = []
     keyword: str | None = None
     record = ""
+    in_dates = False
+    date_record = ""
+    current_date: date | None = None
+
     for line in lines:
         bare = re.sub(r"--.*$", "", line).strip().upper()
+
+        if keyword is None and not in_dates and bare == "DATES":
+            in_dates = True
+            date_record = ""
+            out.append(line)
+            continue
+
+        if in_dates:
+            if not date_record and re.fullmatch(r"\s*/\s*(?:--.*)?\n?", line):
+                out.append(line)
+                in_dates = False
+                continue
+            date_record += line
+            out.append(line)
+            if "/" in re.sub(r"--.*$", "", line):
+                parsed = _parse_eclipse_date(date_record)
+                if parsed is not None:
+                    current_date = parsed
+                date_record = ""
+            continue
+
         if keyword is None and bare in {"WCONPROD", "WCONINJE"}:
             keyword = bare
             out.append(line)
@@ -99,7 +143,16 @@ def scale_schedule_text(
             continue
         record += line
         if "/" in re.sub(r"--.*$", "", line):
-            out.append(_rewrite_record(record, keyword, producer_scale, injector_scale, max_wlpr))
+            active = effective_from is None or (current_date is not None and current_date >= effective_from)
+            out.append(
+                _rewrite_record(
+                    record,
+                    keyword,
+                    producer_scale if active else {},
+                    injector_scale if active else {},
+                    max_wlpr,
+                )
+            )
             record = ""
     if record:
         out.append(record)

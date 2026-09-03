@@ -1,3 +1,5 @@
+from datetime import date
+
 from aios_track2.eclipse_schedule import scale_schedule_text
 
 
@@ -39,3 +41,28 @@ def test_scale_schedule_text_handles_compressed_default_items() -> None:
 """
     result = scale_schedule_text(source, producer_scale={"P1": 0.5}, injector_scale={})
     assert "'P1' 'OPEN' 'LRAT' 3* 175.000000 2* 170" in result
+
+
+def test_history_before_effective_date_is_byte_stable() -> None:
+    source = """DATES
+ 1 JAN 2006 /
+/
+WCONPROD
+ 'P1' 'OPEN' 'LRAT' 3* 200 1* 120 /
+/
+DATES
+ 1 JAN 2007 /
+/
+WCONPROD
+ 'P1' 'OPEN' 'LRAT' 3* 200 1* 120 /
+/
+"""
+    result = scale_schedule_text(
+        source,
+        producer_scale={"P1": 1.5},
+        injector_scale={},
+        effective_from=date(2007, 1, 1),
+    )
+    before, after = result.split("DATES\n 1 JAN 2007 /", 1)
+    assert "3* 200 1* 120 /" in before
+    assert "3* 300.000000 1* 120" in after
