@@ -7,6 +7,7 @@ on:
       - 'src/aios_track2/**'
       - 'scripts/inspect_model_z.py'
       - 'scripts/diagnose_model_z_wells.py'
+      - 'scripts/inspect_model_z_schedule.py'
       - 'scripts/validate_model_z.py'
       - 'aios-track2/materials/41_Model_Z_final_OPM.zip'
       - '.github/workflows/aios-track2-modelz-smoke.yml'
@@ -19,6 +20,8 @@ jobs:
   inspect:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      PYTHONPATH: src
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,8 +30,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python package
-        run: python -m pip install -e .
       - name: Install OPM Flow 2026 binary packages
         run: |
           sudo apt-get update -y
@@ -41,8 +42,9 @@ jobs:
           python scripts/inspect_model_z.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' --extract-to /tmp/model-z | tee model-z-inventory.json
           flow --version
       - name: Diagnose complete well inventory
-        run: |
-          python scripts/diagnose_model_z_wells.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' | tee model-z-wells.json
+        run: python scripts/diagnose_model_z_wells.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' | tee model-z-wells.json
+      - name: Diagnose schedule time/control structure
+        run: python scripts/inspect_model_z_schedule.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' | tee model-z-schedule.json
       - name: Contract-check real Model Z
         run: python scripts/validate_model_z.py 'aios-track2/materials/41_Model_Z_final_OPM.zip'
       - uses: actions/upload-artifact@v4
@@ -52,3 +54,4 @@ jobs:
           path: |
             model-z-inventory.json
             model-z-wells.json
+            model-z-schedule.json
