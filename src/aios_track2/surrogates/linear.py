@@ -12,7 +12,7 @@ class LinearSurrogate:
         self.resid_std_: np.ndarray | None = None
         self.output_shape_: tuple[int, ...] | None = None
 
-    def fit(self, x: np.ndarray, y: np.ndarray) -> "LinearSurrogate":
+    def fit(self, x: np.ndarray, y: np.ndarray) -> LinearSurrogate:
         x_arr, y_arr = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
         if x_arr.shape[:-1] != y_arr.shape[:-1]:
             raise ValueError("x and y must align except feature dimension")

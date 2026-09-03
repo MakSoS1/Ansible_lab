@@ -17,19 +17,23 @@ def inspect_archive(archive: Path) -> dict[str, object]:
         files = sorted(p for p in root.rglob("*") if p.is_file())
         python_files: dict[str, str] = {}
         workbooks: dict[str, object] = {}
+        invalid_workbooks: dict[str, str] = {}
         for path in files:
             rel = str(path.relative_to(root))
             if path.suffix.lower() == ".py":
                 python_files[rel] = path.read_text(encoding="utf-8", errors="replace")
             elif path.suffix.lower() in {".xlsx", ".xlsm"}:
-                wb = load_workbook(path, read_only=True, data_only=False)
+                if path.name.startswith("~$"):
+                    invalid_workbooks[rel] = "temporary Excel lock file"
+                    continue
+                try:
+                    wb = load_workbook(path, read_only=True, data_only=False)
+                except (zipfile.BadZipFile, OSError, ValueError) as exc:
+                    invalid_workbooks[rel] = f"{type(exc).__name__}: {exc}"
+                    continue
                 workbooks[rel] = {
                     "sheets": [
-                        {
-                            "title": ws.title,
-                            "max_row": ws.max_row,
-                            "max_column": ws.max_column,
-                        }
+                        {"title": ws.title, "max_row": ws.max_row, "max_column": ws.max_column}
                         for ws in wb.worksheets
                     ]
                 }
@@ -39,6 +43,7 @@ def inspect_archive(archive: Path) -> dict[str, object]:
             "files": [str(p.relative_to(root)) for p in files],
             "python_files": python_files,
             "workbooks": workbooks,
+            "invalid_workbooks": invalid_workbooks,
         }
 
 
