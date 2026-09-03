@@ -6,7 +6,10 @@ from decimal import Decimal, getcontext
 
 import pandas as pd
 
+from .economics_official import DEFAULT_ASSUMPTIONS, DEFAULT_PUMPS, REQUIRED_COLUMNS, VERSION, compute_calculation
+
 getcontext().prec = 28
+OFFICIAL_CHDD_VERSION = VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,65 +35,74 @@ class NpvResult:
     npv_rub: Decimal
     excluded_rows: tuple[int, ...]
     annual: pd.DataFrame
+    official: dict[str, object]
 
 
-def _d(v: object) -> Decimal:
-    return Decimal(str(0 if pd.isna(v) else v))
+def _float(value: Decimal) -> float:
+    return float(value)
+
+
+def _assumptions(config: EconomicsConfig) -> dict[str, object]:
+    values = dict(DEFAULT_ASSUMPTIONS)
+    values.update(
+        {
+            "oilPriceRubT": _float(config.oil_price_rub_t),
+            "deductionsRubT": _float(config.oil_deductions_rub_t),
+            "oilOpexRubT": _float(config.oil_opex_rub_t),
+            "liquidOpexRubT": _float(config.liquid_opex_rub_t),
+            "injectionOpexRubM3": _float(config.injection_opex_rub_m3),
+            "fundAnnualRubWell": _float(config.active_well_rub_year),
+            "pumpOperationCostM": _float(config.pump_workover_rub) / 1_000_000,
+            "stopStartCostM": _float(config.stop_or_start_rub) / 1_000_000,
+            "conversionBaseCostM": _float(config.producer_to_injector_rub) / 1_000_000,
+            "profitTaxRate": _float(config.profit_tax) * 100,
+            "propertyTaxRate": _float(config.property_tax) * 100,
+            "waccRate": _float(config.wacc) * 100,
+        }
+    )
+    return values
+
+
+def _records(monthly: pd.DataFrame) -> list[dict[str, object]]:
+    frame = monthly.copy()
+    if "DATA" not in frame and "date" in frame:
+        frame["DATA"] = frame["date"]
+    if "well" not in frame:
+        frame["well"] = "FIELD"
+    for column in REQUIRED_COLUMNS:
+        if column not in frame:
+            frame[column] = 0.0
+    frame["DATA"] = pd.to_datetime(frame["DATA"]).dt.strftime("%Y-%m-%d")
+    frame["well"] = frame["well"].astype(str)
+    return frame[REQUIRED_COLUMNS].where(pd.notna(frame[REQUIRED_COLUMNS]), 0).to_dict(orient="records")
 
 
 def calculate_npv(monthly: pd.DataFrame, config: EconomicsConfig) -> NpvResult:
-    required = {"date", "WOMT_Diff", "WLPT_Diff", "WWIT_Diff", "WLPR"}
+    required = {"WOMT_Diff", "WLPT_Diff", "WWIT_Diff", "WLPR"}
     missing = required - set(monthly.columns)
     if missing:
         raise ValueError(f"missing economics columns: {sorted(missing)}")
-    frame = monthly.copy()
-    frame["date"] = pd.to_datetime(frame["date"])
-    if (frame["WLPR"].astype(float) > float(config.max_wlpr)).any():
+    if (monthly["WLPR"].astype(float) > float(config.max_wlpr)).any():
         raise ValueError("WLPR exceeds 500 m3/day contract limit")
     negative = (
-        (frame["WLPT_Diff"].astype(float) < 0)
-        | (frame["WOMT_Diff"].astype(float) < 0)
-        | (frame["WWIT_Diff"].astype(float) < 0)
+        (monthly["WLPT_Diff"].astype(float) < 0)
+        | (monthly["WOMT_Diff"].astype(float) < 0)
+        | (monthly["WWIT_Diff"].astype(float) < 0)
     )
-    excluded = tuple(int(i) for i in frame.index[negative])
-    frame = frame.loc[~negative].copy()
-    frame = frame[frame["date"] >= pd.Timestamp(config.economic_start)]
-    annual_rows: list[dict[str, object]] = []
-    total = Decimal("0")
-    for year, part in frame.groupby(frame["date"].dt.year, sort=True):
-        oil = sum((_d(v) for v in part["WOMT_Diff"]), Decimal("0"))
-        liquid = sum((_d(v) for v in part["WLPT_Diff"]), Decimal("0"))
-        injection = sum((_d(v) for v in part["WWIT_Diff"]), Decimal("0"))
-        gross_margin = oil * (config.oil_price_rub_t - config.oil_deductions_rub_t - config.oil_opex_rub_t)
-        variable_opex = liquid * config.liquid_opex_rub_t + injection * config.injection_opex_rub_m3
-        days = sum((_d(v) for v in part.get("days", pd.Series([30] * len(part), index=part.index))), Decimal("0"))
-        if "well" in part:
-            active_well_days = Decimal("0")
-            for _, wp in part.groupby("well"):
-                active_well_days += sum((_d(v) for v in wp.get("days", pd.Series([30] * len(wp), index=wp.index))), Decimal("0"))
-        else:
-            active_well_days = days
-        fixed_opex = active_well_days / Decimal("365") * config.active_well_rub_year
-        event_cost = Decimal("0")
-        if "pump_change" in part:
-            event_cost += Decimal(int(part["pump_change"].fillna(False).astype(bool).sum())) * config.pump_workover_rub
-        if "stop_event" in part:
-            event_cost += Decimal(int(part["stop_event"].fillna(False).astype(bool).sum())) * config.stop_or_start_rub
-        if "start_event" in part:
-            event_cost += Decimal(int(part["start_event"].fillna(False).astype(bool).sum())) * config.stop_or_start_rub
-        if "producer_to_injector" in part:
-            event_cost += Decimal(int(part["producer_to_injector"].fillna(False).astype(bool).sum())) * config.producer_to_injector_rub
-        pre_tax = gross_margin - variable_opex - fixed_opex - event_cost
-        tax = max(pre_tax, Decimal("0")) * config.profit_tax
-        cashflow = pre_tax - tax
-        exponent = Decimal(int(year) - config.economic_start.year)
-        discount = (Decimal("1") + config.wacc) ** exponent
-        discounted = cashflow / discount
-        total += discounted
-        annual_rows.append({
-            "year": int(year), "oil_t": oil, "liquid_t": liquid, "injection_m3": injection,
-            "pre_tax_rub": pre_tax, "tax_rub": tax, "cashflow_rub": cashflow,
-            "discount_factor": discount, "discounted_cashflow_rub": discounted,
-        })
-    annual = pd.DataFrame(annual_rows).set_index("year") if annual_rows else pd.DataFrame()
-    return NpvResult(total, excluded, annual)
+    excluded = tuple(int(i) for i in monthly.index[negative])
+    official = compute_calculation(
+        _records(monthly),
+        headers=REQUIRED_COLUMNS,
+        assumptions=_assumptions(config),
+        pumps=DEFAULT_PUMPS,
+        start_date=config.economic_start.isoformat(),
+        name="AIOS Track 2 contract NPV",
+    )
+    annual = pd.DataFrame(official["annual"])
+    if not annual.empty:
+        annual["oil_t"] = annual["oilKt"].map(lambda value: Decimal(str(value * 1000)))
+        annual["liquid_t"] = annual["liquidKt"].map(lambda value: Decimal(str(value * 1000)))
+        annual["injection_m3"] = annual["injectionKm3"].map(lambda value: Decimal(str(value * 1000)))
+        annual = annual.set_index("year")
+    npv_rub = Decimal(str(official["summary"]["totalChddM"])) * Decimal("1000000")
+    return NpvResult(npv_rub=npv_rub, excluded_rows=excluded, annual=annual, official=official)
