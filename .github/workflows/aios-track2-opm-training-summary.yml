@@ -13,6 +13,10 @@ on:
       - '.github/workflows/aios-track2-opm-training-summary.yml'
   workflow_dispatch:
 
+concurrency:
+  group: aios-opm-telemetry-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
