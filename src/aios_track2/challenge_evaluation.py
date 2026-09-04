@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import PurePosixPath
 from typing import Any
+
+
+def _telemetry_change_is_safe(changed_files: object) -> bool:
+    if not isinstance(changed_files, (list, tuple)) or len(changed_files) != 1:
+        return False
+    return PurePosixPath(str(changed_files[0])).name == "Model_Z_summary.inc"
 
 
 def physical_inventory_gate(
@@ -24,7 +31,7 @@ def physical_inventory_gate(
     telemetry_mutations = sorted(
         scenario_id
         for scenario_id in expected_ids & ids
-        if set(manifests[scenario_id].get("summary_install_changed_files", [])) - {"Model_Z_summary.inc"}
+        if not _telemetry_change_is_safe(manifests[scenario_id].get("summary_install_changed_files"))
     )
     baseline_identical = bool(manifests.get(0, {}).get("baseline_schedule_byte_identical"))
     observed_max = max(
