@@ -2,22 +2,9 @@ name: AIOS Real OPM Frozen DoE
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/aios_track2/real_doe.py'
-      - 'src/aios_track2/ecl_summary.py'
-      - 'src/aios_track2/eclipse_schedule.py'
-      - 'src/aios_track2/summary_requests.py'
-      - 'src/aios_track2/summary_install.py'
-      - 'scripts/run_model_z_policy.py'
-      - 'tests/test_real_doe.py'
-      - 'tests/test_ecl_summary.py'
-      - 'aios-track2/materials/41_Model_Z_final_OPM.zip'
-      - '.github/workflows/aios-track2-real-doe.yml'
 
 concurrency:
-  group: aios-real-doe-${{ github.event.pull_request.number || github.ref }}
+  group: aios-real-doe-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
