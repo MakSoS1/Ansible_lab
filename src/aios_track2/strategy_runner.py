@@ -49,43 +49,76 @@ def _mappo_search(
     budget: int,
     differentiable_step: Callable | None,
 ) -> StrategyRun:
+    """Optimize the real black-box objective with a shared PPO actor.
+
+    When a differentiable environment is supplied its reward remains the PPO
+    training signal. Otherwise the policy is trained directly from the same
+    risk-adjusted objective used to rank competition candidates. This avoids
+    the previous synthetic action≈0.3 demo reward, which was unrelated to
+    reservoir economics.
+    """
     torch.manual_seed(seed)
     groups = dim
     obs_dim = 2
     adjacency = torch.eye(groups)
     policy = SharedGraphMAPPO(obs_dim=obs_dim, action_dim=1, adjacency=adjacency, hidden=32)
     optimizer = torch.optim.Adam(policy.parameters(), lr=3e-3)
-    episodes = max(4, min(20, budget // 8))
-    batch = max(4, min(8, budget // episodes))
+    episodes = max(4, min(64, max(1, budget // 16)))
+    batch = max(4, min(64, max(1, budget // episodes)))
     evaluations = 0
+    best_rank = -np.inf
     best: tuple[float, np.ndarray, float, bool] | None = None
     state = torch.zeros(batch, groups, obs_dim)
+    risk_beta = 0.25
+
     for _ in range(episodes):
-        action, logp, value = policy.act(state)
+        if evaluations >= budget:
+            break
+        action, logp, value_estimate = policy.act(state)
+        candidates = ((action.detach().cpu().numpy().squeeze(-1) + 1.0) / 2.0).clip(0.0, 1.0)
+        remaining = budget - evaluations
+        if len(candidates) > remaining:
+            candidates = candidates[:remaining]
+            action = action[:remaining]
+            logp = logp[:remaining]
+            value_estimate = value_estimate[:remaining]
+            state = state[:remaining]
+
+        values, unc, valid = objective(candidates)
+        values = np.asarray(values, dtype=float).reshape(-1)
+        unc = np.asarray(unc, dtype=float).reshape(-1)
+        valid = np.asarray(valid, dtype=bool).reshape(-1)
+        risk_score = values - risk_beta * unc
+
         if differentiable_step is not None:
-            next_state, reward, valid_t = differentiable_step(state, action)
-            reward = reward.float()
-            valid_t = valid_t.bool()
+            next_state, policy_reward, valid_t = differentiable_step(state, action)
+            valid = valid & valid_t.detach().cpu().numpy().astype(bool)
+            reward = policy_reward.float().reshape(-1)
         else:
+            finite = valid & np.isfinite(risk_score)
+            reward_np = np.full(len(candidates), -5.0, dtype=np.float32)
+            if np.any(finite):
+                center = float(np.mean(risk_score[finite]))
+                scale = max(float(np.std(risk_score[finite])), 1e-6)
+                reward_np[finite] = ((risk_score[finite] - center) / scale).astype(np.float32)
+            reward = torch.as_tensor(reward_np, dtype=torch.float32, device=state.device)
             next_state = 0.8 * state + 0.2 * action.expand(-1, -1, obs_dim)
-            reward = 1.0 - (action - 0.3).pow(2).mean(dim=(1, 2))
-            valid_t = torch.ones(batch, dtype=torch.bool)
-        advantage = reward - value.detach()
+
+        advantage = reward - value_estimate.detach()
         returns = reward.detach()
         loss = policy.ppo_loss(state, action.detach(), logp.detach(), advantage.detach(), returns)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(policy.parameters(), 5.0)
         optimizer.step()
-        state = next_state.detach()
-        candidates = ((action.detach().cpu().numpy().squeeze(-1) + 1.0) / 2.0).clip(0.05, 0.95)
-        values, unc, valid = objective(candidates)
-        valid = np.asarray(valid, bool) & valid_t.cpu().numpy()
-        for i in range(len(candidates)):
-            if valid[i] and (best is None or values[i] > best[0]):
-                best = (float(values[i]), candidates[i].copy(), float(unc[i]), True)
+
+        for index in range(len(candidates)):
+            if valid[index] and np.isfinite(risk_score[index]) and risk_score[index] > best_rank:
+                best_rank = float(risk_score[index])
+                best = (float(values[index]), candidates[index].copy(), float(unc[index]), True)
         evaluations += len(candidates)
-        if evaluations >= budget:
-            break
+        state = next_state.detach()
+
     if best is None:
         fallback = np.full(dim, 0.5)
         value, unc, valid = objective(fallback[None, :])
