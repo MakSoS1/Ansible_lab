@@ -77,6 +77,7 @@ def first_quoted(record: str) -> str | None:
 def diagnose(root: Path) -> dict[str, object]:
     by_keyword: dict[str, set[str]] = defaultdict(set)
     welspec_records: list[str] = []
+    compdat_records: list[str] = []
     fluid_records: dict[str, list[dict[str, str]]] = defaultdict(list)
     files = sorted(
         p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in {".data", ".inc"}
@@ -87,6 +88,8 @@ def diagnose(root: Path) -> dict[str, object]:
             records = records_for_keyword(text, keyword)
             if keyword == "WELSPECS":
                 welspec_records.extend(records)
+            elif keyword == "COMPDAT":
+                compdat_records.extend(records)
             for record in records:
                 name = first_quoted(record)
                 if name and "*" not in name:
@@ -106,6 +109,7 @@ def diagnose(root: Path) -> dict[str, object]:
         "all_well_count": len(all_names),
         "used_but_not_welspec": sorted(all_names - declared),
         "welspec_records": welspec_records,
+        "compdat_records": compdat_records,
         "fluid_property_records": dict(fluid_records),
     }
 
