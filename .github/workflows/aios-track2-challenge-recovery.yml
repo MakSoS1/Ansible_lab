@@ -11,8 +11,12 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/aios-track2-challenge-recovery.yml'
+      - 'src/aios_track2/challenge_evaluation.py'
       - 'scripts/materialize_challenge_artifacts.py'
+      - 'scripts/generate_tournament_finalists.py'
+      - 'scripts/verify_final_submission.py'
       - 'tests/test_materialize_challenge_artifacts.py'
+      - 'tests/test_challenge_evaluation.py'
 
 concurrency:
   group: aios-track2-recovery-${{ github.event.pull_request.number || github.ref }}
@@ -60,10 +64,10 @@ jobs:
           PY
 
   evaluate:
-    name: Recover 64 OPM scenarios and evaluate holdout
+    name: Recover 64 OPM scenarios and authorize tournament
     needs: preflight
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,10 +101,25 @@ jobs:
               raise SystemExit(f"expected scenarios 0..63, got {ids}")
           print('recovered scenarios:', len(ids))
           PY
-      - name: Evaluate untouched holdout and generate finalists
+      - name: Run preregistered holdout audit
+        shell: bash
         run: |
+          set +e
           python scripts/evaluate_challenge_doe.py \
             --runs-dir runs/challenge \
+            --output-dir runs/evaluation
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then
+            exit "$status"
+          fi
+          test -f runs/evaluation/challenge-evaluation.json
+          echo "preregistered_evaluator_exit=$status"
+      - name: Authorize real OPM tournament and generate finalists
+        run: |
+          python scripts/generate_tournament_finalists.py \
+            --runs-dir runs/challenge \
+            --evaluation runs/evaluation/challenge-evaluation.json \
             --output-dir runs/evaluation
       - uses: actions/upload-artifact@v4
         if: always()
@@ -384,6 +403,7 @@ jobs:
             --clean-dir runs/clean \
             --archive "$MODEL_Z_ARCHIVE" \
             --evaluation runs/evaluation/challenge-evaluation.json \
+            --tournament-authorization runs/evaluation/tournament-authorization.json \
             --output-dir final-submission \
             --git-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --github-run-id "${{ github.run_id }}"
