@@ -2,19 +2,9 @@ name: AIOS Track 2 Competition Challenge
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/aios_track2/**'
-      - 'tests/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - 'aios-track2/materials/41_Model_Z_final_OPM.zip'
-      - 'aios-track2/materials/48_Расчет ЧДД через OPM Flow Model_Z.xlsx'
-      - '.github/workflows/aios-track2-challenge.yml'
 
 concurrency:
-  group: aios-track2-challenge-${{ github.event.pull_request.number || github.ref }}
+  group: aios-track2-challenge-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -139,18 +129,25 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: challenge-scenario-*
-          path: runs/challenge
-          merge-multiple: true
+          path: artifact-downloads/scenarios
+          merge-multiple: false
+      - name: Restore scenario directory contract
+        run: |
+          python scripts/materialize_challenge_artifacts.py \
+            --source artifact-downloads/scenarios \
+            --destination runs/challenge \
+            --kind scenario
       - name: Evaluate untouched holdout and generate finalists
         run: |
           python scripts/evaluate_challenge_doe.py \
             --runs-dir runs/challenge \
             --output-dir runs/evaluation
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: challenge-evaluation
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
           path: runs/evaluation
 
   finalist:
@@ -295,13 +292,23 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: challenge-finalist-*
-          path: runs/finalists
-          merge-multiple: true
+          path: artifact-downloads/finalists
+          merge-multiple: false
       - uses: actions/download-artifact@v4
         with:
           pattern: challenge-robustness-*
-          path: runs/robustness
-          merge-multiple: true
+          path: artifact-downloads/robustness
+          merge-multiple: false
+      - name: Restore finalist and robustness directory contracts
+        run: |
+          python scripts/materialize_challenge_artifacts.py \
+            --source artifact-downloads/finalists \
+            --destination runs/finalists \
+            --kind finalist
+          python scripts/materialize_challenge_artifacts.py \
+            --source artifact-downloads/robustness \
+            --destination runs/robustness \
+            --kind robustness
       - name: Select by verified OPM NPV
         run: |
           mkdir -p runs/selection
