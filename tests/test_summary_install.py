@@ -31,7 +31,7 @@ def test_install_training_summary_changes_only_summary_include(tmp_path: Path) -
     )
     grid.write_text("DIMENS\n 2 2 1 /\n", encoding="utf-8")
     schedule.write_text("DATES\n 1 JAN 2007 /\n/\n", encoding="utf-8")
-    summary.write_text("TIME\nYEARS\n", encoding="utf-8")
+    summary.write_text("TIME\n", encoding="utf-8")
 
     immutable_before = {path.name: _sha(path) for path in (deck, grid, schedule)}
     old_summary_hash = _sha(summary)
@@ -57,6 +57,7 @@ def test_install_training_summary_requires_exactly_one_summary_include(tmp_path:
         raise AssertionError("expected ValueError for missing summary include")
 
 
-def test_training_summary_terminates_time_and_years_records() -> None:
+def test_training_summary_uses_opm_compatible_time_axis() -> None:
     summary = build_training_summary()
-    assert "\nTIME\n/\nYEARS\n/\nFOPR\n" in summary
+    assert "\nTIME\n/\nFOPR\n" in summary
+    assert "YEARS" not in summary
