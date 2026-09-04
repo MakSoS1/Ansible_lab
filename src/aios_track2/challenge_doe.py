@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import date
-from typing import Sequence
 
 import numpy as np
 from scipy.stats import qmc
