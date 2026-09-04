@@ -1,10 +1,17 @@
+import importlib.util
 from pathlib import Path
-import sys
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from materialize_challenge_artifacts import materialize_artifacts
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "materialize_challenge_artifacts.py"
+
+
+def _load_module():
+    spec = importlib.util.spec_from_file_location("materialize_challenge_artifacts", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _write_artifact(root: Path, artifact_name: str) -> None:
@@ -15,6 +22,7 @@ def _write_artifact(root: Path, artifact_name: str) -> None:
 
 
 def test_scenario_artifacts_get_numeric_directories(tmp_path: Path) -> None:
+    materialize_artifacts = _load_module().materialize_artifacts
     source = tmp_path / "download"
     destination = tmp_path / "runs"
     _write_artifact(source, "challenge-scenario-0")
@@ -27,6 +35,7 @@ def test_scenario_artifacts_get_numeric_directories(tmp_path: Path) -> None:
 
 
 def test_finalist_and_robustness_names_match_downstream_contract(tmp_path: Path) -> None:
+    materialize_artifacts = _load_module().materialize_artifacts
     finalist_source = tmp_path / "finalist-download"
     finalists = tmp_path / "finalists"
     _write_artifact(finalist_source, "challenge-finalist-cem")
@@ -41,6 +50,7 @@ def test_finalist_and_robustness_names_match_downstream_contract(tmp_path: Path)
 
 
 def test_duplicate_target_fails_closed(tmp_path: Path) -> None:
+    materialize_artifacts = _load_module().materialize_artifacts
     source = tmp_path / "download"
     destination = tmp_path / "runs"
     _write_artifact(source, "challenge-scenario-1")
