@@ -29,6 +29,16 @@ def _r2_score(truth: np.ndarray, prediction: np.ndarray) -> float:
     return 1.0 - squared_error / denominator
 
 
+def _range_nrmse(truth: np.ndarray, prediction: np.ndarray) -> float:
+    y = np.asarray(truth, dtype=float).reshape(-1)
+    p = np.asarray(prediction, dtype=float).reshape(-1)
+    if y.shape != p.shape:
+        raise ValueError("truth and prediction must have the same shape")
+    rmse = float(np.sqrt(np.mean((p - y) ** 2)))
+    scale = float(np.max(y) - np.min(y))
+    return rmse / max(scale, 1e-12)
+
+
 def dynamic_delta_report(
     truth: np.ndarray,
     prediction: np.ndarray,
@@ -52,10 +62,14 @@ def dynamic_delta_report(
 
     truth_delta = y - base[None, :, :]
     prediction_delta = p - base[None, :, :]
-    aggregate: dict[str, float] = {}
+    aggregate_r2: dict[str, float] = {}
+    aggregate_nrmse: dict[str, float] = {}
     cells: list[dict[str, Any]] = []
     for channel_index, channel in enumerate(channels):
-        aggregate[str(channel)] = _r2_score(
+        aggregate_r2[str(channel)] = _r2_score(
+            truth_delta[ids, :, channel_index], prediction_delta[ids, :, channel_index]
+        )
+        aggregate_nrmse[str(channel)] = _range_nrmse(
             truth_delta[ids, :, channel_index], prediction_delta[ids, :, channel_index]
         )
         for scenario_id in ids:
@@ -67,13 +81,17 @@ def dynamic_delta_report(
     if not cells:
         raise ValueError("no finite scenario-channel R2 values were available")
     cell_values = np.asarray([item["r2"] for item in cells], dtype=float)
-    finite_aggregate = [value for value in aggregate.values() if np.isfinite(value)]
-    if not finite_aggregate:
-        raise ValueError("no finite aggregate channel R2 values were available")
+    finite_aggregate = [value for value in aggregate_r2.values() if np.isfinite(value)]
+    finite_nrmse = [value for value in aggregate_nrmse.values() if np.isfinite(value)]
+    if not finite_aggregate or not finite_nrmse:
+        raise ValueError("no finite aggregate channel metrics were available")
     return {
-        "aggregate_channel_r2": aggregate,
+        "aggregate_channel_r2": aggregate_r2,
+        "aggregate_channel_nrmse": aggregate_nrmse,
         "mean_aggregate_channel_r2": float(np.mean(finite_aggregate)),
         "min_aggregate_channel_r2": float(np.min(finite_aggregate)),
+        "mean_aggregate_channel_nrmse": float(np.mean(finite_nrmse)),
+        "max_aggregate_channel_nrmse": float(np.max(finite_nrmse)),
         "p10_scenario_channel_r2": float(np.quantile(cell_values, 0.10)),
         "worst_scenario_channel": min(cells, key=lambda item: item["r2"]),
         "evaluated_scenarios": [int(value) for value in ids],
