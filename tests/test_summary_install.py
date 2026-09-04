@@ -57,7 +57,8 @@ def test_install_training_summary_requires_exactly_one_summary_include(tmp_path:
         raise AssertionError("expected ValueError for missing summary include")
 
 
-def test_training_summary_uses_opm_compatible_time_axis() -> None:
+def test_training_summary_leaves_time_axes_to_opm_output() -> None:
     summary = build_training_summary()
-    assert "\nTIME\n/\nFOPR\n" in summary
+    assert "TIME" not in summary
     assert "YEARS" not in summary
+    assert "\nFOPR\n" in summary
