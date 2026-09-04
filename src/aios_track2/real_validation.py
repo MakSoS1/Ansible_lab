@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -155,7 +156,7 @@ class RbfKernelRidge:
         distance_squared = np.sum((a[:, None, :] - b[None, :, :]) ** 2, axis=-1)
         return np.exp(-0.5 * distance_squared / (self.length_scale**2))
 
-    def fit(self, x: np.ndarray, y: np.ndarray) -> "RbfKernelRidge":
+    def fit(self, x: np.ndarray, y: np.ndarray) -> RbfKernelRidge:
         inputs = np.asarray(x, dtype=float)
         targets = np.asarray(y, dtype=float)
         if inputs.ndim != 2 or targets.shape[0] != inputs.shape[0]:
