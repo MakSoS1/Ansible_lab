@@ -1,0 +1,81 @@
+name: AIOS OPM Training Telemetry
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/opm_training_summary.py'
+      - 'scripts/inspect_opm_summary.py'
+      - 'src/aios_track2/summary_install.py'
+      - 'src/aios_track2/summary_requests.py'
+      - 'src/aios_track2/opm.py'
+      - 'tests/test_summary_install.py'
+      - '.github/workflows/aios-track2-opm-training-summary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  telemetry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install OPM Python bindings only
+        run: python -m pip install 'opm==2026.4'
+      - name: Install OPM Flow 2026.04
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y software-properties-common mpi-default-bin
+          sudo add-apt-repository -y ppa:opm/ppa
+          sudo apt-get update -y
+          sudo apt-get install -y libopm-simulators-bin
+          flow --version
+      - name: Run telemetry-only Model Z baseline
+        shell: bash
+        run: |
+          mkdir -p runs/training-telemetry
+          set -o pipefail
+          python scripts/opm_training_summary.py 'aios-track2/materials/41_Model_Z_final_OPM.zip' --output runs/training-telemetry --timeout 9000 --parsing-strictness low | tee runs/training-telemetry/run.json
+      - name: Inspect expanded OPM summary
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/inspect_opm_summary.py runs/training-telemetry --output runs/training-telemetry/summary-contract.json | tee runs/training-telemetry/summary-contract.log
+      - name: Enforce telemetry contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          contract = json.loads(Path('runs/training-telemetry/summary-contract.json').read_text())
+          manifest = json.loads(Path('runs/training-telemetry/training-summary-manifest.json').read_text())
+          if contract['well_count_from_summary_keys'] != 103:
+              raise SystemExit(f"expected 103 wells in summary, got {contract['well_count_from_summary_keys']}")
+          required = ('WOPR:', 'WWPR:', 'WWIR:', 'WLPR:', 'WOPT:', 'WWPT:', 'WWIT:', 'WLPT:', 'WBHP:')
+          keys = contract['all_keys']
+          missing = [prefix for prefix in required if not any(key.startswith(prefix) for key in keys)]
+          if missing:
+              raise SystemExit(f'missing required training summary prefixes: {missing}')
+          changed = manifest['summary_install']['changed_files']
+          if len(changed) != 1 or 'summary' not in changed[0].lower():
+              raise SystemExit(f'unexpected deck mutation: {changed}')
+          if contract['report_steps'] < 380:
+              raise SystemExit(f"unexpectedly short OPM trajectory: {contract['report_steps']}")
+          print(json.dumps({'telemetry_contract': 'PASS', 'well_count': 103, 'report_steps': contract['report_steps']}, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: model-z-opm-training-telemetry
+          path: runs/training-telemetry
