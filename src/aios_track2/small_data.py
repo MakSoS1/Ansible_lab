@@ -104,6 +104,75 @@ class StationaryKernelRidge:
         return flat.reshape((values.shape[0],) + self._target_shape)
 
 
+@dataclass
+class AdditiveGroupKernelRidge:
+    """Sample-efficient kernel for grouped temporal controls."""
+
+    group_size: int = 3
+    length_scale: float = 1.5
+    ridge: float = 1e-4
+    global_weight: float = 0.15
+    center: float = 1.0
+    scale: float = 0.2
+    _x_train: np.ndarray | None = None
+    _coef: np.ndarray | None = None
+    _target_shape: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.group_size <= 0:
+            raise ValueError("group_size must be positive")
+        if self.length_scale <= 0 or self.ridge < 0 or self.scale <= 0:
+            raise ValueError("length_scale and scale must be positive and ridge non-negative")
+        if not 0.0 <= self.global_weight <= 1.0:
+            raise ValueError("global_weight must be in [0, 1]")
+
+    def _normalize(self, x: np.ndarray) -> np.ndarray:
+        values = np.asarray(x, dtype=float)
+        if values.ndim != 2 or values.shape[1] % self.group_size:
+            raise ValueError("x must have shape [sample, groups * group_size]")
+        return (values - self.center) / self.scale
+
+    def _matern52(self, distance_squared: np.ndarray) -> np.ndarray:
+        distance = np.sqrt(np.maximum(distance_squared, 0.0))
+        q = np.sqrt(5.0) * distance / self.length_scale
+        return (1.0 + q + q**2 / 3.0) * np.exp(-q)
+
+    def _kernel(self, left: np.ndarray, right: np.ndarray) -> np.ndarray:
+        a = self._normalize(left)
+        b = self._normalize(right)
+        groups = a.shape[1] // self.group_size
+        grouped = np.zeros((a.shape[0], b.shape[0]), dtype=float)
+        for group in range(groups):
+            start = group * self.group_size
+            stop = start + self.group_size
+            distance_squared = np.sum((a[:, None, start:stop] - b[None, :, start:stop]) ** 2, axis=-1)
+            grouped += self._matern52(distance_squared)
+        grouped /= groups
+        global_distance_squared = np.sum((a[:, None, :] - b[None, :, :]) ** 2, axis=-1)
+        global_kernel = self._matern52(global_distance_squared)
+        return (1.0 - self.global_weight) * grouped + self.global_weight * global_kernel
+
+    def fit(self, x: np.ndarray, y: np.ndarray) -> "AdditiveGroupKernelRidge":
+        inputs = np.asarray(x, dtype=float)
+        targets = np.asarray(y, dtype=float)
+        if targets.shape[0] != inputs.shape[0]:
+            raise ValueError("x and y must share the sample dimension")
+        self._target_shape = targets.shape[1:]
+        flat = targets.reshape(targets.shape[0], -1)
+        kernel = self._kernel(inputs, inputs)
+        system = kernel + self.ridge * np.eye(inputs.shape[0])
+        self._x_train = inputs.copy()
+        self._coef = np.linalg.solve(system, flat)
+        return self
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        if self._x_train is None or self._coef is None:
+            raise RuntimeError("fit must be called before predict")
+        values = np.asarray(x, dtype=float)
+        flat = self._kernel(values, self._x_train) @ self._coef
+        return flat.reshape((values.shape[0],) + self._target_shape)
+
+
 def project_temporal_policy(
     values: np.ndarray,
     *,
