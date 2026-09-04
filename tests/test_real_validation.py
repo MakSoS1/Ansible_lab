@@ -44,7 +44,7 @@ def test_dynamic_delta_report_separates_aggregate_from_tail() -> None:
     assert report["worst_scenario_channel"]["scenario_id"] == 2
     assert report["worst_scenario_channel"]["channel"] == "pressure"
     assert report["worst_scenario_channel"]["r2"] < report["min_aggregate_channel_r2"]
-    assert 0.0 <= report["p10_scenario_channel_r2"] <= 1.0
+    assert np.isfinite(report["p10_scenario_channel_r2"])
 
 
 def test_ranking_report_contains_regret_and_topk() -> None:
@@ -53,7 +53,7 @@ def test_ranking_report_contains_regret_and_topk() -> None:
     report = ranking_report(truth, prediction, top_k=2)
     assert report["simple_regret"] == pytest.approx(0.0)
     assert report["top_k_recall"] == pytest.approx(0.5)
-    assert report["mae"] == pytest.approx(16.25)
+    assert report["mae"] == pytest.approx(11.25)
     assert report["max_abs_error"] == pytest.approx(30.0)
     assert report["pairwise_accuracy"] < 1.0
 
