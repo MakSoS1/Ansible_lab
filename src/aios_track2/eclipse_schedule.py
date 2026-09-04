@@ -178,14 +178,15 @@ def _interpolate_monthly(value_date: date, node_dates: tuple[date, ...], values:
     if len(node_dates) != len(values) or not node_dates:
         raise ValueError("node_dates and policy values must have the same non-zero length")
     positions = tuple(_month_index(item) for item in node_dates)
-    if any(right <= left for left, right in zip(positions, positions[1:])):
+    pairs = zip(positions, positions[1:], strict=False)
+    if any(right <= left for left, right in pairs):
         raise ValueError("node_dates must be strictly increasing by month")
     position = _month_index(value_date)
     if position <= positions[0]:
         return float(values[0])
     if position >= positions[-1]:
         return float(values[-1])
-    for idx, (left, right) in enumerate(zip(positions, positions[1:])):
+    for idx, (left, right) in enumerate(zip(positions, positions[1:], strict=False)):
         if left <= position <= right:
             weight = (position - left) / (right - left)
             return float(values[idx] + weight * (values[idx + 1] - values[idx]))
@@ -205,7 +206,7 @@ def scale_schedule_with_policy(
     """Apply smooth group-level policy nodes to native monthly WCON records.
 
     Scales are linearly interpolated in calendar months between the supplied
-    policy nodes.  All records before ``effective_from`` are copied unchanged.
+    policy nodes. All records before ``effective_from`` are copied unchanged.
     """
     if not node_dates:
         raise ValueError("at least one policy node is required")

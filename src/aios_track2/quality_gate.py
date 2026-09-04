@@ -13,6 +13,9 @@ class QualityThresholds:
     max_physics_violation_rate: float = 0.0
 
 
+DEFAULT_QUALITY_THRESHOLDS = QualityThresholds()
+
+
 @dataclass(frozen=True, slots=True)
 class QualityGateReport:
     passed: bool
@@ -28,7 +31,7 @@ def evaluate_quality_gate(
     dynamic: dict[str, float],
     ranking: dict[str, float],
     physics_violation_rate: float,
-    thresholds: QualityThresholds = QualityThresholds(),
+    thresholds: QualityThresholds = DEFAULT_QUALITY_THRESHOLDS,
 ) -> QualityGateReport:
     failures: list[str] = []
     if dynamic["r2"] < thresholds.min_r2:
