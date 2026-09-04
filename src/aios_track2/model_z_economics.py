@@ -5,7 +5,7 @@ import shlex
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,7 @@ from .chdd_extract import opm_rows_to_chdd
 from .economics_official import REQUIRED_COLUMNS, compute_calculation
 
 TRACK2_ECONOMIC_START = "2007-01-01"
+ReportMode = Literal["all", "last_per_month"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,11 +157,16 @@ def load_model_z_density_map(root: Path, *, dimensions: tuple[int, int, int] = (
     return ModelZDensityMap(oil, water, region_by_well, region_counts_by_well)
 
 
-def _last_report_indices_by_month(dates: np.ndarray) -> list[int]:
-    last: dict[str, int] = {}
-    for index, value in enumerate(np.asarray(dates).astype(str)):
-        last[value[:7]] = index
-    return [last[month] for month in sorted(last)]
+def _report_indices(dates: np.ndarray, report_mode: ReportMode) -> list[int]:
+    values = np.asarray(dates).astype(str)
+    if report_mode == "all":
+        return list(range(len(values)))
+    if report_mode == "last_per_month":
+        last: dict[str, int] = {}
+        for index, value in enumerate(values):
+            last[value[:7]] = index
+        return [last[month] for month in sorted(last)]
+    raise ValueError(f"unsupported report_mode: {report_mode}")
 
 
 def summary_npz_to_chdd_rows(
@@ -168,11 +174,12 @@ def summary_npz_to_chdd_rows(
     *,
     oil_density_t_m3: dict[str, float],
     water_density_t_m3: dict[str, float],
+    report_mode: ReportMode = "all",
 ) -> pd.DataFrame:
     with np.load(summary_path) as summary:
         dates = summary["dates"].astype(str)
         wells = summary["wells"].astype(str)
-        indices = _last_report_indices_by_month(dates)
+        indices = _report_indices(dates, report_mode)
         columns = {
             "WOPT": summary["well_WOPT"],
             "WWPT": summary["well_WWPT"],
@@ -200,17 +207,22 @@ def scenario_chdd(
     oil_density_t_m3: dict[str, float],
     water_density_t_m3: dict[str, float],
     start_date: str = TRACK2_ECONOMIC_START,
+    report_mode: ReportMode = "all",
 ) -> dict[str, Any]:
     rows = summary_npz_to_chdd_rows(
         summary_path,
         oil_density_t_m3=oil_density_t_m3,
         water_density_t_m3=water_density_t_m3,
+        report_mode=report_mode,
     )
     records = rows.loc[:, REQUIRED_COLUMNS].copy()
     records["DATA"] = records["DATA"].dt.strftime("%Y-%m-%d")
-    return compute_calculation(
+    result = compute_calculation(
         records.to_dict(orient="records"),
         headers=REQUIRED_COLUMNS,
         start_date=start_date,
         source_file=str(summary_path),
     )
+    result.setdefault("diagnostics", {})["opmReportMode"] = report_mode
+    result["diagnostics"]["opmReportRows"] = int(len(rows))
+    return result
