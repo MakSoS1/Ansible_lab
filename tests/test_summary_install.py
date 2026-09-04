@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 
 from aios_track2.summary_install import install_training_summary
+from aios_track2.summary_requests import build_training_summary
 
 
 def _sha(path: Path) -> str:
@@ -15,7 +16,19 @@ def test_install_training_summary_changes_only_summary_include(tmp_path: Path) -
     grid = tmp_path / "Model_Z_grid.inc"
     schedule = tmp_path / "Model_Z_sch.inc"
     summary = tmp_path / "Model_Z_summary.inc"
-    deck.write_text("RUNSPEC\nINCLUDE\n 'Model_Z_grid.inc' /\nSUMMARY\nINCLUDE\n 'Model_Z_summary.inc' /\nSCHEDULE\nINCLUDE\n 'Model_Z_sch.inc' /\nEND\n", encoding="utf-8")
+    deck.write_text(
+        "RUNSPEC\n"
+        "INCLUDE\n"
+        " 'Model_Z_grid.inc' /\n"
+        "SUMMARY\n"
+        "INCLUDE\n"
+        " 'Model_Z_summary.inc' /\n"
+        "SCHEDULE\n"
+        "INCLUDE\n"
+        " 'Model_Z_sch.inc' /\n"
+        "END\n",
+        encoding="utf-8",
+    )
     grid.write_text("DIMENS\n 2 2 1 /\n", encoding="utf-8")
     schedule.write_text("DATES\n 1 JAN 2007 /\n/\n", encoding="utf-8")
     summary.write_text("TIME\nYEARS\n", encoding="utf-8")
@@ -42,3 +55,8 @@ def test_install_training_summary_requires_exactly_one_summary_include(tmp_path:
         assert "exactly one" in str(exc).lower()
     else:
         raise AssertionError("expected ValueError for missing summary include")
+
+
+def test_training_summary_terminates_time_and_years_records() -> None:
+    summary = build_training_summary()
+    assert "\nTIME\n/\nYEARS\n/\nFOPR\n" in summary
