@@ -10,8 +10,6 @@ FIELD_SUMMARY_VECTORS = (
     "FWIT",
     "FLPT",
     "FPR",
-    "FMWPR",
-    "FMWIN",
 )
 
 WELL_SUMMARY_VECTORS = (
@@ -24,6 +22,7 @@ WELL_SUMMARY_VECTORS = (
     "WWIT",
     "WLPT",
     "WBHP",
+    "WTHP",
     "WWCT",
 )
 
@@ -31,8 +30,8 @@ WELL_SUMMARY_VECTORS = (
 def build_training_summary() -> str:
     """Return SUMMARY-section contents used for real OPM surrogate training.
 
-    Field vectors need no selector.  An empty selector record for a well vector
-    asks OPM/ECLIPSE to emit that vector for all declared wells.  This changes
+    Field vectors need no selector. An empty selector record for a well vector
+    asks OPM/ECLIPSE to emit that vector for all declared wells. This changes
     telemetry only; it does not alter reservoir physics or the SCHEDULE.
     """
     lines = [
