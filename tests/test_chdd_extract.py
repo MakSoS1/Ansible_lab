@@ -8,9 +8,42 @@ from aios_track2.chdd_extract import opm_rows_to_chdd
 def test_opm_rows_to_chdd_converts_surface_volumes_to_mass_by_well_density() -> None:
     rows = pd.DataFrame(
         [
-            {"DATA": "2007-01-01", "well": "P1", "WOPT": 100.0, "WWPT": 50.0, "WOPR": 10.0, "WLPR": 15.0, "WWIR": 0.0, "WWIT": 0.0, "WBHP": 120.0, "WTHP": 90.0},
-            {"DATA": "2007-02-01", "well": "P1", "WOPT": 140.0, "WWPT": 70.0, "WOPR": 8.0, "WLPR": 13.0, "WWIR": 0.0, "WWIT": 0.0, "WBHP": 118.0, "WTHP": 89.0},
-            {"DATA": "2007-01-01", "well": "P2", "WOPT": 50.0, "WWPT": 25.0, "WOPR": 5.0, "WLPR": 8.0, "WWIR": 0.0, "WWIT": 0.0, "WBHP": 125.0, "WTHP": 91.0},
+            {
+                "DATA": "2007-01-01",
+                "well": "P1",
+                "WOPT": 100.0,
+                "WWPT": 50.0,
+                "WOPR": 10.0,
+                "WLPR": 15.0,
+                "WWIR": 0.0,
+                "WWIT": 0.0,
+                "WBHP": 120.0,
+                "WTHP": 90.0,
+            },
+            {
+                "DATA": "2007-02-01",
+                "well": "P1",
+                "WOPT": 140.0,
+                "WWPT": 70.0,
+                "WOPR": 8.0,
+                "WLPR": 13.0,
+                "WWIR": 0.0,
+                "WWIT": 0.0,
+                "WBHP": 118.0,
+                "WTHP": 89.0,
+            },
+            {
+                "DATA": "2007-01-01",
+                "well": "P2",
+                "WOPT": 50.0,
+                "WWPT": 25.0,
+                "WOPR": 5.0,
+                "WLPR": 8.0,
+                "WWIR": 0.0,
+                "WWIT": 0.0,
+                "WBHP": 125.0,
+                "WTHP": 91.0,
+            },
         ]
     )
     result = opm_rows_to_chdd(
@@ -43,8 +76,30 @@ def test_opm_rows_to_chdd_converts_surface_volumes_to_mass_by_well_density() -> 
 def test_opm_rows_to_chdd_preserves_injection_volume_and_computes_delta() -> None:
     rows = pd.DataFrame(
         [
-            {"DATA": "2007-01-01", "well": "I1", "WOPT": 0.0, "WWPT": 0.0, "WOPR": 0.0, "WLPR": 0.0, "WWIR": 100.0, "WWIT": 1000.0, "WBHP": 180.0, "WTHP": 130.0},
-            {"DATA": "2007-02-01", "well": "I1", "WOPT": 0.0, "WWPT": 0.0, "WOPR": 0.0, "WLPR": 0.0, "WWIR": 110.0, "WWIT": 4100.0, "WBHP": 181.0, "WTHP": 131.0},
+            {
+                "DATA": "2007-01-01",
+                "well": "I1",
+                "WOPT": 0.0,
+                "WWPT": 0.0,
+                "WOPR": 0.0,
+                "WLPR": 0.0,
+                "WWIR": 100.0,
+                "WWIT": 1000.0,
+                "WBHP": 180.0,
+                "WTHP": 130.0,
+            },
+            {
+                "DATA": "2007-02-01",
+                "well": "I1",
+                "WOPT": 0.0,
+                "WWPT": 0.0,
+                "WOPR": 0.0,
+                "WLPR": 0.0,
+                "WWIR": 110.0,
+                "WWIT": 4100.0,
+                "WBHP": 181.0,
+                "WTHP": 131.0,
+            },
         ]
     )
     result = opm_rows_to_chdd(rows, oil_density_t_m3={"I1": 0.9}, water_density_t_m3={"I1": 1.1})
@@ -59,7 +114,20 @@ def test_opm_rows_to_chdd_preserves_injection_volume_and_computes_delta() -> Non
 
 def test_opm_rows_to_chdd_rejects_missing_density_instead_of_silent_global_fallback() -> None:
     rows = pd.DataFrame(
-        [{"DATA": "2007-01-01", "well": "P1", "WOPT": 1.0, "WWPT": 0.0, "WOPR": 1.0, "WLPR": 1.0, "WWIR": 0.0, "WWIT": 0.0, "WBHP": 100.0, "WTHP": 80.0}]
+        [
+            {
+                "DATA": "2007-01-01",
+                "well": "P1",
+                "WOPT": 1.0,
+                "WWPT": 0.0,
+                "WOPR": 1.0,
+                "WLPR": 1.0,
+                "WWIR": 0.0,
+                "WWIT": 0.0,
+                "WBHP": 100.0,
+                "WTHP": 80.0,
+            }
+        ]
     )
     try:
         opm_rows_to_chdd(rows, oil_density_t_m3={}, water_density_t_m3={"P1": 1.0})
