@@ -1,0 +1,382 @@
+name: AIOS Track 2 Competition Challenge
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/aios_track2/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - 'aios-track2/materials/41_Model_Z_final_OPM.zip'
+      - 'aios-track2/materials/48_Расчет ЧДД через OPM Flow Model_Z.xlsx'
+      - '.github/workflows/aios-track2-challenge.yml'
+
+concurrency:
+  group: aios-track2-challenge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: src
+  MODEL_Z_ARCHIVE: aios-track2/materials/41_Model_Z_final_OPM.zip
+  MODEL_Z_REFERENCE: aios-track2/materials/48_Расчет ЧДД через OPM Flow Model_Z.xlsx
+
+jobs:
+  preflight:
+    name: Competition preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Unit tests
+        run: pytest -q
+      - name: Ruff
+        run: ruff check src tests scripts
+      - name: Compile
+        run: python -m compileall -q src scripts tests
+      - name: Verify frozen design
+        run: |
+          python - <<'PY'
+          from aios_track2.challenge_doe import FROZEN_CHALLENGE_SHA256, challenge_design_sha256
+          actual = challenge_design_sha256()
+          print(actual)
+          if actual != FROZEN_CHALLENGE_SHA256:
+              raise SystemExit(f"frozen design mismatch: {actual} != {FROZEN_CHALLENGE_SHA256}")
+          PY
+
+  scenario:
+    name: Real OPM scenario ${{ matrix.scenario }}
+    needs: preflight
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        scenario: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: python -m pip install -e .
+      - name: Install OPM Flow
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y software-properties-common mpi-default-bin
+          sudo add-apt-repository -y ppa:opm/ppa
+          sudo apt-get update -y
+          sudo apt-get install -y libopm-simulators-bin
+          flow --version
+      - name: Run frozen 18D scenario
+        shell: bash
+        run: |
+          out="runs/challenge/${{ matrix.scenario }}"
+          mkdir -p "$out"
+          args=(
+            "$MODEL_Z_ARCHIVE"
+            --scenario-id "${{ matrix.scenario }}"
+            --output "$out"
+            --timeout 2700
+          )
+          if [ "${{ matrix.scenario }}" = "0" ]; then
+            args+=(--reference-workbook "$MODEL_Z_REFERENCE")
+          fi
+          python scripts/run_model_z_challenge.py "${args[@]}" | tee "$out/run.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: challenge-scenario-${{ matrix.scenario }}
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/challenge
+
+  evaluate:
+    name: Frozen holdout and optimizer search
+    needs: scenario
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: challenge-scenario-*
+          path: runs/challenge
+          merge-multiple: true
+      - name: Evaluate untouched holdout and generate finalists
+        run: |
+          python scripts/evaluate_challenge_doe.py \
+            --runs-dir runs/challenge \
+            --output-dir runs/evaluation
+      - uses: actions/upload-artifact@v4
+        with:
+          name: challenge-evaluation
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/evaluation
+
+  finalist:
+    name: Real OPM finalist ${{ matrix.name }}
+    needs: evaluate
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        name: [baseline, best_observed, cem, cma_es, mappo, sobol]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: python -m pip install -e .
+      - name: Install OPM Flow
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y software-properties-common mpi-default-bin
+          sudo add-apt-repository -y ppa:opm/ppa
+          sudo apt-get update -y
+          sudo apt-get install -y libopm-simulators-bin
+          flow --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-evaluation
+          path: runs/evaluation
+      - name: Run finalist through real OPM
+        run: |
+          python scripts/run_model_z_candidate.py "$MODEL_Z_ARCHIVE" \
+            --finalists runs/evaluation/finalists.json \
+            --name "${{ matrix.name }}" \
+            --output "runs/finalists/${{ matrix.name }}" \
+            --timeout 2700
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: challenge-finalist-${{ matrix.name }}
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/finalists
+
+  robustness:
+    name: Robustness ${{ matrix.name }} perturb ${{ matrix.seed }}
+    needs: evaluate
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        name: [baseline, best_observed, cem, cma_es, mappo, sobol]
+        seed: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: python -m pip install -e .
+      - name: Install OPM Flow
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y software-properties-common mpi-default-bin
+          sudo add-apt-repository -y ppa:opm/ppa
+          sudo apt-get update -y
+          sudo apt-get install -y libopm-simulators-bin
+          flow --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-evaluation
+          path: runs/evaluation
+      - name: Run perturbed finalist through real OPM
+        run: |
+          label="${{ matrix.name }}__perturb_${{ matrix.seed }}"
+          python scripts/run_model_z_candidate.py "$MODEL_Z_ARCHIVE" \
+            --finalists runs/evaluation/finalists.json \
+            --name "${{ matrix.name }}" \
+            --perturb-seed "${{ matrix.seed }}" \
+            --perturb-scale 0.02 \
+            --output "runs/robustness/$label" \
+            --timeout 2700
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: challenge-robustness-${{ matrix.name }}-${{ matrix.seed }}
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/robustness
+
+  select:
+    name: Select real-OPM winner
+    needs: [finalist, robustness]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-evaluation
+          path: runs/evaluation
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: challenge-finalist-*
+          path: runs/finalists
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: challenge-robustness-*
+          path: runs/robustness
+          merge-multiple: true
+      - name: Select by verified OPM NPV
+        run: |
+          mkdir -p runs/selection
+          python scripts/select_challenge_winner.py \
+            --finalists runs/evaluation/finalists.json \
+            --results-dir runs/finalists \
+            --robustness-dir runs/robustness \
+            --output runs/selection/winner.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: challenge-winner
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/selection
+
+  clean:
+    name: Clean OPM rerun
+    needs: select
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: python -m pip install -e .
+      - name: Install OPM Flow
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y software-properties-common mpi-default-bin
+          sudo add-apt-repository -y ppa:opm/ppa
+          sudo apt-get update -y
+          sudo apt-get install -y libopm-simulators-bin
+          flow --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-evaluation
+          path: runs/evaluation
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-winner
+          path: runs/selection
+      - name: Re-run exact winner from a clean directory
+        shell: bash
+        run: |
+          winner="$(python -c 'import json; print(json.load(open("runs/selection/winner.json"))["winner"]["name"])')"
+          echo "winner=$winner"
+          python scripts/run_model_z_candidate.py "$MODEL_Z_ARCHIVE" \
+            --finalists runs/evaluation/finalists.json \
+            --name "$winner" \
+            --output runs/clean \
+            --timeout 2700
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: challenge-clean-rerun
+          retention-days: 30
+          if-no-files-found: error
+          path: runs/clean
+
+  verify:
+    name: Verify and package final submission
+    needs: clean
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: python -m pip install -e '.[hf]'
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-evaluation
+          path: runs/evaluation
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-winner
+          path: runs/selection
+      - uses: actions/download-artifact@v4
+        with:
+          name: challenge-clean-rerun
+          path: runs/clean
+      - name: Verify clean rerun and package
+        run: |
+          python scripts/verify_final_submission.py \
+            --winner runs/selection/winner.json \
+            --clean-dir runs/clean \
+            --archive "$MODEL_Z_ARCHIVE" \
+            --evaluation runs/evaluation/challenge-evaluation.json \
+            --output-dir final-submission \
+            --git-sha "${{ github.sha }}" \
+            --github-run-id "${{ github.run_id }}"
+      - name: Upload immutable final run to Hugging Face
+        if: env.HF_TOKEN != ''
+        run: python scripts/upload_hf_run.py final-submission final-submission/hf-run-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aios-track2-final-submission
+          retention-days: 90
+          if-no-files-found: error
+          path: final-submission
