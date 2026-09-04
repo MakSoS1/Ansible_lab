@@ -43,3 +43,4 @@ select = ["E", "F", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/aios_track2/economics_official.py" = ["E501", "UP035", "UP037"]
+"scripts/evaluate_challenge_doe.py" = ["UP035"]
