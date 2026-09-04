@@ -30,3 +30,13 @@ jobs:
         run: python -m mypy src
       - name: Test
         run: python -m pytest -q --ignore=tests/test_end_to_end.py
+      - name: Bake-off five controllers on Apple Silicon
+        if: github.event_name == 'push' && github.ref == 'refs/heads/aios-track2-models'
+        run: python -m aios_track2.cli bakeoff --seed 42 --preset m1 --out runs/train
+      - name: Upload bake-off artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/aios-track2-models'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-track2-bakeoff
+          path: runs/train
+          if-no-files-found: error
