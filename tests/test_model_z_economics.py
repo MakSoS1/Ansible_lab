@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 import numpy as np
@@ -56,20 +54,40 @@ def _write_summary(path: Path) -> None:
     )
 
 
-def test_summary_conversion_keeps_last_report_per_calendar_month(tmp_path: Path) -> None:
+def test_summary_conversion_keeps_all_opm_report_steps_by_default(tmp_path: Path) -> None:
     summary = tmp_path / "summary.npz"
     _write_summary(summary)
     rows = summary_npz_to_chdd_rows(summary, oil_density_t_m3={"A": 0.9}, water_density_t_m3={"A": 1.1})
+    assert rows["DATA"].dt.strftime("%Y-%m-%d").tolist() == [
+        "2006-12-01",
+        "2007-01-01",
+        "2007-01-15",
+        "2007-02-01",
+    ]
+    assert rows.iloc[1]["WOMT_Diff"] == pytest.approx(2.0 * 0.9)
+    assert rows.iloc[2]["WOMT_Diff"] == pytest.approx(1.0 * 0.9)
+    assert rows.iloc[2]["WWIT_Diff"] == pytest.approx(1.0)
+
+
+def test_last_report_per_month_remains_explicit_diagnostic_mode(tmp_path: Path) -> None:
+    summary = tmp_path / "summary.npz"
+    _write_summary(summary)
+    rows = summary_npz_to_chdd_rows(
+        summary,
+        oil_density_t_m3={"A": 0.9},
+        water_density_t_m3={"A": 1.1},
+        report_mode="last_per_month",
+    )
     assert rows["DATA"].dt.strftime("%Y-%m-%d").tolist() == ["2006-12-01", "2007-01-15", "2007-02-01"]
-    january = rows.iloc[1]
-    assert january["WOMT"] == pytest.approx(13.0 * 0.9)
-    assert january["WOMT_Diff"] == pytest.approx((13.0 - 10.0) * 0.9)
-    assert january["WWIT_Diff"] == pytest.approx(2.0)
+    assert rows.iloc[1]["WOMT_Diff"] == pytest.approx(3.0 * 0.9)
+    assert rows.iloc[1]["WWIT_Diff"] == pytest.approx(2.0)
 
 
-def test_scenario_chdd_uses_track2_economic_start(tmp_path: Path) -> None:
+def test_scenario_chdd_uses_track2_economic_start_and_records_report_mode(tmp_path: Path) -> None:
     summary = tmp_path / "summary.npz"
     _write_summary(summary)
     result = scenario_chdd(summary, oil_density_t_m3={"A": 0.9}, water_density_t_m3={"A": 1.1})
     assert result["version"] == "7.0.2-negative-row-filter"
     assert result["startDate"] == "2007-01-01"
+    assert result["diagnostics"]["opmReportMode"] == "all"
+    assert result["diagnostics"]["opmReportRows"] == 4
