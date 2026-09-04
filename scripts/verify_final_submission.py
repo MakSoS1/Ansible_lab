@@ -24,6 +24,7 @@ def main() -> None:
     parser.add_argument("--clean-dir", type=Path, required=True)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--evaluation", type=Path, required=True)
+    parser.add_argument("--tournament-authorization", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--git-sha", required=True)
     parser.add_argument("--github-run-id", required=True)
@@ -52,20 +53,34 @@ def main() -> None:
         npv_abs_tolerance_mrub=1e-6,
     )
     evaluation = json.loads(args.evaluation.read_text(encoding="utf-8"))
+    authorization: dict | None = None
+    if args.tournament_authorization is not None:
+        authorization = json.loads(args.tournament_authorization.read_text(encoding="utf-8"))
+
     if not evaluation.get("passed"):
-        verification.setdefault("failures", []).append("CHALLENGE_HOLDOUT_GATE_FAILED")
-        verification["passed"] = False
+        if authorization is None or not authorization.get("passed"):
+            verification.setdefault("failures", []).append("CHALLENGE_HOLDOUT_GATE_FAILED_WITHOUT_TOURNAMENT_AUTHORIZATION")
+            verification["passed"] = False
     if not evaluation.get("reference_parity", {}).get("passed"):
         verification.setdefault("failures", []).append("REFERENCE_PARITY_FAILED")
         verification["passed"] = False
+    if authorization is not None and not authorization.get("passed"):
+        verification.setdefault("failures", []).append("REAL_OPM_TOURNAMENT_NOT_AUTHORIZED")
+        verification["passed"] = False
     if not verification["passed"]:
         raise ValueError(f"final clean-rerun verification failed: {verification['failures']}")
+
+    verification["surrogate_holdout_passed"] = bool(evaluation.get("passed"))
+    verification["surrogate_holdout_failures"] = list(evaluation.get("failures", []))
+    verification["tournament_authorization"] = authorization
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(args.clean_dir / "wells_schedule.inc", args.output_dir / "wells_schedule.inc")
     shutil.copy2(args.clean_dir / "economics.json", args.output_dir / "economics.json")
     shutil.copy2(args.evaluation, args.output_dir / "challenge-evaluation.json")
     shutil.copy2(args.winner, args.output_dir / "winner.json")
+    if args.tournament_authorization is not None:
+        shutil.copy2(args.tournament_authorization, args.output_dir / "tournament-authorization.json")
     schedule_sha = _sha256(args.output_dir / "wells_schedule.inc")
     if schedule_sha != clean["schedule_sha256"]:
         raise ValueError("copied final schedule SHA differs from clean OPM schedule SHA")
@@ -81,10 +96,13 @@ def main() -> None:
         "clean_npv_rub": float(clean["npv_mrub"]) * 1_000_000.0,
         "clean_max_wlpr": float(clean["compact_summary"]["max_wlpr"]),
         "verification": verification,
-        "holdout": {
+        "surrogate_holdout": {
+            "passed": bool(evaluation.get("passed")),
+            "failures": list(evaluation.get("failures", [])),
             "dynamic": evaluation["dynamic_selection"]["holdout"],
             "npv": evaluation["npv_selection"]["holdout"],
         },
+        "tournament_authorization": authorization,
         "reference_parity": evaluation["reference_parity"],
     }
     (args.output_dir / "final-submission-manifest.json").write_text(
