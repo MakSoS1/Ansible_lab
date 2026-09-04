@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -70,8 +70,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
-          persist-credentials: false
+          lfs: false
+          persist-credentials: true
+      - name: Pull required Model Z LFS objects only
+        run: git lfs pull --include="$MODEL_Z_ARCHIVE,$MODEL_Z_REFERENCE" --exclude=""
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -105,8 +107,16 @@ jobs:
         with:
           name: challenge-scenario-${{ matrix.scenario }}
           retention-days: 30
-          if-no-files-found: error
-          path: runs/challenge
+          if-no-files-found: warn
+          path: |
+            runs/challenge/${{ matrix.scenario }}/scenario-manifest.json
+            runs/challenge/${{ matrix.scenario }}/summary.npz
+            runs/challenge/${{ matrix.scenario }}/economics.json
+            runs/challenge/${{ matrix.scenario }}/reference-parity.json
+            runs/challenge/${{ matrix.scenario }}/wells_schedule.inc
+            runs/challenge/${{ matrix.scenario }}/run.json
+            runs/challenge/${{ matrix.scenario }}/flow.stdout.log
+            runs/challenge/${{ matrix.scenario }}/flow.stderr.log
 
   evaluate:
     name: Frozen holdout and optimizer search
@@ -116,7 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -154,8 +164,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
-          persist-credentials: false
+          lfs: false
+          persist-credentials: true
+      - name: Pull Model Z LFS object only
+        run: git lfs pull --include="$MODEL_Z_ARCHIVE" --exclude=""
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -185,8 +197,14 @@ jobs:
         with:
           name: challenge-finalist-${{ matrix.name }}
           retention-days: 30
-          if-no-files-found: error
-          path: runs/finalists
+          if-no-files-found: warn
+          path: |
+            runs/finalists/${{ matrix.name }}/candidate-result.json
+            runs/finalists/${{ matrix.name }}/summary.npz
+            runs/finalists/${{ matrix.name }}/economics.json
+            runs/finalists/${{ matrix.name }}/wells_schedule.inc
+            runs/finalists/${{ matrix.name }}/flow.stdout.log
+            runs/finalists/${{ matrix.name }}/flow.stderr.log
 
   robustness:
     name: Robustness ${{ matrix.name }} perturb ${{ matrix.seed }}
@@ -202,8 +220,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
-          persist-credentials: false
+          lfs: false
+          persist-credentials: true
+      - name: Pull Model Z LFS object only
+        run: git lfs pull --include="$MODEL_Z_ARCHIVE" --exclude=""
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -236,8 +256,14 @@ jobs:
         with:
           name: challenge-robustness-${{ matrix.name }}-${{ matrix.seed }}
           retention-days: 30
-          if-no-files-found: error
-          path: runs/robustness
+          if-no-files-found: warn
+          path: |
+            runs/robustness/${{ matrix.name }}__perturb_${{ matrix.seed }}/candidate-result.json
+            runs/robustness/${{ matrix.name }}__perturb_${{ matrix.seed }}/summary.npz
+            runs/robustness/${{ matrix.name }}__perturb_${{ matrix.seed }}/economics.json
+            runs/robustness/${{ matrix.name }}__perturb_${{ matrix.seed }}/wells_schedule.inc
+            runs/robustness/${{ matrix.name }}__perturb_${{ matrix.seed }}/flow.stdout.log
+            runs/robustness/${{ matrix.name }}__perturb_${{ matrix.seed }}/flow.stderr.log
 
   select:
     name: Select real-OPM winner
@@ -247,6 +273,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          lfs: false
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -290,8 +317,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
-          persist-credentials: false
+          lfs: false
+          persist-credentials: true
+      - name: Pull Model Z LFS object only
+        run: git lfs pull --include="$MODEL_Z_ARCHIVE" --exclude=""
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -328,8 +357,14 @@ jobs:
         with:
           name: challenge-clean-rerun
           retention-days: 30
-          if-no-files-found: error
-          path: runs/clean
+          if-no-files-found: warn
+          path: |
+            runs/clean/candidate-result.json
+            runs/clean/summary.npz
+            runs/clean/economics.json
+            runs/clean/wells_schedule.inc
+            runs/clean/flow.stdout.log
+            runs/clean/flow.stderr.log
 
   verify:
     name: Verify and package final submission
@@ -341,8 +376,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
-          persist-credentials: false
+          lfs: false
+          persist-credentials: true
+      - name: Pull Model Z LFS object only
+        run: git lfs pull --include="$MODEL_Z_ARCHIVE" --exclude=""
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
