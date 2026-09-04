@@ -22,3 +22,20 @@ def test_all_five_strategies_execute_through_common_contract() -> None:
     assert all(np.isfinite(r.score) for r in runs)
     assert all(r.evaluations > 0 for r in runs)
     assert all(r.valid for r in runs)
+
+
+def test_mappo_blackbox_training_uses_the_supplied_objective() -> None:
+    def prefer_low(pop: np.ndarray):
+        value = -np.mean(pop, axis=1)
+        return value, np.zeros(len(pop)), np.ones(len(pop), dtype=bool)
+
+    def prefer_high(pop: np.ndarray):
+        value = np.mean(pop, axis=1)
+        return value, np.zeros(len(pop)), np.ones(len(pop), dtype=bool)
+
+    low = run_blackbox_strategy("graph_mappo", prefer_low, dim=6, seed=77, budget=256)
+    high = run_blackbox_strategy("graph_mappo", prefer_high, dim=6, seed=77, budget=256)
+
+    assert np.mean(low.x) < np.mean(high.x)
+    assert low.score == np.max([-np.mean(low.x)])
+    assert high.score == np.mean(high.x)
