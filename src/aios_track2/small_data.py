@@ -29,7 +29,7 @@ class QuadraticRidge:
         if self.ridge < 0:
             raise ValueError("ridge must be non-negative")
 
-    def fit(self, x: np.ndarray, y: np.ndarray) -> "QuadraticRidge":
+    def fit(self, x: np.ndarray, y: np.ndarray) -> QuadraticRidge:
         features = _quadratic_features(x, center=self.center)
         targets = np.asarray(y, dtype=float)
         if targets.shape[0] != features.shape[0]:
@@ -83,7 +83,7 @@ class StationaryKernelRidge:
         q = np.sqrt(5.0) * distance / self.length_scale
         return (1.0 + q + q**2 / 3.0) * np.exp(-q)
 
-    def fit(self, x: np.ndarray, y: np.ndarray) -> "StationaryKernelRidge":
+    def fit(self, x: np.ndarray, y: np.ndarray) -> StationaryKernelRidge:
         inputs = np.asarray(x, dtype=float)
         targets = np.asarray(y, dtype=float)
         if inputs.ndim != 2 or targets.shape[0] != inputs.shape[0]:
@@ -152,7 +152,7 @@ class AdditiveGroupKernelRidge:
         global_kernel = self._matern52(global_distance_squared)
         return (1.0 - self.global_weight) * grouped + self.global_weight * global_kernel
 
-    def fit(self, x: np.ndarray, y: np.ndarray) -> "AdditiveGroupKernelRidge":
+    def fit(self, x: np.ndarray, y: np.ndarray) -> AdditiveGroupKernelRidge:
         inputs = np.asarray(x, dtype=float)
         targets = np.asarray(y, dtype=float)
         if targets.shape[0] != inputs.shape[0]:
