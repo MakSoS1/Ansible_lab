@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shlex
+from collections.abc import Callable
 from datetime import date, datetime
 
 
@@ -85,20 +86,16 @@ def _rewrite_record(
     return indent + " ".join(tokens) + " /\n"
 
 
-def scale_schedule_text(
+ScaleProvider = Callable[[date | None], tuple[dict[str, float], dict[str, float]]]
+
+
+def _scale_schedule(
     text: str,
     *,
-    producer_scale: dict[str, float],
-    injector_scale: dict[str, float],
-    max_wlpr: float = 500.0,
-    effective_from: date | None = None,
+    scale_provider: ScaleProvider,
+    max_wlpr: float,
+    effective_from: date | None,
 ) -> str:
-    """Scale WCON targets without changing pre-optimization history.
-
-    When ``effective_from`` is supplied, records are modified only after a DATES record reaches
-    that date. WCON records before the first known date are left untouched. This preserves the
-    historical reservoir state while still allowing post-2007 DoE perturbations.
-    """
     lines = text.splitlines(keepends=True)
     out: list[str] = []
     keyword: str | None = None
@@ -144,16 +141,96 @@ def scale_schedule_text(
         record += line
         if "/" in re.sub(r"--.*$", "", line):
             active = effective_from is None or (current_date is not None and current_date >= effective_from)
-            out.append(
-                _rewrite_record(
-                    record,
-                    keyword,
-                    producer_scale if active else {},
-                    injector_scale if active else {},
-                    max_wlpr,
-                )
-            )
+            producer_scale, injector_scale = scale_provider(current_date) if active else ({}, {})
+            out.append(_rewrite_record(record, keyword, producer_scale, injector_scale, max_wlpr))
             record = ""
     if record:
         out.append(record)
     return "".join(out)
+
+
+def scale_schedule_text(
+    text: str,
+    *,
+    producer_scale: dict[str, float],
+    injector_scale: dict[str, float],
+    max_wlpr: float = 500.0,
+    effective_from: date | None = None,
+) -> str:
+    """Scale WCON targets without changing pre-optimization history."""
+
+    def constant_scale(_: date | None) -> tuple[dict[str, float], dict[str, float]]:
+        return producer_scale, injector_scale
+
+    return _scale_schedule(
+        text,
+        scale_provider=constant_scale,
+        max_wlpr=max_wlpr,
+        effective_from=effective_from,
+    )
+
+
+def _month_index(value: date) -> int:
+    return value.year * 12 + value.month - 1
+
+
+def _interpolate_monthly(value_date: date, node_dates: tuple[date, ...], values: tuple[float, ...]) -> float:
+    if len(node_dates) != len(values) or not node_dates:
+        raise ValueError("node_dates and policy values must have the same non-zero length")
+    positions = tuple(_month_index(item) for item in node_dates)
+    if any(right <= left for left, right in zip(positions, positions[1:])):
+        raise ValueError("node_dates must be strictly increasing by month")
+    position = _month_index(value_date)
+    if position <= positions[0]:
+        return float(values[0])
+    if position >= positions[-1]:
+        return float(values[-1])
+    for idx, (left, right) in enumerate(zip(positions, positions[1:])):
+        if left <= position <= right:
+            weight = (position - left) / (right - left)
+            return float(values[idx] + weight * (values[idx + 1] - values[idx]))
+    raise RuntimeError("failed to bracket policy date")
+
+
+def scale_schedule_with_policy(
+    text: str,
+    *,
+    well_groups: dict[str, int],
+    producer_group_nodes: dict[int, tuple[float, ...]],
+    injector_group_nodes: dict[int, tuple[float, ...]],
+    node_dates: tuple[date, ...],
+    effective_from: date,
+    max_wlpr: float = 500.0,
+) -> str:
+    """Apply smooth group-level policy nodes to native monthly WCON records.
+
+    Scales are linearly interpolated in calendar months between the supplied
+    policy nodes.  All records before ``effective_from`` are copied unchanged.
+    """
+    if not node_dates:
+        raise ValueError("at least one policy node is required")
+    for mapping in (producer_group_nodes, injector_group_nodes):
+        for values in mapping.values():
+            if len(values) != len(node_dates):
+                raise ValueError("every group policy must provide one value per node date")
+            if any(value <= 0 for value in values):
+                raise ValueError("policy scales must be positive")
+
+    def policy_for(current_date: date | None) -> tuple[dict[str, float], dict[str, float]]:
+        if current_date is None:
+            return {}, {}
+        producers: dict[str, float] = {}
+        injectors: dict[str, float] = {}
+        for well, group in well_groups.items():
+            if group in producer_group_nodes:
+                producers[well] = _interpolate_monthly(current_date, node_dates, producer_group_nodes[group])
+            if group in injector_group_nodes:
+                injectors[well] = _interpolate_monthly(current_date, node_dates, injector_group_nodes[group])
+        return producers, injectors
+
+    return _scale_schedule(
+        text,
+        scale_provider=policy_for,
+        max_wlpr=max_wlpr,
+        effective_from=effective_from,
+    )
