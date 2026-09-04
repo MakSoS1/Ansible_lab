@@ -20,7 +20,7 @@ def test_align_common_post_start_excludes_history_and_uses_intersection() -> Non
     assert common.tolist() == ["2007-01-01", "2007-03-01"]
 
 
-def test_dynamic_delta_report_separates_aggregate_from_tail() -> None:
+def test_dynamic_delta_report_separates_aggregate_tail_and_nrmse() -> None:
     baseline = np.zeros((4, 2), dtype=float)
     truth = np.stack(
         [
@@ -41,6 +41,8 @@ def test_dynamic_delta_report_separates_aggregate_from_tail() -> None:
     )
 
     assert report["aggregate_channel_r2"]["oil"] == pytest.approx(1.0)
+    assert report["aggregate_channel_nrmse"]["oil"] == pytest.approx(0.0)
+    assert report["max_aggregate_channel_nrmse"] > 0.0
     assert report["worst_scenario_channel"]["scenario_id"] == 2
     assert report["worst_scenario_channel"]["channel"] == "pressure"
     assert report["worst_scenario_channel"]["r2"] < report["min_aggregate_channel_r2"]
