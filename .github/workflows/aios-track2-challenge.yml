@@ -77,8 +77,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python dependencies
-        run: python -m pip install -e .
+      - name: Install lightweight Python dependencies
+        run: |
+          python -m pip install -e . --no-deps
+          python -m pip install 'numpy>=2.0,<3' 'scipy>=1.14,<2' 'pandas>=2.2,<3' 'openpyxl>=3.1,<4'
       - name: Install OPM Flow
         run: |
           sudo apt-get update -y
@@ -171,8 +173,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python dependencies
-        run: python -m pip install -e .
+      - name: Install lightweight Python dependencies
+        run: |
+          python -m pip install -e . --no-deps
+          python -m pip install 'numpy>=2.0,<3' 'scipy>=1.14,<2' 'pandas>=2.2,<3' 'openpyxl>=3.1,<4'
       - name: Install OPM Flow
         run: |
           sudo apt-get update -y
@@ -227,8 +231,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python dependencies
-        run: python -m pip install -e .
+      - name: Install lightweight Python dependencies
+        run: |
+          python -m pip install -e . --no-deps
+          python -m pip install 'numpy>=2.0,<3' 'scipy>=1.14,<2' 'pandas>=2.2,<3' 'openpyxl>=3.1,<4'
       - name: Install OPM Flow
         run: |
           sudo apt-get update -y
@@ -278,8 +284,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install
-        run: python -m pip install -e .
+      - name: Install lightweight selection dependencies
+        run: |
+          python -m pip install -e . --no-deps
+          python -m pip install 'numpy>=2.0,<3'
       - uses: actions/download-artifact@v4
         with:
           name: challenge-evaluation
@@ -324,8 +332,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python dependencies
-        run: python -m pip install -e .
+      - name: Install lightweight Python dependencies
+        run: |
+          python -m pip install -e . --no-deps
+          python -m pip install 'numpy>=2.0,<3' 'scipy>=1.14,<2' 'pandas>=2.2,<3' 'openpyxl>=3.1,<4'
       - name: Install OPM Flow
         run: |
           sudo apt-get update -y
@@ -384,8 +394,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - name: Install
-        run: python -m pip install -e '.[hf]'
+      - name: Install final packaging dependencies
+        run: |
+          python -m pip install -e . --no-deps
+          python -m pip install 'numpy>=2.0,<3' 'huggingface-hub>=0.27,<2' 'pyarrow>=17,<22'
       - uses: actions/download-artifact@v4
         with:
           name: challenge-evaluation
