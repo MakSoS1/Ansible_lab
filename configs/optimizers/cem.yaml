@@ -1,0 +1,7 @@
+name: cem
+population: 24
+elites: 6
+iterations: 8
+noise: 0.15
+uncertainty_penalty: 1.0
+seed: 42
