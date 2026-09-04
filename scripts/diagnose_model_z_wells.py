@@ -23,6 +23,16 @@ WELL_KEYWORDS = (
     "COMPSEGS",
 )
 
+FLUID_KEYWORDS = (
+    "DENSITY",
+    "PVTW",
+    "PVCDO",
+    "PVDO",
+    "PVTO",
+    "PVDG",
+    "PVTG",
+)
+
 
 def strip_comments(text: str) -> str:
     return re.sub(r"--[^\n]*", "", text)
@@ -67,6 +77,7 @@ def first_quoted(record: str) -> str | None:
 def diagnose(root: Path) -> dict[str, object]:
     by_keyword: dict[str, set[str]] = defaultdict(set)
     welspec_records: list[str] = []
+    fluid_records: dict[str, list[dict[str, str]]] = defaultdict(list)
     files = sorted(
         p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in {".data", ".inc"}
     )
@@ -80,6 +91,11 @@ def diagnose(root: Path) -> dict[str, object]:
                 name = first_quoted(record)
                 if name and "*" not in name:
                     by_keyword[keyword].add(name)
+        for keyword in FLUID_KEYWORDS:
+            for record in records_for_keyword(text, keyword):
+                fluid_records[keyword].append(
+                    {"file": str(path.relative_to(root)), "record": record}
+                )
     all_names = set().union(*by_keyword.values()) if by_keyword else set()
     declared = by_keyword.get("WELSPECS", set())
     return {
@@ -90,6 +106,7 @@ def diagnose(root: Path) -> dict[str, object]:
         "all_well_count": len(all_names),
         "used_but_not_welspec": sorted(all_names - declared),
         "welspec_records": welspec_records,
+        "fluid_property_records": dict(fluid_records),
     }
 
 
