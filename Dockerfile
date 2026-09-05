@@ -5,6 +5,8 @@ COPY src ./src
 COPY ui ./ui
 COPY submission ./submission
 COPY configs ./configs
+# the original deck powers the "rebuild from the deck" reproducibility check
+COPY aios-track2/materials/41_Model_Z_final_OPM.zip ./aios-track2/materials/41_Model_Z_final_OPM.zip
 RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' numpy scipy pydantic pandas pyyaml \
     && pip install --no-cache-dir --no-deps .
 EXPOSE 8765

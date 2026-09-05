@@ -1,0 +1,40 @@
+{
+  "name": "baseline",
+  "base_name": "baseline",
+  "vector": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "perturb_seed": null,
+  "perturb_scale": 0.0,
+  "status": "success",
+  "returncode": 0,
+  "runtime_seconds": 613.648565136,
+  "schedule_sha256": "bf464f248d13ee8e179427ee073bd81f71fdad33b3474e3f8d8fe355ce9c05ac",
+  "summary_install_changed_files": [
+    "Model_Z/Model_Z_summary.inc"
+  ],
+  "compact_summary": {
+    "report_steps": 384,
+    "start_date": "1991-06-02",
+    "end_date": "2025-09-01",
+    "max_wlpr": 56.1522216796875
+  },
+  "npv_mrub": 11891.994046426242
+}
