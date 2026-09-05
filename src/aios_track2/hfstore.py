@@ -34,7 +34,15 @@ def upload_run_directory(local_dir: Path, manifest: RunManifest, *, token: str) 
         from huggingface_hub import HfApi
     except ImportError as exc:
         raise RuntimeError("install project with [hf] extras") from exc
-    HfApi(token=token).upload_folder(
+
+    api = HfApi(token=token)
+    api.create_repo(
+        repo_id=manifest.dataset_id,
+        repo_type="dataset",
+        private=True,
+        exist_ok=True,
+    )
+    api.upload_folder(
         repo_id=manifest.dataset_id,
         repo_type="dataset",
         folder_path=str(local_dir),
