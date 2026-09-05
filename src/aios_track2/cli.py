@@ -5,7 +5,6 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from .benchmark import run_compute_benchmark
 from .config import load_config
 from .deck import parse_deck
 
@@ -18,6 +17,10 @@ def main() -> None:
     p_deck = sub.add_parser("deck-summary")
     p_deck.add_argument("path", type=Path)
     sub.add_parser("benchmark")
+    p_ui = sub.add_parser("ui", help="serve the Track 2 control room on verified submission artifacts")
+    p_ui.add_argument("--submission", type=Path, default=Path("submission"))
+    p_ui.add_argument("--host", default="127.0.0.1")
+    p_ui.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     if args.command == "config":
         cfg = load_config(args.path)
@@ -26,4 +29,19 @@ def main() -> None:
         meta = parse_deck(args.path)
         print(json.dumps({"dimensions": meta.dimensions, "well_count": len(meta.wells)}, indent=2))
     elif args.command == "benchmark":
+        from .benchmark import run_compute_benchmark
+
         print(json.dumps(asdict(run_compute_benchmark()), indent=2, sort_keys=True))
+    elif args.command == "ui":
+        from .api import create_app
+
+        try:
+            import uvicorn
+        except ImportError as exc:
+            raise SystemExit("install project with [api] extras to serve the UI") from exc
+        app = create_app(args.submission)
+        uvicorn.run(app, host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    main()
