@@ -11,6 +11,12 @@ on:
         description: Immutable experiment head SHA recorded by the verified recovery run
         required: true
         default: '9ad40738134d1fc0beb1df62214d09bc9ea8d114'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/aios-track2-final-publish.yml'
+      - 'src/aios_track2/hfstore.py'
+      - 'tests/test_hfstore.py'
 
 permissions:
   contents: read
@@ -18,8 +24,8 @@ permissions:
 
 env:
   PYTHONPATH: src
-  SOURCE_RUN_ID: ${{ inputs.source_run_id }}
-  EXPERIMENT_GIT_SHA: ${{ inputs.experiment_git_sha }}
+  SOURCE_RUN_ID: ${{ inputs.source_run_id || '33925326455' }}
+  EXPERIMENT_GIT_SHA: ${{ inputs.experiment_git_sha || '9ad40738134d1fc0beb1df62214d09bc9ea8d114' }}
   MODEL_Z_ARCHIVE: aios-track2/materials/41_Model_Z_final_OPM.zip
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
