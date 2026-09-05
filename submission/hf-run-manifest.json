@@ -1,0 +1,12 @@
+{
+  "dataset_id": "Maksim123321/aios-track2-runs",
+  "deck_sha256": "4af3b60f8c053b858d52882bc514f2cdf434573c3919574e532e620d06c45aaa",
+  "git_sha": "9ad40738134d1fc0beb1df62214d09bc9ea8d114",
+  "github_run_id": "33925326455",
+  "npv_rub": 12475954558.553085,
+  "run_id": "final-mappo",
+  "schedule_sha256": "c5ff3221ac66dea460bbd638a589dc5c7f2dedeb1536b9f86b10fb2e3e030af3",
+  "seed": 9200,
+  "simulator_version": "OPM Flow 2026.04",
+  "status": "verified"
+}

@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "failures": [],
+  "surrogate_holdout_passed": false,
+  "surrogate_holdout_failures": [
+    "NPV_TOP3_RECALL_LT_090"
+  ],
+  "audited_top_k_recall": 0.6666666666666666,
+  "criteria": {
+    "min_dynamic_r2": 0.95,
+    "max_dynamic_nrmse": 0.05,
+    "min_spearman": 0.95,
+    "min_pairwise_accuracy": 0.95,
+    "max_simple_regret_mrub": 1e-09
+  },
+  "observed": {
+    "min_dynamic_r2": 0.9512247034582642,
+    "max_dynamic_nrmse": 0.027523284453274358,
+    "spearman": 0.9911764705882352,
+    "pairwise_accuracy": 0.975,
+    "simple_regret_mrub": 0.0,
+    "top_k_recall": 0.6666666666666666
+  }
+}

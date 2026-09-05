@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AIOS Track 2 · рекомендация Model Z</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --card: #fffcf7;
+      --line: #e7e0d4;
+      --teal: #0f4c5c;
+      --ok: #276749;
+      --warn: #9a3412;
+      --prod: #2f855a;
+      --inj: #2b6cb0;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 "IBM Plex Sans", "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+    header, main, footer { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; padding: 28px 0 12px; }
+    h1 { font-size: 28px; margin: 0 0 6px; }
+    .muted { color: var(--muted); }
+    .badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
+    .badge.ok { color: var(--ok); border-color: #c6f6d5; }
+    .badge.warn { color: var(--warn); border-color: #fed7aa; }
+    .hero { display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 16px; margin: 16px 0 24px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+    .npv { font-variant-numeric: tabular-nums; font-size: 40px; line-height: 1.1; font-weight: 650; }
+    .delta { font-size: 18px; color: var(--ok); margin-top: 6px; }
+    .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-top: 16px; font-variant-numeric: tabular-nums; }
+    .cta { display: flex; flex-direction: column; justify-content: space-between; min-height: 100%; }
+    a.button { display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 12px 18px; background: var(--teal); color: white; text-decoration: none; border-radius: 12px; font-weight: 600; }
+    a.button.secondary { background: transparent; color: var(--teal); border: 1px solid var(--teal); }
+    .actions { display: flex; flex-direction: column; gap: 10px; }
+    h2 { font-size: 20px; margin: 28px 0 12px; }
+    ul.why { margin: 0; padding-left: 18px; }
+    ul.why li { margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+    th { font-size: 13px; color: var(--muted); font-weight: 600; }
+    tr.winner td { font-weight: 650; }
+    .layout { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; }
+    svg.map { width: 100%; height: auto; background: #ede6d8; border-radius: 12px; }
+    .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    details { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 20px; margin: 16px 0; }
+    details + details { margin-top: 12px; }
+    summary { cursor: pointer; font-weight: 650; }
+    .log { list-style: none; padding: 12px 0 0; margin: 0; }
+    .log li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    footer { padding: 24px 0 40px; font-size: 13px; color: var(--muted); }
+    code { font-size: 12px; word-break: break-all; }
+    @media (max-width: 840px) {
+      .hero, .layout { grid-template-columns: 1fr; }
+      header { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Рекомендованный режим Model Z</h1>
+      <p class="muted">Одна задача: показать лучшее подтверждённое расписание, почему оно лучше baseline, и дать файл для организаторов.</p>
+    </div>
+    <div id="badges"></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="card" id="hero-metrics"></div>
+      <div class="card cta">
+        <div>
+          <strong>Что скачать жюри</strong>
+          <p class="muted">Организаторы пересчитают NPV на полном симуляторе. Заявленный NPV должен совпасть с этим файлом.</p>
+        </div>
+        <div class="actions">
+          <a class="button" href="/download/wells_schedule.inc">Скачать wells_schedule.inc</a>
+          <a class="button secondary" href="/api/room">JSON с доказательствами</a>
+        </div>
+      </div>
+    </section>
+    <h2>Почему это лучше baseline</h2>
+    <div class="card"><ul class="why" id="why"></ul></div>
+    <h2>Сравнение кандидатов на реальном OPM</h2>
+    <div class="card" style="overflow:auto">
+      <table id="compare"><thead><tr><th>Стратегия</th><th>NPV, млн ₽</th><th>Δ к baseline</th><th>max WLPR</th><th>robustness floor</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="layout">
+      <div>
+        <h2>Карта скважин по группам</h2>
+        <div class="card">
+          <div id="map"></div>
+          <div class="legend">
+            <span><i class="dot" style="background:var(--prod)"></i>добыча</span>
+            <span><i class="dot" style="background:var(--inj)"></i>закачка</span>
+            <span>размер = |множитель − 1|</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2>Ограничения</h2>
+        <div class="card" id="constraints"></div>
+      </div>
+    </div>
+    <details>
+      <summary>Суррогат vs OPM — честный holdout, включая хвост</summary>
+      <div id="holdout"></div>
+    </details>
+    <details>
+      <summary>Журнал агентов</summary>
+      <ul class="log" id="log"></ul>
+    </details>
+  </main>
+  <footer id="footer"></footer>
+  <script>
+    const fmt = (n, d=2) => Number(n).toLocaleString("ru-RU", {minimumFractionDigits:d, maximumFractionDigits:d});
+    fetch("/api/room").then(r => {
+      if (!r.ok) throw new Error("нет артефактов submission/");
+      return r.json();
+    }).then(data => {
+      const rec = data.recommendation;
+      document.getElementById("badges").innerHTML = [
+        rec.opm_verified ? '<span class="badge ok">OPM + ЧДД проверены</span>' : '<span class="badge warn">OPM не подтверждён</span>',
+        rec.constraints_ok ? '<span class="badge ok">WLPR ≤ 500</span>' : '<span class="badge warn">WLPR нарушен</span>',
+        rec.sha_matches_clean_rerun ? '<span class="badge ok">SHA clean rerun совпал</span>' : '<span class="badge warn">SHA не совпал</span>',
+        data.holdout.preregistered_gate_passed ? '<span class="badge ok">Holdout gate</span>' : '<span class="badge warn">Holdout top-3 recall 2/3</span>'
+      ].join(" ");
+      document.getElementById("hero-metrics").innerHTML = `
+        <div class="muted">Победитель · ${rec.name.toUpperCase()} · 103 скважины</div>
+        <div class="npv">${fmt(rec.npv_mrub, 3)} млн ₽</div>
+        <div class="delta">+${fmt(rec.delta_vs_baseline_mrub, 3)} к baseline ${fmt(rec.baseline_npv_mrub, 3)}</div>
+        <div class="facts">
+          <div>max WLPR<br><strong>${fmt(rec.max_wlpr, 2)} / 500</strong></div>
+          <div>скважин<br><strong>${rec.well_count}</strong></div>
+          <div>ЧДД<br><strong>${rec.chdd_version || "—"}</strong></div>
+          <div>старт экономики<br><strong>${rec.economic_start || "—"}</strong></div>
+        </div>`;
+      document.getElementById("why").innerHTML = data.explanation.map(x => `<li>${x}</li>`).join("");
+      document.querySelector("#compare tbody").innerHTML = data.compare.map(row => `
+        <tr class="${row.winner ? "winner" : ""}">
+          <td>${row.name}${row.winner ? " · winner" : ""}</td>
+          <td>${fmt(row.opm_npv_mrub, 3)}</td>
+          <td>${row.delta_vs_baseline_mrub >= 0 ? "+" : ""}${fmt(row.delta_vs_baseline_mrub, 3)}</td>
+          <td>${fmt(row.max_wlpr, 2)}</td>
+          <td>${fmt(row.robustness_floor_mrub, 3)}</td>
+        </tr>`).join("");
+      const wells = data.wells;
+      const maxI = Math.max(...wells.map(w => w.i));
+      const maxJ = Math.max(...wells.map(w => w.j));
+      const dots = wells.map(w => {
+        const x = 16 + (w.i / maxI) * 520;
+        const y = 16 + (1 - w.j / maxJ) * 360;
+        const r = 3 + Math.min(8, Math.abs(w.mean_scale - 1) * 40);
+        const fill = w.role === "injector" ? "#2b6cb0" : w.role === "producer" ? "#2f855a" : "#a8a29e";
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${fill}" opacity="0.88"><title>${w.name} ${w.role} ×${w.mean_scale.toFixed(3)}</title></circle>`;
+      }).join("");
+      document.getElementById("map").innerHTML = `<svg class="map" viewBox="0 0 552 392" role="img" aria-label="Карта 103 скважин Model Z">${dots}</svg>`;
+      document.getElementById("constraints").innerHTML = `
+        <p><strong>WLPR:</strong> ${fmt(rec.max_wlpr, 2)} ≤ 500 — ${rec.constraints_ok ? "норма" : "нарушение"}</p>
+        <p><strong>SHA:</strong> <code>${rec.schedule_sha256}</code></p>
+        <p><strong>Пространство сдачи:</strong> ${data.action_space_limits.submitted}</p>
+        <p class="muted">${data.economics.note}</p>`;
+      const h = data.holdout;
+      const worst = h.worst_scenario_channel || {};
+      document.getElementById("holdout").innerHTML = `
+        <p>Preregistered gate: <strong>${h.preregistered_gate_passed ? "pass" : "FAIL"}</strong> ${h.preregistered_failures.join(", ")}</p>
+        <p>min R² ${fmt(h.min_dynamic_r2, 4)}, max NRMSE ${fmt(h.max_dynamic_nrmse, 4)}, Spearman ${fmt(h.spearman, 4)}, pairwise ${fmt(h.pairwise_accuracy, 3)}, top-3 recall ${fmt(h.top_k_recall, 3)}</p>
+        <p>Хвост: P10 scenario×channel R² = ${fmt(h.p10_scenario_channel_r2, 3)}; худший канал ${worst.channel || "—"} сценария ${worst.scenario_id ?? "—"}: R² = ${fmt(worst.r2 || 0, 3)}.</p>`;
+      document.getElementById("log").innerHTML = data.agent_log.map(item => `<li><strong>${item.agent}.</strong> ${item.detail}</li>`).join("");
+      const r = data.reproducibility;
+      document.getElementById("footer").innerHTML = `git ${r.git_sha} · GitHub run ${r.github_run_id} · HF ${r.hf_dataset} / ${r.hf_run_id} · ${r.simulator} · seed ${r.seed}`;
+    }).catch(err => {
+      document.getElementById("hero-metrics").innerHTML = `<p class="badge warn">${err.message}</p>`;
+    });
+  </script>
+</body>
+</html>
