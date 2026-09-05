@@ -36,6 +36,8 @@
         <p>Система принимает решения сама. Здесь видно, что она сделала, чем это подтверждено и что забрать организаторам.</p>
       </div>
 
+      <div class="trust" id="trust" aria-label="Состояние приёмки"></div>
+
       <div class="run-grid">
         <div class="run-main">
           <div class="panel launcher">
@@ -62,6 +64,14 @@
             <div class="constraint-strip" id="constraint-strip"></div>
           </div>
 
+          <div class="panel" id="why-panel">
+            <header class="panel-head"><h2>Почему это лучше базового расписания</h2></header>
+            <div class="pad">
+              <ul class="why" id="why-list"></ul>
+              <p class="footnote" id="action-space"></p>
+            </div>
+          </div>
+
           <div class="panel" id="stream-panel">
             <header class="panel-head">
               <h2>Журнал агентов</h2>
@@ -73,19 +83,24 @@
             </ol>
           </div>
 
-          <div class="panel deliverable" id="deliverable" hidden>
-            <header class="panel-head"><h2>Передать организаторам</h2></header>
+          <div class="panel deliverable" id="deliverable">
+            <header class="panel-head">
+              <h2>Передать организаторам</h2>
+              <span class="grow"></span>
+              <p>организаторы пересчитают ЧДД на полном симуляторе — заявленное значение должно совпасть с этим файлом</p>
+            </header>
             <div class="deliver-row">
               <div class="file">
                 <span class="file-ic">INC</span>
                 <div>
                   <p class="file-name">wells_schedule.inc</p>
-                  <p class="file-sub" id="file-sub"></p>
+                  <p class="file-sub" id="file-sub">запустите проверку, чтобы разблокировать выгрузку</p>
                 </div>
               </div>
               <div class="deliver-actions">
-                <a class="primary" id="dl-schedule" href="#" download>Скачать расписание</a>
-                <a class="secondary" id="dl-report" href="#" download>Отчёт прогона, JSON</a>
+                <a class="primary" id="dl-schedule" href="#" aria-disabled="true" download>Скачать расписание</a>
+                <a class="secondary" id="dl-report" href="#" aria-disabled="true" download>Отчёт прогона, JSON</a>
+                <a class="secondary" id="dl-evidence" href="/api/room" target="_blank" rel="noopener">Доказательства, JSON</a>
               </div>
             </div>
             <dl class="verify-grid" id="verify-grid"></dl>
@@ -150,6 +165,12 @@
           <div class="pad">
             <ul class="gates" id="gates"></ul>
             <p class="footnote" id="quality-note"></p>
+            <p class="footnote" id="quality-tail"></p>
+            <details class="drawer">
+              <summary>Как выбирали победителя</summary>
+              <div class="scroller"><table class="data" id="compare"><thead></thead><tbody></tbody></table></div>
+              <p class="footnote">Ранг определял фактический расчёт OPM Flow, а не оценка суррогата.</p>
+            </details>
           </div>
         </div>
       </div>
@@ -173,7 +194,7 @@
           <div class="seg" id="map-mode">
             <button data-mode="role" aria-pressed="true">Роль</button>
             <button data-mode="group" aria-pressed="false">Группа управления</button>
-            <button data-mode="rate" aria-pressed="false">Режим</button>
+            <button data-mode="scale" aria-pressed="false">Изменение режима</button>
           </div>
         </header>
         <div class="map-grid">

@@ -4,7 +4,7 @@
 const NS = 'http://www.w3.org/2000/svg';
 const state = { case: null, metrics: null, quality: null, explanation: null,
                 wells: [], production: null, annual: [], operations: null,
-                run: null, poll: null, opsFilter: 'all', mapMode: 'role', selected: null };
+                room: null, run: null, poll: null, opsFilter: 'all', mapMode: 'role', selected: null };
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -79,6 +79,38 @@ function renderCase() {
     rebuild.disabled = true;
     rebuild.title = 'Архив Model Z не найден в поставке';
   }
+}
+
+function renderTrust() {
+  const room = state.room;
+  if (!room) return;
+  const rec = room.recommendation;
+  const holdout = room.holdout;
+  const badges = [
+    { status: rec.opm_verified ? 'ok' : 'fail', label: 'ЧДД подтверждён расчётом OPM Flow' },
+    { status: rec.constraints_ok ? 'ok' : 'fail',
+      label: `WLPR ${num(rec.max_wlpr, 2)} ≤ ${num(rec.wlpr_limit, 0)} м³/сут` },
+    { status: rec.sha_matches_clean_rerun ? 'ok' : 'fail', label: 'SHA совпал с контрольным перезапуском' },
+    { status: rec.npv_matches_clean_rerun ? 'ok' : 'fail', label: 'Расхождение ЧДД 0,000000 млн ₽' },
+    { status: holdout.preregistered_gate_passed ? 'ok' : 'warn',
+      label: holdout.preregistered_gate_passed
+        ? 'Пороги суррогата пройдены'
+        : `Порог суррогата не пройден: top-3 recall ${num(holdout.top_k_recall, 3)}` },
+  ];
+  $('#trust').innerHTML = badges.map((badge) =>
+    `<span class="badge-lg" data-status="${badge.status}">${badge.label}</span>`).join('');
+}
+
+function renderWhy() {
+  const room = state.room;
+  if (!room) return;
+  $('#why-list').innerHTML = room.explanation.map((line) => `<li><span>${line}</span></li>`).join('');
+  const limits = room.action_space_limits;
+  $('#action-space').innerHTML =
+    `Сданное пространство управления: <span class="mono">${limits.submitted}</span>. ` +
+    `Реализованы и покрыты тестами, но <b>не входят в сданное расписание</b>: ` +
+    `${limits.implemented_but_not_in_winner.join(', ')} — по ним нет отдельного подтверждения OPM. ` +
+    room.economics.note;
 }
 
 /* -------------------------------------------------------------------- run */
@@ -167,24 +199,52 @@ function renderResult(run) {
   $('#constraint-strip').innerHTML = constraintChecks(run).map((check) =>
     `<span class="pill" data-status="${check.status}">${check.label}</span>`).join('');
 
-  const deliverable = $('#deliverable');
-  if (run.state === 'VERIFIED') {
-    deliverable.hidden = false;
-    $('#file-sub').innerHTML =
-      `${int(run.result.schedule_bytes)} байт · sha256 <code>${short(run.result.schedule_sha256)}…</code>`;
-    $('#dl-schedule').href = `/api/runs/${run.run_id}/schedule`;
-    $('#dl-report').href = `/api/runs/${run.run_id}/report.json`;
-    const rebuilt = run.result.rebuilt && run.result.rebuilt.sha256;
-    $('#verify-grid').innerHTML = `
-      <div><dt>Расписание</dt><dd>${run.result.schedule_sha256}</dd></div>
-      <div><dt>${rebuilt ? 'Пересобрано из деки' : 'Контрольный перезапуск OPM'}</dt>
-        <dd><b>${rebuilt ? 'SHA совпал' : 'SHA совпал'}</b> · расхождение ЧДД 0,000000 млн ₽</dd></div>
-      <div><dt>Ограничение по жидкости</dt><dd><b>${num(run.result.max_wlpr_m3_d, 2)} ≤ ${num(metrics.wlpr_limit_m3_d, 0)}</b> м³/сут</dd></div>
-      <div><dt>Идентификатор прогона</dt><dd>${run.run_id} · ${run.mode}</dd></div>`;
-  } else {
-    deliverable.hidden = true;
-  }
+  renderDeliverable(run);
   if (run.error) banner(run.error);
+}
+
+function renderDeliverable(run) {
+  const metrics = state.metrics;
+  const panel = $('#deliverable');
+  const unlocked = Boolean(run && run.state === 'VERIFIED');
+  panel.dataset.locked = unlocked ? '0' : '1';
+  ['#dl-schedule', '#dl-report'].forEach((selector) =>
+    $(selector).setAttribute('aria-disabled', String(!unlocked)));
+  if (!unlocked) {
+    $('#file-sub').textContent = 'запустите проверку, чтобы разблокировать выгрузку';
+    $('#dl-schedule').removeAttribute('href');
+    $('#dl-report').removeAttribute('href');
+    renderProvenance(null);
+    return;
+  }
+  $('#file-sub').innerHTML =
+    `${int(run.result.schedule_bytes)} байт · sha256 <code>${short(run.result.schedule_sha256)}…</code>`;
+  $('#dl-schedule').href = `/api/runs/${run.run_id}/schedule`;
+  $('#dl-report').href = `/api/runs/${run.run_id}/report.json`;
+  renderProvenance(run, metrics);
+}
+
+function renderProvenance(run, metrics) {
+  const provenance = state.room ? state.room.reproducibility : null;
+  const rows = [];
+  if (run) {
+    const rebuilt = run.result.rebuilt && run.result.rebuilt.sha256;
+    rows.push(`<div><dt>Расписание</dt><dd>${run.result.schedule_sha256}</dd></div>`);
+    rows.push(
+      `<div><dt>${rebuilt ? 'Пересобрано из исходной деки' : 'Контрольный перезапуск OPM'}</dt>` +
+      `<dd><b>SHA совпал</b> · расхождение ЧДД 0,000000 млн ₽</dd></div>`);
+    rows.push(
+      `<div><dt>Ограничение по жидкости</dt>` +
+      `<dd><b>${num(run.result.max_wlpr_m3_d, 2)} ≤ ${num(metrics.wlpr_limit_m3_d, 0)}</b> м³/сут</dd></div>`);
+  }
+  if (provenance) {
+    rows.push(
+      `<div><dt>Происхождение расчёта</dt><dd>${provenance.simulator || '—'} · seed ${provenance.seed ?? '—'}<br>` +
+      `коммит ${short(provenance.git_sha)} · прогон ${provenance.github_run_id}</dd></div>`);
+    rows.push(
+      `<div><dt>Архив прогонов</dt><dd>${provenance.hf_dataset || '—'}<br>${provenance.hf_run_id || ''}</dd></div>`);
+  }
+  $('#verify-grid').innerHTML = rows.join('');
 }
 
 async function startRun(mode) {
@@ -192,7 +252,7 @@ async function startRun(mode) {
   $('#btn-rebuild').disabled = true;
   $('#stream').innerHTML = '<li class="stream-empty">запуск…</li>';
   $('#stream-status').textContent = 'агенты работают…';
-  $('#deliverable').hidden = true;
+  renderDeliverable(null);
   try {
     const run = await api('/api/runs', {
       method: 'POST',
@@ -400,6 +460,27 @@ function renderQuality() {
       ? 'Все приёмочные пороги пройдены.'
       : `Порог «${quality.gates.find((gate) => !gate.passed).label}» не пройден и не понижен задним числом: ` +
         'победителя выбирал не суррогат, а фактический расчёт OPM Flow.');
+
+  const worst = quality.worst_scenario_channel || {};
+  $('#quality-tail').innerHTML =
+    `Хвост распределения показываем целиком: P10 по парам сценарий×канал — ` +
+    `<span class="mono">${num(quality.p10_scenario_channel_r2, 3)}</span>, худший случай — канал ` +
+    `<span class="mono">${worst.channel || '—'}</span> сценария <span class="mono">${worst.scenario_id ?? '—'}</span> ` +
+    `с R² <span class="mono">${num(worst.r2 || 0, 2)}</span>. Средний R² это скрывает, поэтому он здесь не единственная цифра.`;
+
+  if (state.room) {
+    const head = ['Стратегия', 'ЧДД OPM, млн ₽', 'Δ к базе', 'Макс. WLPR', 'Худший из возмущений'];
+    $('#compare thead').innerHTML = `<tr>${head.map((cell) => `<th>${cell}</th>`).join('')}</tr>`;
+    $('#compare tbody').innerHTML = state.room.compare.map((row) => `
+      <tr class="${row.winner ? 'winner' : ''}">
+        <td class="label">${row.name}${row.winner ? ' · победитель' : ''}</td>
+        <td>${num(row.opm_npv_mrub, 2)}</td>
+        <td class="${row.delta_vs_baseline_mrub >= 0 ? 'pos' : 'neg'}">${
+          row.delta_vs_baseline_mrub ? (row.delta_vs_baseline_mrub > 0 ? '+' : '') + num(row.delta_vs_baseline_mrub, 2) : '—'}</td>
+        <td>${num(row.max_wlpr, 2)}</td>
+        <td>${num(row.robustness_floor_mrub, 2)}</td>
+      </tr>`).join('');
+  }
 }
 
 function renderAnnual() {
@@ -439,6 +520,9 @@ function renderMap() {
   const groupColors = ['var(--g1)', 'var(--g2)', 'var(--g3)', 'var(--g4)'];
   const peak = Math.max(...wells.map((well) =>
     Math.max(well.mean_liquid_target_m3_d, well.mean_injection_target_m3_d))) || 1;
+  const scales = wells.map((well) => well.mean_scale);
+  const scaleMin = Math.min(...scales);
+  const scaleSpan = Math.max(...scales) - scaleMin;
 
   const colorOf = (well) => {
     if (state.mapMode === 'role') {
@@ -450,9 +534,8 @@ function renderMap() {
       const group = well.role === 'injector' ? well.injector_group : well.producer_group;
       return group >= 0 ? groupColors[group] : 'var(--line-2)';
     }
-    const rate = Math.max(well.mean_liquid_target_m3_d, well.mean_injection_target_m3_d);
-    const share = Math.min(1, rate / peak);
-    return `color-mix(in srgb, var(--accent) ${Math.round(18 + 82 * share)}%, var(--surface-2))`;
+    const share = scaleSpan ? Math.min(1, (well.mean_scale - scaleMin) / scaleSpan) : 0;
+    return `color-mix(in srgb, var(--alt) ${Math.round(20 + 80 * share)}%, var(--surface-2))`;
   };
 
   wells.forEach((well) => {
@@ -508,8 +591,9 @@ function renderMap() {
       '<span class="muted">добывающие делятся на 4 группы, нагнетательные на 2</span>';
   } else {
     legend.innerHTML =
-      `<span><i style="background:var(--accent)"></i>выше режим — насыщеннее цвет</span>` +
-      `<span class="muted">максимум по фонду ${num(peak, 1)} м³/сут при лимите ${num(state.case.wlpr_limit_m3_d, 0)}</span>`;
+      `<span><i style="background:var(--alt)"></i>сильнее изменён режим — насыщеннее цвет</span>` +
+      `<span class="muted">множители от ×${num(scaleMin, 3)} до ×${num(scaleMin + scaleSpan, 3)} ` +
+      `к исходному режиму скважины</span>`;
   }
 }
 
@@ -526,6 +610,7 @@ function renderWellDetail(well) {
     rows.push(`<dt>Месяцев в закачке</dt><dd>${well.injecting_months}</dd>`);
     rows.push(`<dt>Группа закачки</dt><dd>И‑${well.injector_group + 1}</dd>`);
   }
+  rows.push(`<dt>Множитель к режиму</dt><dd>×${num(well.mean_scale, 3)}</dd>`);
   rows.push(`<dt>Запас до лимита</dt><dd>${num(state.case.wlpr_limit_m3_d - well.mean_liquid_target_m3_d, 1)} м³/сут</dd>`);
   $('#well-detail').innerHTML = `
     <h3>Скв. ${well.name}</h3>
@@ -550,12 +635,13 @@ async function boot() {
   $('#btn-rebuild').addEventListener('click', () => startRun('rebuild'));
   try { initNav(); initMapControls(); } catch (error) { banner(`Интерфейс: ${error.message}`); }
   try {
-    const [info, metrics, quality, explanation, field, production, annual, operations] = await Promise.all([
+    const [info, metrics, quality, explanation, field, production, annual, operations, room] = await Promise.all([
       api('/api/case'), api('/api/metrics'), api('/api/quality'), api('/api/explanation'),
       api('/api/field'), api('/api/production'), api('/api/annual'), api('/api/operations'),
+      api('/api/room'),
     ]);
     Object.assign(state, {
-      case: info, metrics, quality, explanation,
+      case: info, metrics, quality, explanation, room,
       wells: field.wells, production, annual: annual.rows, operations,
     });
   } catch (error) {
@@ -563,6 +649,9 @@ async function boot() {
     return;
   }
   renderCase();
+  renderTrust();
+  renderWhy();
+  renderDeliverable(null);
   renderExplanation();
   renderResultView();
   renderOperations();

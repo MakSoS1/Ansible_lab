@@ -39,6 +39,12 @@ def decode_policy_vector(values: list[float] | tuple[float, ...]) -> dict[str, A
     }
 
 
+def _ru(value: float, digits: int = 2, *, signed: bool = False) -> str:
+    """Russian number format so the control room reads the same everywhere."""
+    text = f"{value:+,.{digits}f}" if signed else f"{value:,.{digits}f}"
+    return text.replace(",", "\u2009").replace(".", ",")
+
+
 def explain_winner(winner: dict[str, Any], baseline_npv: float) -> list[str]:
     policy = decode_policy_vector(winner["vector"])
     producer = np.asarray(list(policy["producer_groups"].values()), dtype=float)
@@ -46,27 +52,29 @@ def explain_winner(winner: dict[str, Any], baseline_npv: float) -> list[str]:
     delta = float(winner["opm_npv_mrub"] - baseline_npv)
     return [
         (
-            f"Победитель выбран по реальному OPM+ЧДД NPV, не по суррогату: "
-            f"{winner['opm_npv_mrub']:.3f} млн ₽ против baseline {baseline_npv:.3f} млн ₽ "
-            f"({delta:+.3f} млн ₽)."
+            f"Победитель выбран по фактическому ЧДД после OPM Flow, а не по оценке суррогата: "
+            f"{_ru(winner['opm_npv_mrub'])} млн ₽ против {_ru(baseline_npv)} млн ₽ у базового "
+            f"расписания, то есть {_ru(delta, signed=True)} млн ₽."
         ),
         (
             "Пространство управления в сданном расписании — 18 чисел: 4 пространственные группы добычи "
-            "и 2 группы закачки на узлах 01.01.2007 / 01.01.2016 / 01.01.2025. Это не поскважинный "
-            "open/close, не циклика и не перевод добывающих под закачку."
+            "и 2 группы закачки на узлах 01.01.2007 / 01.01.2016 / 01.01.2025. Это не поскважинное "
+            "открытие и закрытие, не циклика и не перевод добывающих под закачку."
         ),
         (
-            f"Политика поднимает отбор (группы добычи {producer.min():.3f}–{producer.max():.3f}) "
-            f"и закачку ({injector.min():.3f}–{injector.max():.3f}) относительно исходного режима, "
-            "чтобы не разъехалась компенсация."
+            f"Политика поднимает отбор (группы добычи ×{_ru(producer.min(), 3)}–×{_ru(producer.max(), 3)}) "
+            f"и закачку (×{_ru(injector.min(), 3)}–×{_ru(injector.max(), 3)}) относительно исходного режима, "
+            "чтобы не разъехалась компенсация отбора закачкой."
         ),
         (
-            f"Ограничение WLPR ≤ 500 м³/сут соблюдено: max WLPR = {winner['max_wlpr']:.2f}. "
-            "Независимый clean rerun дал тот же SHA расписания и тот же NPV."
+            f"Ограничение WLPR ≤ 500 м³/сут соблюдено с большим запасом: максимум "
+            f"{_ru(winner['max_wlpr'])} м³/сут. Независимый контрольный перезапуск дал тот же SHA "
+            "расписания и тот же ЧДД."
         ),
         (
-            "Суррогат не заменяет гидродинамику: он сузил пул финалистов. Итоговый ранг — OPM. "
-            "Предупреждение жюри: preregistered holdout top-3 recall = 2/3 < 0.90."
+            "Суррогат не заменяет гидродинамику: он сузил пул кандидатов, а итоговый ранг определил OPM. "
+            "Честное предупреждение: заранее зафиксированный порог полноты top-3 не пройден — 2 из 3 при "
+            "требуемых 0,90."
         ),
     ]
 
@@ -213,7 +221,10 @@ def load_control_room(submission_dir: Path) -> dict[str, Any]:
             "pump_changes": summary.get("pumpChanges"),
             "start_stop_count": summary.get("startStopCount"),
             "conversion_count": summary.get("conversionCount"),
-            "note": "CHDD conversion_count includes historical deck events, not optimizer-added WELOPEN/conversion keywords.",
+            "note": (
+                "Счётчик переводов в методике ЧДД включает события исходной деки, а не добавленные "
+                "оптимизатором ключевые слова WELOPEN и перевода под закачку."
+            ),
         },
         "compare": _compare_rows(winner_doc, baseline_npv),
         "explanation": explain_winner(winner, baseline_npv),
@@ -241,11 +252,11 @@ def load_control_room(submission_dir: Path) -> dict[str, Any]:
             "seed": hf_manifest.get("seed"),
         },
         "action_space_limits": {
-            "submitted": "18D spatial group rate multipliers at 2007/2016/2025",
+            "submitted": "18 переменных — 4 группы добычи и 2 группы закачки на узлах 2007 / 2016 / 2025",
             "implemented_but_not_in_winner": [
-                "producer shut-in",
-                "producer-to-injector conversion",
-                "cyclic injection",
+                "закрытие добывающих скважин",
+                "перевод добывающей под закачку",
+                "циклическая закачка",
             ],
             "not_opm_verified": True,
         },

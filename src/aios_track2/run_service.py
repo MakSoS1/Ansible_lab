@@ -141,6 +141,7 @@ class WellRecord:
     mean_injection_target_m3_d: float
     producing_months: int
     injecting_months: int
+    mean_scale: float = 1.0
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -181,8 +182,8 @@ def _iter_control_records(text: str) -> Iterable[tuple[date | None, str, list[st
         index += 1
 
 
-def parse_field_layout(text: str) -> tuple[WellRecord, ...]:
-    """Derive per-well roles, control groups and mean targets from a schedule."""
+def parse_field_layout(text: str, vector: Sequence[float] | None = None) -> tuple[WellRecord, ...]:
+    """Derive per-well roles, control groups, mean targets and applied multiplier."""
     metadata = parse_deck_text(text)
     by_name: dict[str, Well] = {well.name: well for well in metadata.wells}
 
@@ -213,11 +214,24 @@ def parse_field_layout(text: str) -> tuple[WellRecord, ...]:
     def mean(values: Sequence[float]) -> float:
         return round(sum(values) / len(values), 2) if values else 0.0
 
+    producer_scales: dict[int, float] = {}
+    injector_scales: dict[int, float] = {}
+    if vector is not None:
+        producer_nodes, injector_nodes = policy_nodes(vector)
+        producer_scales = {group: sum(values) / len(values) for group, values in producer_nodes.items()}
+        injector_scales = {group: sum(values) / len(values) for group, values in injector_nodes.items()}
+
     records: list[WellRecord] = []
     for name, well in sorted(by_name.items(), key=lambda item: (len(item[0]), item[0])):
         produces = name in producer_names
         injects = name in injector_names
         role = "dual" if produces and injects else "producer" if produces else "injector" if injects else "idle"
+        if produces:
+            scale = producer_scales.get(producer_groups.get(name, -1), 1.0)
+        elif injects:
+            scale = injector_scales.get(injector_groups.get(name, -1), 1.0)
+        else:
+            scale = 1.0
         records.append(
             WellRecord(
                 name=name,
@@ -230,6 +244,7 @@ def parse_field_layout(text: str) -> tuple[WellRecord, ...]:
                 mean_injection_target_m3_d=mean(injector_totals.get(name, [])),
                 producing_months=len(producer_totals.get(name, [])),
                 injecting_months=len(injector_totals.get(name, [])),
+                mean_scale=round(float(scale), 4),
             )
         )
     return tuple(records)
@@ -242,7 +257,9 @@ def schedule_date_count(text: str) -> int:
 
 @lru_cache(maxsize=1)
 def field_layout() -> tuple[WellRecord, ...]:
-    return parse_field_layout(verified_run().schedule_path.read_text(encoding="utf-8"))
+    run = verified_run()
+    vector = [float(value) for value in run.manifest["winner"]["vector"]]
+    return parse_field_layout(run.schedule_path.read_text(encoding="utf-8"), vector)
 
 
 # --------------------------------------------------------------------------- #

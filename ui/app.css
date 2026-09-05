@@ -297,3 +297,36 @@ table.grid { min-width: 640px; }
 .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 .error-banner { margin: 0 0 16px; padding: 12px 16px; border-radius: 8px; background: var(--bad-soft); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); color: var(--bad); font-size: 13px; }
+
+
+/* ---------- merged from the recommendation page ---------- */
+.trust { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.trust .badge-lg {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500;
+  padding: 6px 13px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2);
+}
+.trust .badge-lg::before { font: 600 12px/1 var(--mono); }
+.trust .badge-lg[data-status="ok"] { border-color: color-mix(in srgb, var(--good) 34%, transparent); background: var(--good-soft); color: var(--good); }
+.trust .badge-lg[data-status="ok"]::before { content: "✓"; }
+.trust .badge-lg[data-status="warn"] { border-color: color-mix(in srgb, var(--warn) 38%, transparent); background: var(--warn-soft); color: var(--warn); }
+.trust .badge-lg[data-status="warn"]::before { content: "!"; }
+.trust .badge-lg[data-status="fail"] { border-color: color-mix(in srgb, var(--bad) 38%, transparent); background: var(--bad-soft); color: var(--bad); }
+.trust .badge-lg[data-status="fail"]::before { content: "✕"; }
+
+ul.why { display: grid; gap: 11px; }
+ul.why li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; font-size: 13.5px; color: var(--ink-2); line-height: 1.55; }
+ul.why li::before { content: counter(why); counter-increment: why; font: 500 11px/1.5 var(--mono); color: var(--ink-3); }
+ul.why { counter-reset: why; }
+ul.why li b { color: var(--ink); font-weight: 600; }
+
+.deliverable[data-locked="1"] .file-ic { background: var(--surface-2); color: var(--ink-3); }
+.deliver-actions a[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+
+details.drawer { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+details.drawer > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); list-style: none; }
+details.drawer > summary::-webkit-details-marker { display: none; }
+details.drawer > summary::before { content: "▸ "; font-family: var(--mono); }
+details.drawer[open] > summary::before { content: "▾ "; }
+details.drawer > .scroller { margin-top: 10px; }
+table.data tr.winner td { background: var(--accent-soft); }
