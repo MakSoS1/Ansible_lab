@@ -29,7 +29,7 @@ jobs:
       AIJC_CNN_FOLDS: '3'
       AIJC_CNN_BATCH: '16'
       AIJC_CNN_BACKBONE: 'efficientnet_b0'
-      AIJC_EMBED_BACKBONE: 'efficientnet_b0,vit_small_patch14_dinov2.lvd142m'
+      AIJC_EMBED_BACKBONE: 'vit_small_patch14_dinov2.lvd142m'
 
     steps:
       - name: Checkout
