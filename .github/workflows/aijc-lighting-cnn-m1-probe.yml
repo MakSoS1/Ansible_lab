@@ -1,0 +1,126 @@
+name: AIIJC Lighting CNN M1 Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/aijc-lighting-max-score]
+    paths:
+      - '.github/workflows/aijc-lighting-cnn-m1-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [efficientnet_b0, resnet18]
+        aug: [safe, strong]
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      MODEL_NAME: ${{ matrix.model }}
+      AUG_MODE: ${{ matrix.aug }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install minimal dependencies
+        run: pip install torch torchvision pandas pillow huggingface_hub scikit-learn
+      - name: Restore and extract data
+        working-directory: aijc-lighting
+        run: |
+          python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+          python scripts/download_mailru.py --keep-zip
+      - name: One-fold MPS probe
+        working-directory: aijc-lighting
+        run: |
+          mkdir -p outputs-cnn-probe/${MODEL_NAME}-${AUG_MODE}
+          python - <<'PY'
+          import json, os, random, time
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          import torch
+          import torch.nn as nn
+          from PIL import Image
+          from sklearn.model_selection import StratifiedKFold
+          from sklearn.metrics import accuracy_score, confusion_matrix
+          from torch.utils.data import Dataset, DataLoader
+          from torchvision import models, transforms
+          from src.data import discover_layout, load_manifests, resolve_image_paths
+
+          seed=42; random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+          model_name=os.environ['MODEL_NAME']; aug=os.environ['AUG_MODE']
+          device=torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+          print('device',device,'model',model_name,'aug',aug,flush=True)
+          layout=discover_layout('data'); train_df,_,_=load_manifests(layout); paths,_=resolve_image_paths(layout); y=train_df.label.to_numpy(int)
+          tr,va=next(StratifiedKFold(3,shuffle=True,random_state=42).split(paths,y))
+
+          mean=[.485,.456,.406]; std=[.229,.224,.225]
+          ops=[transforms.Resize((256,256)),transforms.RandomResizedCrop(224,scale=(.78,1.0),ratio=(.9,1.1)),transforms.RandomHorizontalFlip(),transforms.RandomRotation(10)]
+          if aug=='strong':
+              ops += [transforms.ColorJitter(brightness=.30,contrast=.30,saturation=.18,hue=.03),transforms.RandomGrayscale(p=.03)]
+          else:
+              ops += [transforms.ColorJitter(brightness=.06,contrast=.08,saturation=.04,hue=.01)]
+          ops += [transforms.ToTensor(),transforms.Normalize(mean,std)]
+          train_tf=transforms.Compose(ops)
+          eval_tf=transforms.Compose([transforms.Resize((240,240)),transforms.CenterCrop(224),transforms.ToTensor(),transforms.Normalize(mean,std)])
+
+          class DS(Dataset):
+              def __init__(self,inds,tf): self.inds=list(inds); self.tf=tf
+              def __len__(self): return len(self.inds)
+              def __getitem__(self,i):
+                  j=self.inds[i]
+                  with Image.open(paths[j]) as im: x=self.tf(im.convert('RGB'))
+                  return x,int(y[j])
+          train_dl=DataLoader(DS(tr,train_tf),batch_size=32,shuffle=True,num_workers=2,persistent_workers=True)
+          val_dl=DataLoader(DS(va,eval_tf),batch_size=64,shuffle=False,num_workers=2,persistent_workers=True)
+
+          if model_name=='efficientnet_b0':
+              model=models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+              for layer in list(model.features.children())[:4]:
+                  for p in layer.parameters(): p.requires_grad=False
+              inf=model.classifier[-1].in_features; model.classifier[-1]=nn.Linear(inf,3)
+              head=list(model.classifier.parameters())
+          else:
+              model=models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+              for layer in [model.conv1,model.bn1,model.layer1,model.layer2]:
+                  for p in layer.parameters(): p.requires_grad=False
+              inf=model.fc.in_features; model.fc=nn.Linear(inf,3); head=list(model.fc.parameters())
+          head_ids={id(p) for p in head}; body=[p for p in model.parameters() if p.requires_grad and id(p) not in head_ids]
+          model.to(device)
+          opt=torch.optim.AdamW([{'params':body,'lr':5e-5},{'params':head,'lr':5e-4}],weight_decay=2e-4)
+          sched=torch.optim.lr_scheduler.CosineAnnealingLR(opt,T_max=20,eta_min=1e-6)
+          loss_fn=nn.CrossEntropyLoss(label_smoothing=.08)
+          best=-1.; best_state=None; history=[]; noimp=0; t0=time.time()
+          for epoch in range(20):
+              model.train(); running=0.; n=0
+              for x,t in train_dl:
+                  x=x.to(device); t=t.to(device); opt.zero_grad(set_to_none=True); logits=model(x); loss=loss_fn(logits,t); loss.backward(); opt.step(); running+=float(loss.detach().cpu())*len(t); n+=len(t)
+              sched.step(); model.eval(); pred=[]; true=[]
+              with torch.no_grad():
+                  for x,t in val_dl:
+                      p=model(x.to(device)).argmax(1).cpu().numpy(); pred.extend(p); true.extend(t.numpy())
+              acc=accuracy_score(true,pred); history.append({'epoch':epoch+1,'loss':running/max(n,1),'val_acc':acc}); print(epoch+1,running/max(n,1),acc,flush=True)
+              if acc>best+1e-5:
+                  best=acc; best_state={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}; noimp=0
+              else: noimp+=1
+              if noimp>=6 and epoch>=9: break
+          if best_state: model.load_state_dict(best_state)
+          model.eval(); pred=[]; true=[]
+          with torch.no_grad():
+              for x,t in val_dl: pred.extend(model(x.to(device)).argmax(1).cpu().numpy()); true.extend(t.numpy())
+          report={'model':model_name,'aug':aug,'device':str(device),'best_accuracy':float(accuracy_score(true,pred)),'confusion_matrix':confusion_matrix(true,pred).tolist(),'history':history,'seconds':time.time()-t0}
+          out=Path('outputs-cnn-probe')/f'{model_name}-{aug}'/'metrics.json'; out.write_text(json.dumps(report,indent=2)); print(json.dumps(report,indent=2),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cnn-probe-${{ matrix.model }}-${{ matrix.aug }}
+          path: aijc-lighting/outputs-cnn-probe/${{ matrix.model }}-${{ matrix.aug }}/
+          retention-days: 14
