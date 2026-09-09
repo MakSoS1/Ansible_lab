@@ -177,6 +177,46 @@ def validate_dataset(
     }
 
 
+def synthesize_manifests_from_images(candidate: Path | str) -> DatasetLayout:
+    """Create official-format manifests when the Mail.ru archive contains images only.
+
+    The task archive is documented as the train/test image directories; the CSV files are
+    distributed separately. Labels are therefore reconstructed solely from the documented
+    train/{class}/{image} layout, never from test data.
+    """
+    candidate = Path(candidate).resolve()
+    train_dir = candidate / "train"
+    test_dir = candidate / "test"
+    if not train_dir.is_dir() or not test_dir.is_dir():
+        raise FileNotFoundError(f"train/test image directories not found under {candidate}")
+
+    train_rows: list[dict] = []
+    for path in _image_files(train_dir):
+        rel = path.relative_to(train_dir)
+        if len(rel.parts) < 2:
+            raise ValueError(f"Training image has no class directory: {path}")
+        class_name = rel.parts[0].strip().lower()
+        if class_name not in CLASS_NAME_TO_ID:
+            raise ValueError(f"Unknown training class directory {class_name!r} for {path}")
+        train_rows.append({"id": path.stem, "label": CLASS_NAME_TO_ID[class_name]})
+
+    test_ids = [path.stem for path in _image_files(test_dir)]
+    if not train_rows or not test_ids:
+        raise ValueError(f"No training or test images found under {candidate}")
+
+    train_df = pd.DataFrame(train_rows).sort_values(["label", "id"], kind="stable").reset_index(drop=True)
+    test_df = pd.DataFrame({"id": sorted(test_ids)})
+    sample_df = pd.DataFrame({"id": test_df["id"], "label": 0})
+
+    if train_df["id"].duplicated().any() or test_df["id"].duplicated().any():
+        raise ValueError("Image ids must be unique before synthesizing manifests")
+
+    train_df.to_csv(candidate / "train.csv", index=False)
+    test_df.to_csv(candidate / "test.csv", index=False)
+    sample_df.to_csv(candidate / "sample_submission.csv", index=False)
+    return discover_layout(candidate)
+
+
 def normalize_extracted_tree(root: Path | str) -> DatasetLayout:
     root = Path(root).resolve()
     try:
@@ -184,6 +224,7 @@ def normalize_extracted_tree(root: Path | str) -> DatasetLayout:
     except FileNotFoundError:
         pass
 
+    # First prefer any fully packaged dataset already containing manifests.
     candidates: list[Path] = []
     for train_csv in root.rglob("train.csv"):
         candidate = train_csv.parent
@@ -194,10 +235,24 @@ def normalize_extracted_tree(root: Path | str) -> DatasetLayout:
             and (candidate / "test").is_dir()
         ):
             candidates.append(candidate)
-    if not candidates:
-        raise FileNotFoundError(f"No valid extracted dataset found under {root}")
-    candidates.sort(key=lambda p: (len(p.parts), str(p)))
-    return discover_layout(candidates[0])
+    if candidates:
+        candidates.sort(key=lambda p: (len(p.parts), str(p)))
+        return discover_layout(candidates[0])
+
+    # The official Mail.ru source can contain only train/ and test/ images.
+    # Find sibling directories and create manifests from train class folders.
+    image_roots: list[Path] = []
+    for train_dir in root.rglob("train"):
+        candidate = train_dir.parent
+        if train_dir.is_dir() and (candidate / "test").is_dir():
+            image_roots.append(candidate)
+    if not image_roots:
+        top_entries = sorted(str(p.relative_to(root)) for p in root.glob("*") if p.exists())[:30]
+        raise FileNotFoundError(
+            f"No valid extracted dataset found under {root}; top-level entries={top_entries}"
+        )
+    image_roots.sort(key=lambda p: (len(p.parts), str(p)))
+    return synthesize_manifests_from_images(image_roots[0])
 
 
 def write_validation_report(report: dict, path: Path | str) -> Path:
