@@ -52,6 +52,24 @@ def test_normalize_extracted_tree_finds_nested_data(tmp_path: Path):
     assert layout.root == nested
 
 
+def test_normalize_synthesizes_manifests_for_images_only_archive(tmp_path: Path):
+    nested = tmp_path / 'wrapper' / 'images'
+    for label, cls in enumerate(['dark', 'normal', 'bright']):
+        _png(nested / 'train' / cls / f'{cls}-a.png', 20 + label * 100)
+    _png(nested / 'test' / 'test-b.png', 100)
+    _png(nested / 'test' / 'test-a.png', 120)
+
+    layout = normalize_extracted_tree(tmp_path)
+    train_df = pd.read_csv(layout.train_csv)
+    test_df = pd.read_csv(layout.test_csv)
+    sample_df = pd.read_csv(layout.sample_submission_csv)
+
+    assert train_df.sort_values('label')['label'].tolist() == [0, 1, 2]
+    assert test_df['id'].tolist() == ['test-a', 'test-b']
+    assert sample_df['id'].tolist() == test_df['id'].tolist()
+    assert sample_df['label'].tolist() == [0, 0]
+
+
 def test_test_manifest_may_have_empty_label_column(tmp_path: Path):
     _mini_dataset(tmp_path)
     test_df = pd.read_csv(tmp_path / 'test.csv')
