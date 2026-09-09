@@ -1,19 +1,13 @@
-name: AIIJC Lighting Max Score
+name: AIIJC Lighting Max Score (V1 Manual)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/aijc-lighting-max-score
-    paths:
-      - 'aijc-lighting/**'
-      - '.github/workflows/aijc-lighting-max-score.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: aijc-lighting-max-score-mobilenet-v2-${{ github.ref }}
+  group: aijc-lighting-v1-manual-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -47,7 +41,6 @@ jobs:
         with:
           path: aijc-lighting/data_освещённость.zip
           key: aijc-lighting-mailru-GCsv-1BXmZPEBj-v3
-          save-always: true
 
       - name: Restore DINOv2 and feature cache from fast evaluation
         uses: actions/cache@v4
@@ -77,24 +70,9 @@ jobs:
         working-directory: aijc-lighting
         run: python scripts/download_archive_only.py --zip-path data_освещённость.zip
 
-      - name: Publish official archive to private Hugging Face cache
-        working-directory: aijc-lighting
-        run: python scripts/hf_dataset_cache.py publish --archive data_освещённость.zip
-
       - name: Extract and validate official dataset
         working-directory: aijc-lighting
         run: python scripts/download_mailru.py --keep-zip
-
-      - name: Seed full-run feature cache
-        working-directory: aijc-lighting
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p outputs/cache
-          if [ -d outputs-fast/cache ]; then
-            cp -a outputs-fast/cache/. outputs/cache/
-          fi
-          ls -lah outputs/cache || true
 
       - name: Run five-solution experiment
         working-directory: aijc-lighting
@@ -105,43 +83,11 @@ jobs:
             --vision-mode full \
             --folds 5
 
-      - name: Print final metrics
-        if: always()
-        working-directory: aijc-lighting
-        run: |
-          if [ -f outputs/metrics.json ]; then
-            python - <<'PY'
-          import json
-          from pathlib import Path
-          m = json.loads(Path('outputs/metrics.json').read_text())
-          print('\n=== CANDIDATES ===')
-          for x in sorted(m['candidates'], key=lambda z: z['oof_accuracy'], reverse=True):
-              print(f"{x['slot']}: {x['oof_accuracy']:.6f}  {x['name']}  test={x['test_distribution']}")
-          print('\n=== SELECTED ===')
-          print(json.dumps(m['selection'], indent=2))
-          PY
-          fi
-
       - name: Upload experiment results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aijc-lighting-results
-          path: |
-            aijc-lighting/outputs/
+          name: aijc-lighting-v1-results
+          path: aijc-lighting/outputs/
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Upload dataset validation metadata
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: aijc-lighting-dataset-metadata
-          path: |
-            aijc-lighting/data/dataset_validation.json
-            aijc-lighting/data/hf_cache_state.json
-            aijc-lighting/data/train.csv
-            aijc-lighting/data/test.csv
-            aijc-lighting/data/sample_submission.csv
-          if-no-files-found: warn
-          retention-days: 14
