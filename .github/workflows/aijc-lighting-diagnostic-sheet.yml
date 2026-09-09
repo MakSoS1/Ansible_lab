@@ -1,0 +1,75 @@
+name: AIIJC Lighting Diagnostic Sheet
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/aijc-lighting-max-score]
+    paths:
+      - '.github/workflows/aijc-lighting-diagnostic-sheet.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sheet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install huggingface_hub pillow
+      - name: Restore archive
+        working-directory: aijc-lighting
+        run: python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+      - name: Build contact sheet
+        working-directory: aijc-lighting
+        run: |
+          rm -rf diag_extract diag_out
+          mkdir -p diag_extract diag_out
+          unzip -q data_освещённость.zip -d diag_extract
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont, ImageOps
+          import random
+
+          root = Path('diag_extract')
+          train = next(p for p in root.rglob('train') if p.is_dir() and (p.parent/'test').is_dir())
+          test = train.parent/'test'
+          random.seed(42)
+
+          groups=[]
+          for name in ['dark','normal','bright']:
+              d=train/name
+              if not d.exists():
+                  d=train/{'dark':'0','normal':'1','bright':'2'}[name]
+              files=sorted([p for p in d.iterdir() if p.suffix.lower() in {'.png','.jpg','.jpeg'}])
+              groups.append((name, random.sample(files, min(20,len(files)))))
+          tfiles=sorted([p for p in test.iterdir() if p.suffix.lower() in {'.png','.jpg','.jpeg'}])
+          groups.append(('test', random.sample(tfiles, min(20,len(tfiles)))))
+
+          thumb=160; pad=24; cols=5
+          rows_per=(20+cols-1)//cols
+          width=cols*(thumb+pad)+pad
+          height=len(groups)*(rows_per*(thumb+pad)+50)+pad
+          canvas=Image.new('RGB',(width,height),'white'); draw=ImageDraw.Draw(canvas)
+          y=pad
+          for label,files in groups:
+              draw.text((pad,y),label,fill='black'); y+=30
+              for i,p in enumerate(files):
+                  im=Image.open(p).convert('RGB'); im.thumbnail((thumb,thumb))
+                  tile=Image.new('RGB',(thumb,thumb),'gray'); tile.paste(im,((thumb-im.width)//2,(thumb-im.height)//2))
+                  x=pad+(i%cols)*(thumb+pad); yy=y+(i//cols)*(thumb+pad)
+                  canvas.paste(tile,(x,yy)); draw.text((x,yy+thumb+2),p.stem[:12],fill='black')
+              y += rows_per*(thumb+pad)+20
+          canvas.save('diag_out/contact_sheet.jpg',quality=88)
+          print('saved', canvas.size)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aijc-lighting-diagnostic-sheet
+          path: aijc-lighting/diag_out/contact_sheet.jpg
+          retention-days: 7
