@@ -69,3 +69,56 @@ def test_backbone_specs_are_transformer_families():
         assert spec.model_name
         assert spec.unfreeze_patterns
         assert spec.image_size >= 192
+
+
+def test_dual_head_classifier_uses_backbone_features_for_both_heads():
+    torch = pytest.importorskip('torch')
+    nn = pytest.importorskip('torch.nn')
+    from src.transformer_solution import DualHeadClassifier
+
+    class TinyBackbone(nn.Module):
+        num_features = 5
+
+        def __init__(self):
+            super().__init__()
+            self.proj = nn.Linear(4, self.num_features)
+
+        def forward(self, x):
+            return self.proj(x)
+
+    model = DualHeadClassifier(TinyBackbone())
+    class_logits, ordinal_logits = model(torch.randn(3, 4))
+    assert class_logits.shape == (3, 3)
+    assert ordinal_logits.shape == (3, 2)
+
+
+def test_selective_unfreeze_only_enables_requested_backbone_stage():
+    torch = pytest.importorskip('torch')
+    nn = pytest.importorskip('torch.nn')
+    from src.transformer_solution import freeze_backbone, unfreeze_matching
+
+    class TinyBackbone(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.early = nn.Linear(2, 2)
+            self.final_stage = nn.Linear(2, 2)
+
+    backbone = TinyBackbone()
+    freeze_backbone(backbone)
+    assert not any(p.requires_grad for p in backbone.parameters())
+    changed = unfreeze_matching(backbone, ('final_stage',))
+    assert changed > 0
+    assert not any(p.requires_grad for p in backbone.early.parameters())
+    assert all(p.requires_grad for p in backbone.final_stage.parameters())
+
+
+def test_blended_head_probabilities_are_normalized():
+    torch = pytest.importorskip('torch')
+    from src.transformer_solution import blend_head_probabilities
+
+    class_logits = torch.tensor([[3.0, 0.0, -1.0], [-1.0, 0.0, 3.0]])
+    ordinal_logits = torch.tensor([[-3.0, -4.0], [4.0, 3.0]])
+    probs = blend_head_probabilities(class_logits, ordinal_logits, ordinal_mix=0.30)
+    assert probs.shape == (2, 3)
+    assert torch.allclose(probs.sum(1), torch.ones(2), atol=1e-6)
+    assert probs.argmax(1).tolist() == [0, 2]
