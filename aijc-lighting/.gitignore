@@ -1,0 +1,11 @@
+# Official binary dataset is downloaded reproducibly from Mail.ru Cloud.
+data/
+data_освещённость.zip
+.mailru-extract/
+
+# Runtime outputs and caches.
+outputs/cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+catboost_info/
