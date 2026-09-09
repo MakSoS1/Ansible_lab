@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: aijc-lighting-max-score-${{ github.ref }}
+  group: aijc-lighting-max-score-mobilenet-v2-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
