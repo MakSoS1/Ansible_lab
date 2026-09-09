@@ -1,0 +1,1 @@
+"""AIIJC illumination challenge package."""
