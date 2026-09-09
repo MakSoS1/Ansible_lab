@@ -1,0 +1,103 @@
+name: AIIJC Lighting Raw Quant Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/aijc-lighting-max-score]
+    paths: ['.github/workflows/aijc-lighting-raw-quant-probe.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install
+        working-directory: aijc-lighting
+        run: pip install numpy pandas pillow scipy scikit-learn lightgbm catboost huggingface_hub pytest
+      - name: Test raw features
+        working-directory: aijc-lighting
+        run: pytest tests/test_raw_quant.py -q
+      - name: Data
+        working-directory: aijc-lighting
+        run: |
+          python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+          python scripts/download_mailru.py --keep-zip
+      - name: Probe raw tone fingerprints
+        working-directory: aijc-lighting
+        run: |
+          mkdir -p outputs-raw-quant
+          python - <<'PY'
+          import json,time
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from joblib import Parallel,delayed
+          from sklearn.model_selection import StratifiedKFold
+          from sklearn.metrics import accuracy_score,roc_auc_score,confusion_matrix
+          from sklearn.ensemble import ExtraTreesClassifier,RandomForestClassifier,HistGradientBoostingClassifier
+          from sklearn.preprocessing import StandardScaler
+          from sklearn.pipeline import make_pipeline
+          from sklearn.linear_model import LogisticRegression
+          from lightgbm import LGBMClassifier
+          from catboost import CatBoostClassifier
+          from src.data import discover_layout,load_manifests,resolve_image_paths
+          from src.raw_quant import extract_raw_quant_features
+
+          layout=discover_layout('data'); trdf,tedf,_=load_manifests(layout); trp,tep=resolve_image_paths(layout); y=trdf.label.to_numpy(int); t0=time.time()
+          rows=Parallel(n_jobs=4,prefer='processes',verbose=10)(delayed(extract_raw_quant_features)(p) for p in trp+tep)
+          F=pd.DataFrame(rows).reindex(sorted(rows[0]),axis=1).replace([np.inf,-np.inf],0).fillna(0); X=F.iloc[:1500].to_numpy(np.float32); Xt=F.iloc[1500:].to_numpy(np.float32)
+          F.iloc[:1500].to_csv('outputs-raw-quant/train.csv',index=False); F.iloc[1500:].to_csv('outputs-raw-quant/test.csv',index=False); print('shape',X.shape,'extract_s',time.time()-t0,flush=True)
+          cv=StratifiedKFold(5,shuffle=True,random_state=42)
+          facs={
+            'et':lambda:ExtraTreesClassifier(n_estimators=700,min_samples_leaf=2,max_features=.7,class_weight='balanced',n_jobs=-1,random_state=42),
+            'rf':lambda:RandomForestClassifier(n_estimators=500,min_samples_leaf=2,max_features=.65,class_weight='balanced',n_jobs=-1,random_state=42),
+            'lgb':lambda:LGBMClassifier(n_estimators=550,learning_rate=.025,num_leaves=15,max_depth=5,min_child_samples=20,reg_lambda=5,reg_alpha=.5,verbosity=-1,n_jobs=-1,random_state=42),
+            'cat':lambda:CatBoostClassifier(iterations=550,depth=5,learning_rate=.035,l2_leaf_reg=7,verbose=False,allow_writing_files=False,thread_count=-1,random_seed=42),
+            'lr':lambda:make_pipeline(StandardScaler(),LogisticRegression(C=.05,max_iter=3000)),
+          }
+          store={}; metrics={}
+          for name,fac in facs.items():
+              o=np.zeros((1500,3)); t=np.zeros((300,3))
+              for a,b in cv.split(X,y):
+                  m=fac();m.fit(X[a],y[a]);o[b]=m.predict_proba(X[b]);t+=m.predict_proba(Xt)/5
+              acc=accuracy_score(y,o.argmax(1));store[name]=(o,t);metrics['3class_'+name]=float(acc);print('3class',name,acc,flush=True)
+          idx=np.where(y!=0)[0]; yy=(y[idx]==2).astype(int); cv2=StratifiedKFold(5,shuffle=True,random_state=42)
+          for name,fac in facs.items():
+              o=np.zeros((len(idx),2))
+              for a,b in cv2.split(X[idx],yy):
+                  m=fac();m.fit(X[idx][a],yy[a]);o[b]=m.predict_proba(X[idx][b])
+              metrics['1v2_'+name]=float(accuracy_score(yy,o.argmax(1)));print('1v2',name,metrics['1v2_'+name],flush=True)
+          # Feature-wise forensic AUC.
+          uni=[]
+          for j,c in enumerate(F.columns):
+              try:
+                  a=roc_auc_score(yy,X[idx,j]); a=max(a,1-a)
+              except Exception:a=.5
+              uni.append((float(a),c))
+          metrics['top_univariate_1v2']=sorted(uni,reverse=True)[:50]
+          bestn=max(store,key=lambda n:metrics['3class_'+n]);besto,bestt=store[bestn];besta=metrics['3class_'+bestn]
+          names=list(store)
+          for i in range(len(names)):
+              for j in range(i+1,len(names)):
+                  for alpha in np.arange(.1,1,.1):
+                      oo=alpha*store[names[i]][0]+(1-alpha)*store[names[j]][0]; ac=accuracy_score(y,oo.argmax(1))
+                      if ac>besta:besta=ac;bestn=f'{names[i]}+{names[j]}@{alpha:.1f}';besto=oo;bestt=alpha*store[names[i]][1]+(1-alpha)*store[names[j]][1]
+          metrics.update(selected_name=bestn,selected_accuracy=float(besta),confusion_matrix=confusion_matrix(y,besto.argmax(1)).tolist(),seconds=time.time()-t0)
+          np.save('outputs-raw-quant/oof_probs.npy',besto);np.save('outputs-raw-quant/test_probs.npy',bestt);pd.DataFrame({'id':tedf.id,'label':bestt.argmax(1)}).to_csv('outputs-raw-quant/submission.csv',index=False);Path('outputs-raw-quant/metrics.json').write_text(json.dumps(metrics,indent=2));print(json.dumps(metrics,indent=2),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aijc-lighting-raw-quant
+          path: aijc-lighting/outputs-raw-quant/
+          retention-days: 14
