@@ -32,10 +32,10 @@ This file is the append-only experiment journal for the illumination classificat
 | ResNet18 safe aug | 1 fixed probe fold | 0.482 | — | Weak. |
 | ResNet18 strong aug | 1 fixed probe fold | 0.478 | — | Strong brightness/contrast augmentation does not help this backbone. |
 | EfficientNet-B0 safe aug | 1 fixed probe fold | 0.496 | — | Best epoch 7; still below V1. |
-| EfficientNet-B0 strong aug | 1 fixed probe fold | running | — | Awaiting completion. |
+| EfficientNet-B0 strong aug | 1 fixed probe fold | 0.496 | — | Best epoch 18; augmentation changed confusion pattern but not accuracy. |
 | ZIP-order audit | Central-directory order / class runs / UUID ordering | n/a | n/a | No target-recovery path: test first and sorted by UUID; train stored in three sorted class directories. |
 | M1 CNN probe | ResNet18/EfficientNet-B0 on hosted macOS M1 MPS | n/a | n/a | MPS OOM before training; do not use hosted M1 GPU for these runs. |
-| Solution 6 transformer | Swin-T / DeiT3-S / MaxViT-T task-specific fine-tuning | implementation | — | TDD in progress. |
+| Solution 6 transformer | Swin-T / DeiT3-S / MaxViT-T task-specific fine-tuning | running | — | All reusable transformer primitives pass TDD; three backbones are training in parallel. |
 
 ## Key observations
 
@@ -66,6 +66,10 @@ The official ZIP central directory contains:
 
 This does not expose test labels. UUID-only and ordinary metadata-only probes are near chance.
 
+### 6. Generic brightness augmentation is not sufficient by itself
+
+On the fixed CNN probe fold, ResNet18 changes from 0.482 (safe augmentation) to 0.478 (strong augmentation), while EfficientNet-B0 is 0.496 under both safe and strong variants. This rejects the idea that simply turning up ColorJitter is enough; representation and objective still matter.
+
 ## Solution 6 — task-specific vision transformers
 
 Approved design:
@@ -85,16 +89,21 @@ TDD status:
 
 - RED #1: 5 tests failed because `src.transformer_solution` did not exist.
 - GREEN #1: ordinal encoding/probabilities, combined loss, dual-view transform and backbone registry implemented; all 5 tests passed.
-- RED #2: 3 newly added tests fail because dual-head wrapper/selective unfreezing/head probability blend are intentionally not implemented yet. Implementation follows next.
+- RED #2: 3 additional tests failed because dual-head wrapper/selective unfreezing/head-probability blend were intentionally absent.
+- GREEN #2: all 8 transformer unit tests pass on a clean Ubuntu runner. Training probes are now running in a three-way matrix.
 
 NVIDIA context: DLSS 4 moved from CNNs to vision transformers; this competition branch uses that architectural idea, but the actual model is trained specifically for illumination classification rather than copying a DLSS network.
 
+## Public exact-task reference implementation
+
+A public repository from the same competition contains an implementation for this exact task with EfficientNet/ResNet/MobileNet, 5-fold CV, aggressive augmentation, TTA, handcrafted physics features, ordinal regressors/classifiers, self-training utilities and a multi-model final script. We treat it as an implementation/reference source, not as a source of test labels. Its methods are being reproduced and validated on our own folds before adoption.
+
 ## Next decision gates
 
-1. Finish EfficientNet strong-augmentation probe.
-2. Finish Solution 6 transformer TDD and run Swin/DeiT3/MaxViT probes in parallel.
-3. Promote only candidates clearly above V1 (`>0.518 OOF`, or a convincingly stronger fixed-fold probe) to full 5-fold training.
-4. Build a hierarchical dark-vs-rest + specialized normal-vs-bright model if it improves OOF.
-5. Search semantic/source-scene neighbours across train/test using strong vision embeddings; label propagation is allowed only if validated on train pseudo-holdouts.
-6. Search OOF blends and, when justified, balanced 100/100/100 test assignment.
-7. Produce a new submission only when measured evidence says it should beat the current 0.51 leaderboard result.
+1. Finish Solution 6 transformer Swin/DeiT3/MaxViT probes in parallel.
+2. Promote only candidates clearly above V1 (`>0.518 OOF`, or a convincingly stronger fixed-fold probe) to full 5-fold training.
+3. Build a hierarchical dark-vs-rest + specialized normal-vs-bright model if it improves OOF.
+4. Search semantic/source-scene neighbours across train/test using strong vision embeddings; label propagation is allowed only if validated on train pseudo-holdouts.
+5. Validate balanced class-count assignment on CV folds before applying the likely 100/100/100 test prior.
+6. Reproduce the strongest methods from the public exact-task final script under our validation protocol.
+7. Search OOF blends and produce a new submission only when measured evidence says it should beat the current 0.51 leaderboard result.
