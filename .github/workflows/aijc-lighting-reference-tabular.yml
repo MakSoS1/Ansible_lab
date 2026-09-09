@@ -1,0 +1,46 @@
+name: AIIJC Lighting Public Recipe Probe
+
+on:
+  push:
+    branches:
+      - feature/aijc-lighting-transformers
+    paths:
+      - 'aijc-lighting/scripts/reference_fast_tabular.py'
+      - '.github/workflows/aijc-lighting-reference-tabular.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        working-directory: aijc-lighting
+        run: python -m pip install -q numpy pandas pillow scikit-learn lightgbm catboost huggingface_hub
+      - name: Restore official data
+        working-directory: aijc-lighting
+        run: |
+          python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+          python scripts/download_mailru.py --keep-zip
+      - name: Reproduce public tabular recipe under our CV
+        working-directory: aijc-lighting
+        run: python scripts/reference_fast_tabular.py --data data --output outputs-reference-fast --workers 4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aijc-lighting-reference-fast-tabular
+          path: aijc-lighting/outputs-reference-fast/
+          retention-days: 14
