@@ -5,6 +5,7 @@ import random
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
@@ -57,6 +58,21 @@ def ordinal_logits_to_probs(logits: torch.Tensor) -> torch.Tensor:
     return probs / probs.sum(dim=1, keepdim=True)
 
 
+def blend_head_probabilities(
+    class_logits: torch.Tensor,
+    ordinal_logits: torch.Tensor,
+    ordinal_mix: float = 0.30,
+) -> torch.Tensor:
+    """Blend nominal and ordinal heads while retaining a valid probability simplex."""
+    mix = float(ordinal_mix)
+    if not 0.0 <= mix <= 1.0:
+        raise ValueError("ordinal_mix must be within [0, 1]")
+    nominal = torch.softmax(class_logits, dim=1)
+    ordinal = ordinal_logits_to_probs(ordinal_logits)
+    probs = (1.0 - mix) * nominal + mix * ordinal
+    return probs / probs.sum(dim=1, keepdim=True).clamp_min(1e-8)
+
+
 def combined_classification_loss(
     class_logits: torch.Tensor,
     ordinal_logits: torch.Tensor,
@@ -68,6 +84,50 @@ def combined_classification_loss(
     ce = F.cross_entropy(class_logits, y.long(), label_smoothing=label_smoothing)
     ord_loss = F.binary_cross_entropy_with_logits(ordinal_logits, ordinal_targets(y))
     return ce + float(ordinal_weight) * ord_loss
+
+
+class DualHeadClassifier(nn.Module):
+    """Wrap a pooled timm-style backbone with nominal and cumulative-ordinal heads."""
+
+    def __init__(self, backbone: nn.Module, dropout: float = 0.15):
+        super().__init__()
+        if not hasattr(backbone, "num_features"):
+            raise ValueError("backbone must expose num_features")
+        self.backbone = backbone
+        dim = int(backbone.num_features)
+        self.dropout = nn.Dropout(float(dropout))
+        self.class_head = nn.Linear(dim, 3)
+        self.ordinal_head = nn.Linear(dim, 2)
+
+    def forward_features(self, x: torch.Tensor) -> torch.Tensor:
+        feat = self.backbone(x)
+        if feat.ndim == 4:
+            feat = feat.mean(dim=(-2, -1))
+        elif feat.ndim == 3:
+            feat = feat.mean(dim=1)
+        if feat.ndim != 2:
+            feat = feat.flatten(1)
+        return feat
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        feat = self.dropout(self.forward_features(x))
+        return self.class_head(feat), self.ordinal_head(feat)
+
+
+def freeze_backbone(backbone: nn.Module) -> None:
+    for parameter in backbone.parameters():
+        parameter.requires_grad = False
+
+
+def unfreeze_matching(backbone: nn.Module, patterns: tuple[str, ...]) -> int:
+    """Enable gradients only for named parameters matching any requested suffix/stage."""
+    changed = 0
+    for name, parameter in backbone.named_parameters():
+        if any(pattern in name for pattern in patterns):
+            if not parameter.requires_grad:
+                parameter.requires_grad = True
+            changed += parameter.numel()
+    return changed
 
 
 class _RandomGamma:
@@ -137,8 +197,6 @@ class DualViewTransform:
         if self.seed is None:
             return clean, self.augmented(image)
 
-        # A local seed makes unit tests and debugging reproducible without permanently
-        # changing the caller's random state.
         py_state = random.getstate()
         np_state = np.random.get_state()
         torch_state = torch.random.get_rng_state()
