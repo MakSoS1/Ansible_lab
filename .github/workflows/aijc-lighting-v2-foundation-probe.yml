@@ -1,0 +1,152 @@
+name: AIIJC Lighting V2 Foundation Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/aijc-lighting-max-score]
+    paths:
+      - '.github/workflows/aijc-lighting-v2-foundation-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [dinov3, siglip2]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      FAMILY: ${{ matrix.family }}
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install timm transformers huggingface_hub scikit-learn lightgbm catboost pandas pillow
+      - name: Restore and extract data
+        working-directory: aijc-lighting
+        run: |
+          python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+          python scripts/download_mailru.py --keep-zip
+      - name: Foundation embedding probe
+        working-directory: aijc-lighting
+        run: |
+          mkdir -p outputs-foundation/${FAMILY}
+          python - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          import torch
+          from PIL import Image
+          from sklearn.decomposition import PCA
+          from sklearn.metrics import accuracy_score, confusion_matrix
+          from sklearn.model_selection import StratifiedKFold
+          from sklearn.pipeline import make_pipeline
+          from sklearn.preprocessing import StandardScaler, normalize
+          from sklearn.linear_model import LogisticRegression
+          from sklearn.svm import SVC
+          from lightgbm import LGBMClassifier
+          from src.data import discover_layout, load_manifests, resolve_image_paths
+
+          family=os.environ['FAMILY']
+          layout=discover_layout('data'); train_df,test_df,_=load_manifests(layout); train_paths,test_paths=resolve_image_paths(layout)
+          paths=train_paths+test_paths; y=train_df.label.to_numpy(int); device=torch.device('cpu')
+          torch.set_num_threads(min(4, os.cpu_count() or 4))
+          print('family',family,'paths',len(paths),flush=True)
+          t0=time.time(); zs_probs=None
+
+          if family=='dinov3':
+              import timm
+              name='convnext_tiny.dinov3_lvd1689m'
+              model=timm.create_model(name,pretrained=True,num_classes=0,global_pool='avg').eval()
+              cfg=timm.data.resolve_model_data_config(model); tf=timm.data.create_transform(**cfg,is_training=False)
+              rows=[]
+              with torch.inference_mode():
+                  for start in range(0,len(paths),32):
+                      batch=[]
+                      for p in paths[start:start+32]:
+                          with Image.open(p) as im: batch.append(tf(im.convert('RGB')))
+                      out=model(torch.stack(batch));
+                      if out.ndim>2: out=out.flatten(2).mean(-1)
+                      rows.append(out.cpu().numpy()); print('embed',start+len(batch),'/',len(paths),flush=True)
+              E=np.concatenate(rows).astype('float32')
+          else:
+              from transformers import AutoModel, AutoProcessor
+              ckpt='google/siglip2-base-patch16-224'
+              model=AutoModel.from_pretrained(ckpt).eval(); proc=AutoProcessor.from_pretrained(ckpt)
+              rows=[]
+              with torch.inference_mode():
+                  for start in range(0,len(paths),16):
+                      ims=[]
+                      for p in paths[start:start+16]:
+                          with Image.open(p) as im: ims.append(im.convert('RGB').copy())
+                      inp=proc(images=ims,return_tensors='pt')
+                      out=model.get_image_features(**inp); rows.append(out.cpu().numpy()); print('embed',start+len(ims),'/',len(paths),flush=True)
+              E=np.concatenate(rows).astype('float32')
+
+              prompts={
+                0:['a very dimly lit scene','a dark low-light surveillance image','a scene with low ambient illumination','a poorly illuminated indoor or outdoor scene','a scene photographed under weak lighting'],
+                1:['a normally illuminated scene','a scene with moderate ambient lighting','a properly lit surveillance image','a scene under ordinary lighting','a scene with neutral normal illumination'],
+                2:['a brightly illuminated scene','a scene with strong ambient lighting','a very well-lit surveillance image','a scene under bright lights or daylight','a high illumination scene'],
+              }
+              texts=sum(prompts.values(),[])
+              with torch.inference_mode():
+                  tin=proc(text=texts,padding='max_length',return_tensors='pt')
+                  T=model.get_text_features(**tin).cpu().numpy()
+              En=normalize(E); Tn=normalize(T); sim=En@Tn.T
+              cls=np.column_stack([sim[:,i*5:(i+1)*5].mean(1) for i in range(3)])
+              exp=np.exp((cls-cls.max(1,keepdims=True))*10); zs_probs=exp/exp.sum(1,keepdims=True)
+              print('zero-shot train acc',accuracy_score(y,zs_probs[:len(y)].argmax(1)),flush=True)
+
+          print('embedding shape',E.shape,'seconds',time.time()-t0,flush=True)
+          np.save(f'outputs-foundation/{family}/embeddings.npy',E)
+          X=normalize(E[:len(y)]); Xt=normalize(E[len(y):]); cv=StratifiedKFold(5,shuffle=True,random_state=42)
+          candidates={
+            'lr_c001':lambda:LogisticRegression(C=.01,max_iter=4000),
+            'lr_c003':lambda:LogisticRegression(C=.03,max_iter=4000),
+            'lr_c01':lambda:LogisticRegression(C=.1,max_iter=4000),
+            'lr_c03':lambda:LogisticRegression(C=.3,max_iter=4000),
+            'rbf':lambda:make_pipeline(PCA(n_components=min(192,X.shape[1]),whiten=True,random_state=42),SVC(C=2.0,kernel='rbf',probability=True,random_state=42)),
+            'lgb':lambda:LGBMClassifier(n_estimators=450,learning_rate=.025,num_leaves=15,max_depth=5,min_child_samples=30,reg_lambda=6,verbosity=-1,n_jobs=-1,random_state=42),
+          }
+          metrics={}; saved={}
+          for name,fac in candidates.items():
+              oof=np.zeros((len(y),3)); test=np.zeros((len(Xt),3))
+              for tr,va in cv.split(X,y):
+                  m=fac(); m.fit(X[tr],y[tr]); oof[va]=m.predict_proba(X[va]); test+=m.predict_proba(Xt)/5
+              acc=accuracy_score(y,oof.argmax(1)); metrics[name]=float(acc); saved[name]=(oof,test); print(name,acc,flush=True)
+          if zs_probs is not None:
+              metrics['zero_shot']=float(accuracy_score(y,zs_probs[:len(y)].argmax(1))); saved['zero_shot']=(zs_probs[:len(y)],zs_probs[len(y):])
+          # Search blends among the learned candidates and zero-shot.
+          best_name=max(metrics,key=metrics.get); best_acc=metrics[best_name]; best=saved[best_name]
+          names=list(saved)
+          for i in range(len(names)):
+              for j in range(i+1,len(names)):
+                  for a in np.arange(.1,1,.1):
+                      oo=a*saved[names[i]][0]+(1-a)*saved[names[j]][0]
+                      ac=accuracy_score(y,oo.argmax(1))
+                      if ac>best_acc:
+                          best_acc=ac; best_name=f'{names[i]}+{names[j]}@{a:.1f}'; best=(oo,a*saved[names[i]][1]+(1-a)*saved[names[j]][1])
+          metrics['selected_name']=best_name; metrics['selected_accuracy']=float(best_acc); metrics['confusion_matrix']=confusion_matrix(y,best[0].argmax(1)).tolist(); metrics['seconds']=time.time()-t0
+          np.save(f'outputs-foundation/{family}/oof_probs.npy',best[0]); np.save(f'outputs-foundation/{family}/test_probs.npy',best[1])
+          pd.DataFrame({'id':test_df.id,'label':best[1].argmax(1)}).to_csv(f'outputs-foundation/{family}/submission.csv',index=False)
+          Path(f'outputs-foundation/{family}/metrics.json').write_text(json.dumps(metrics,indent=2)); print(json.dumps(metrics,indent=2),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: foundation-${{ matrix.family }}
+          path: aijc-lighting/outputs-foundation/${{ matrix.family }}/
+          retention-days: 14
