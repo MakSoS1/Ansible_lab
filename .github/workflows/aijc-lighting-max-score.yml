@@ -46,7 +46,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: aijc-lighting/data_освещённость.zip
-          key: aijc-lighting-mailru-GCsv-1BXmZPEBj-v2
+          key: aijc-lighting-mailru-GCsv-1BXmZPEBj-v3
+          save-always: true
 
       - name: Cache pretrained weights and embeddings
         uses: actions/cache@v4
@@ -72,13 +73,17 @@ jobs:
         working-directory: aijc-lighting
         run: python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
 
-      - name: Download and validate official Mail.ru dataset
+      - name: Download official archive if cache missed
         working-directory: aijc-lighting
-        run: python scripts/download_mailru.py --keep-zip
+        run: python scripts/download_archive_only.py --zip-path data_освещённость.zip
 
       - name: Publish official archive to private Hugging Face cache
         working-directory: aijc-lighting
         run: python scripts/hf_dataset_cache.py publish --archive data_освещённость.zip
+
+      - name: Extract and validate official dataset
+        working-directory: aijc-lighting
+        run: python scripts/download_mailru.py --keep-zip
 
       - name: Run five-solution experiment
         working-directory: aijc-lighting
