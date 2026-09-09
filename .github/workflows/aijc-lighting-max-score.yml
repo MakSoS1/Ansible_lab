@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: aijc-lighting-max-score-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   train-and-evaluate:
     runs-on: ubuntu-latest
@@ -20,11 +24,12 @@ jobs:
       PYTHONUNBUFFERED: '1'
       OMP_NUM_THREADS: '2'
       MKL_NUM_THREADS: '2'
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
       AIJC_CNN_EPOCHS: '10'
       AIJC_CNN_FOLDS: '3'
       AIJC_CNN_BATCH: '16'
       AIJC_CNN_BACKBONE: 'efficientnet_b0'
-      AIJC_EMBED_BACKBONE: 'efficientnet_b0'
+      AIJC_EMBED_BACKBONE: 'efficientnet_b0,vit_small_patch14_dinov2.lvd142m'
 
     steps:
       - name: Checkout
@@ -41,29 +46,39 @@ jobs:
         uses: actions/cache@v4
         with:
           path: aijc-lighting/data_освещённость.zip
-          key: aijc-lighting-mailru-GCsv-1BXmZPEBj-v1
+          key: aijc-lighting-mailru-GCsv-1BXmZPEBj-v2
 
-      - name: Cache pretrained weights
+      - name: Cache pretrained weights and embeddings
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/torch/hub/checkpoints
             ~/.cache/huggingface
-          key: aijc-lighting-pretrained-v2
+            aijc-lighting/outputs/cache
+          key: aijc-lighting-pretrained-dinov2-v3
 
       - name: Install dependencies
         working-directory: aijc-lighting
         run: |
           python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
           python -m pip install -r requirements.txt
 
       - name: Unit tests
         working-directory: aijc-lighting
         run: pytest tests -q
 
+      - name: Restore official archive from private Hugging Face cache
+        working-directory: aijc-lighting
+        run: python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+
       - name: Download and validate official Mail.ru dataset
         working-directory: aijc-lighting
         run: python scripts/download_mailru.py --keep-zip
+
+      - name: Publish official archive to private Hugging Face cache
+        working-directory: aijc-lighting
+        run: python scripts/hf_dataset_cache.py publish --archive data_освещённость.zip
 
       - name: Run five-solution experiment
         working-directory: aijc-lighting
@@ -99,19 +114,18 @@ jobs:
           path: |
             aijc-lighting/outputs/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30
 
-      - name: Upload official dataset source
+      - name: Upload dataset validation metadata
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aijc-lighting-dataset-source
+          name: aijc-lighting-dataset-metadata
           path: |
-            aijc-lighting/data_освещённость.zip
             aijc-lighting/data/dataset_validation.json
+            aijc-lighting/data/hf_cache_state.json
             aijc-lighting/data/train.csv
             aijc-lighting/data/test.csv
             aijc-lighting/data/sample_submission.csv
           if-no-files-found: warn
-          compression-level: 0
-          retention-days: 3
+          retention-days: 14
