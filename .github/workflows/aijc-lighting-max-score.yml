@@ -19,16 +19,16 @@ concurrency:
 jobs:
   train-and-evaluate:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 180
     env:
       PYTHONUNBUFFERED: '1'
       OMP_NUM_THREADS: '2'
       MKL_NUM_THREADS: '2'
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      AIJC_CNN_EPOCHS: '10'
+      AIJC_CNN_EPOCHS: '8'
       AIJC_CNN_FOLDS: '3'
-      AIJC_CNN_BATCH: '16'
-      AIJC_CNN_BACKBONE: 'efficientnet_b0'
+      AIJC_CNN_BATCH: '32'
+      AIJC_CNN_BACKBONE: 'mobilenet_v3_small'
       AIJC_EMBED_BACKBONE: 'vit_small_patch14_dinov2.lvd142m'
 
     steps:
@@ -49,14 +49,14 @@ jobs:
           key: aijc-lighting-mailru-GCsv-1BXmZPEBj-v3
           save-always: true
 
-      - name: Cache pretrained weights and embeddings
+      - name: Restore DINOv2 and feature cache from fast evaluation
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/torch/hub/checkpoints
             ~/.cache/huggingface
-            aijc-lighting/outputs/cache
-          key: aijc-lighting-pretrained-dinov2-v3
+            aijc-lighting/outputs-fast/cache
+          key: aijc-lighting-fast-dinov2-v1
 
       - name: Install dependencies
         working-directory: aijc-lighting
@@ -84,6 +84,17 @@ jobs:
       - name: Extract and validate official dataset
         working-directory: aijc-lighting
         run: python scripts/download_mailru.py --keep-zip
+
+      - name: Seed full-run feature cache
+        working-directory: aijc-lighting
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs/cache
+          if [ -d outputs-fast/cache ]; then
+            cp -a outputs-fast/cache/. outputs/cache/
+          fi
+          ls -lah outputs/cache || true
 
       - name: Run five-solution experiment
         working-directory: aijc-lighting
