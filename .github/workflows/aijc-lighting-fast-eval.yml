@@ -1,0 +1,92 @@
+name: AIIJC Lighting Fast OOF
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/aijc-lighting-max-score
+    paths:
+      - '.github/workflows/aijc-lighting-fast-eval.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aijc-lighting-fast-oof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      AIJC_EMBED_BACKBONE: 'vit_small_patch14_dinov2.lvd142m'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: aijc-lighting/requirements.txt
+
+      - name: Cache pretrained weights and embeddings
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/torch/hub/checkpoints
+            ~/.cache/huggingface
+            aijc-lighting/outputs-fast/cache
+          key: aijc-lighting-fast-dinov2-v1
+
+      - name: Install dependencies
+        working-directory: aijc-lighting
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+          python -m pip install -r requirements.txt
+
+      - name: Unit tests
+        working-directory: aijc-lighting
+        run: pytest tests -q
+
+      - name: Restore official archive from private HF cache
+        working-directory: aijc-lighting
+        run: python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+
+      - name: Extract and validate official dataset
+        working-directory: aijc-lighting
+        run: python scripts/download_mailru.py --keep-zip
+
+      - name: Run solutions 1-4
+        working-directory: aijc-lighting
+        run: |
+          python run_experiments.py \
+            --data-dir data \
+            --output-dir outputs-fast \
+            --vision-mode embeddings \
+            --folds 5
+
+      - name: Print metrics
+        if: always()
+        working-directory: aijc-lighting
+        run: |
+          if [ -f outputs-fast/metrics.json ]; then
+            cat outputs-fast/metrics.json
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aijc-lighting-fast-results
+          path: aijc-lighting/outputs-fast/
+          if-no-files-found: warn
+          retention-days: 30
