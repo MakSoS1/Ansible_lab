@@ -1,0 +1,82 @@
+name: AIIJC Lighting ZIP Order Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/aijc-lighting-max-score]
+    paths:
+      - '.github/workflows/aijc-lighting-zip-order-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install huggingface_hub
+      - name: Restore official archive
+        working-directory: aijc-lighting
+        run: python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+      - name: Inspect central directory order
+        working-directory: aijc-lighting
+        run: |
+          mkdir -p outputs-zip-audit
+          python - <<'PY'
+          from pathlib import Path
+          import csv, json, re, zipfile
+          zpath=Path('data_освещённость.zip')
+          with zipfile.ZipFile(zpath) as z:
+              infos=[x for x in z.infolist() if not x.is_dir()]
+          rows=[]
+          test_members=[]
+          train_members=[]
+          for i,x in enumerate(infos):
+              p=x.filename.replace('\\','/')
+              parts=[q for q in p.split('/') if q]
+              split='other'; label=''
+              if 'test' in [q.lower() for q in parts]:
+                  split='test'; test_members.append((i,p))
+              elif 'train' in [q.lower() for q in parts]:
+                  split='train'
+                  low=[q.lower() for q in parts]
+                  ti=low.index('train')
+                  if ti+1<len(parts):
+                      cls=low[ti+1]
+                      label={'dark':'0','normal':'1','bright':'2','0':'0','1':'1','2':'2'}.get(cls,'')
+                  train_members.append((i,label,p))
+              rows.append({'zip_index':i,'split':split,'label_from_path':label,'filename':p,'crc':x.CRC,'file_size':x.file_size,'compress_size':x.compress_size,'date_time':'-'.join(map(str,x.date_time))})
+          with open('outputs-zip-audit/members.csv','w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
+          report={
+              'members':len(infos),
+              'train_members':len(train_members),
+              'test_members':len(test_members),
+              'first_30_train':train_members[:30],
+              'last_30_train':train_members[-30:],
+              'first_60_test':test_members[:60],
+              'last_60_test':test_members[-60:],
+              'train_label_runs':[],
+              'test_zip_indices':[i for i,_ in test_members],
+          }
+          if train_members:
+              start=0; current=train_members[0][1]
+              for j in range(1,len(train_members)+1):
+                  if j==len(train_members) or train_members[j][1]!=current:
+                      report['train_label_runs'].append({'label':current,'start_member':start,'end_member':j-1,'count':j-start,'zip_index_start':train_members[start][0],'zip_index_end':train_members[j-1][0]})
+                      if j<len(train_members): start=j; current=train_members[j][1]
+          Path('outputs-zip-audit/report.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aijc-lighting-zip-order-audit
+          path: aijc-lighting/outputs-zip-audit/
+          retention-days: 14
