@@ -1,0 +1,119 @@
+name: AIIJC Lighting V2 Feature Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/aijc-lighting-max-score]
+    paths:
+      - '.github/workflows/aijc-lighting-v2-feature-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: aijc-lighting/requirements.txt
+      - name: Install dependencies
+        working-directory: aijc-lighting
+        run: pip install -r requirements.txt
+      - name: Unit tests
+        working-directory: aijc-lighting
+        run: pytest tests/test_features_v2.py tests/test_hierarchical_v2.py tests/test_transductive_v2.py -q
+      - name: Restore and extract data
+        working-directory: aijc-lighting
+        run: |
+          python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+          python scripts/download_mailru.py --keep-zip
+      - name: Extract V2 features and evaluate
+        working-directory: aijc-lighting
+        run: |
+          mkdir -p outputs-v2-probe
+          python - <<'PY'
+          import json, time
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          from joblib import Parallel, delayed
+          from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
+          from sklearn.model_selection import StratifiedKFold
+          from sklearn.metrics import accuracy_score, roc_auc_score
+          from sklearn.preprocessing import StandardScaler
+          from sklearn.pipeline import make_pipeline
+          from sklearn.linear_model import LogisticRegression
+          from sklearn.svm import SVC
+          from lightgbm import LGBMClassifier
+          from catboost import CatBoostClassifier
+          from src.data import discover_layout, load_manifests, resolve_image_paths
+          from src.features_v2 import extract_v2_features
+
+          layout=discover_layout('data')
+          train_df,test_df,_=load_manifests(layout)
+          train_paths,test_paths=resolve_image_paths(layout)
+          y=train_df.label.to_numpy(int)
+          t=time.time()
+          rows=Parallel(n_jobs=-1,prefer='processes',verbose=5)(delayed(extract_v2_features)(p) for p in train_paths+test_paths)
+          frame=pd.DataFrame(rows).reindex(sorted(rows[0]),axis=1).replace([np.inf,-np.inf],0).fillna(0)
+          X=frame.iloc[:len(y)].reset_index(drop=True); Xt=frame.iloc[len(y):].reset_index(drop=True)
+          X.to_csv('outputs-v2-probe/train_v2.csv',index=False); Xt.to_csv('outputs-v2-probe/test_v2.csv',index=False)
+          print('features',X.shape,'seconds',time.time()-t)
+
+          def cv_oof(Xa, ya, factory, seed=42):
+              cv=StratifiedKFold(5,shuffle=True,random_state=seed)
+              classes=np.unique(ya); oof=np.zeros((len(ya),len(classes)))
+              for tr,va in cv.split(Xa,ya):
+                  m=factory(); m.fit(Xa[tr],ya[tr]); oof[va]=m.predict_proba(Xa[va])
+              return oof
+
+          Xn=X.to_numpy(np.float32)
+          feature_sets={
+              'all':np.arange(X.shape[1]),
+              'quant':[i for i,c in enumerate(X.columns) if c.startswith('v2_q_')],
+              'physics':[i for i,c in enumerate(X.columns) if not c.startswith('v2_q_') and not c.startswith('v2_dct_')],
+          }
+          metrics={}
+          for fs,cols in feature_sets.items():
+              Z=Xn[:,cols]
+              models={
+                'et':lambda:ExtraTreesClassifier(n_estimators=500,min_samples_leaf=2,max_features='sqrt',class_weight='balanced',n_jobs=-1,random_state=42),
+                'lgb':lambda:LGBMClassifier(n_estimators=400,learning_rate=.025,num_leaves=15,max_depth=5,min_child_samples=25,reg_lambda=5,verbosity=-1,n_jobs=-1,random_state=42),
+                'cat':lambda:CatBoostClassifier(iterations=450,depth=5,learning_rate=.035,l2_leaf_reg=7,verbose=False,allow_writing_files=False,random_seed=42,thread_count=-1),
+              }
+              for mn,fac in models.items():
+                  o=cv_oof(Z,y,fac); acc=accuracy_score(y,o.argmax(1)); metrics[f'3class/{fs}/{mn}']=float(acc); print('3class',fs,mn,acc,flush=True)
+              idx=np.where(y!=0)[0]; yy=(y[idx]==2).astype(int); Z2=Z[idx]
+              binary={
+                **models,
+                'lr':lambda:make_pipeline(StandardScaler(),LogisticRegression(C=.08,max_iter=2500)),
+                'rbf':lambda:make_pipeline(StandardScaler(),SVC(C=2.0,gamma='scale',kernel='rbf',probability=True,random_state=42)),
+              }
+              for mn,fac in binary.items():
+                  o=cv_oof(Z2,yy,fac); acc=accuracy_score(yy,o.argmax(1)); metrics[f'1v2/{fs}/{mn}']=float(acc); print('1v2',fs,mn,acc,flush=True)
+
+          # strongest univariate AUCs for forensic interpretation
+          idx=np.where(y!=0)[0]; yy=(y[idx]==2).astype(int); uni=[]
+          for c in X.columns:
+              x=X.loc[idx,c].to_numpy(float)
+              try:a=roc_auc_score(yy,x); a=max(a,1-a)
+              except Exception:a=.5
+              uni.append((float(a),c))
+          metrics['top_univariate_1v2']=sorted(uni,reverse=True)[:40]
+          Path('outputs-v2-probe/metrics.json').write_text(json.dumps(metrics,indent=2))
+          print(json.dumps(metrics,indent=2),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aijc-lighting-v2-feature-probe
+          path: aijc-lighting/outputs-v2-probe/
+          retention-days: 14
