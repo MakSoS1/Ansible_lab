@@ -1,0 +1,6 @@
+name: graph-mappo
+hidden: 128
+clip: 0.2
+entropy_coef: 0.01
+learning_rate: 0.0003
+seeds: [11, 17, 23]

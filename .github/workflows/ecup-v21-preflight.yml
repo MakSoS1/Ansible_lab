@@ -3,6 +3,10 @@ name: E-CUP v21 LB-calibrated preflight
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'ecup_matching/**'
+      - 'tests/test_v21_public_calibration.py'
+      - 'tests/test_v21_promotion.py'
 
 permissions:
   contents: read

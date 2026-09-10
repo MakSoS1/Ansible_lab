@@ -1,0 +1,7 @@
+seed: 42
+economic_start: 2007-01-01
+max_wlpr_m3_day: 500.0
+hf_dataset_id: MakSoS1/aios-track2-runs
+model_z_archive: aios-track2/materials/41_Model_Z_final_OPM.zip
+work_dir: runs
+control_step_months: 3

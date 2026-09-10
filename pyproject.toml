@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aios-track2"
+version = "0.2.0"
+description = "AIOS Track 2 reservoir-control surrogate and optimization system"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=2.0,<3",
+  "pandas>=2.2,<3",
+  "pydantic>=2.9,<3",
+  "PyYAML>=6.0,<7",
+  "scipy>=1.14,<2",
+  "torch>=2.4,<3",
+  "openpyxl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+hf = ["huggingface-hub>=0.27,<2", "pyarrow>=17,<22"]
+api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+dev = ["pytest>=8.3,<9", "ruff>=0.8,<1", "mypy>=1.13,<2"]
+
+[project.scripts]
+aios-track2 = "aios_track2.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 140
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/aios_track2/economics_official.py" = ["E501", "UP035", "UP037"]
+"scripts/evaluate_challenge_doe.py" = ["UP035"]

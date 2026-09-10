@@ -1,0 +1,5 @@
+name: tcn
+hidden: 96
+epochs: 80
+learning_rate: 0.001
+ensemble_seeds: [11, 17, 23]

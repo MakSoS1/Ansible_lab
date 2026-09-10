@@ -1,0 +1,2052 @@
+{
+  "design_sha256": "9d64588192a01290323b431ff9f88f565666b74888bc4e9a24787cc0388846c5",
+  "split": {
+    "train": [
+      0,
+      1,
+      3,
+      4,
+      6,
+      7,
+      9,
+      10,
+      11,
+      15,
+      19,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      30,
+      32,
+      33,
+      34,
+      35,
+      36,
+      38,
+      39,
+      42,
+      43,
+      45,
+      46,
+      50,
+      51,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      61,
+      62
+    ],
+    "validation": [
+      5,
+      12,
+      13,
+      17,
+      18,
+      44,
+      48,
+      60
+    ],
+    "holdout": [
+      2,
+      8,
+      14,
+      16,
+      20,
+      21,
+      28,
+      29,
+      31,
+      37,
+      40,
+      41,
+      47,
+      49,
+      52,
+      63
+    ]
+  },
+  "common_dates": {
+    "count": 225,
+    "start": "2007-01-01",
+    "end": "2025-09-01"
+  },
+  "physical_gate": {
+    "passed": true,
+    "missing_ids": [],
+    "extra_ids": [],
+    "failed_status_ids": [],
+    "wlpr_violations": [],
+    "unexpected_telemetry_mutations": [],
+    "baseline_schedule_byte_identical": true,
+    "max_wlpr": 63.81421661376953
+  },
+  "reference_parity": {
+    "passed": true,
+    "failures": [],
+    "calculated_npv_mrub": 11891.994046426242,
+    "reference_npv_mrub": 11869.58637373553,
+    "npv_relative_error": 0.0018878225394858019,
+    "mean_physical_relative_error": 0.0006911483476740828,
+    "max_annual_physical_relative_error": 0.006437237209886797,
+    "mean_active_well_month_relative_error": 0.0,
+    "annual": [
+      {
+        "year": 2007,
+        "oil_relative_error": 0.001915200155203936,
+        "liquid_relative_error": 0.0017420750655157086,
+        "injection_relative_error": 0.0011700725923946215,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2008,
+        "oil_relative_error": 0.0010957121781286674,
+        "liquid_relative_error": 0.0011869309113651599,
+        "injection_relative_error": 5.7950638255034164e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2009,
+        "oil_relative_error": 0.0008821995379368231,
+        "liquid_relative_error": 0.0009342828585166075,
+        "injection_relative_error": 0.00013790115331267647,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2010,
+        "oil_relative_error": 0.00024274201158331005,
+        "liquid_relative_error": 9.93270552899036e-05,
+        "injection_relative_error": 5.0755986903587096e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2011,
+        "oil_relative_error": 0.0007839388298467847,
+        "liquid_relative_error": 0.000688669443596114,
+        "injection_relative_error": 0.0007812801730708644,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2012,
+        "oil_relative_error": 0.0005815236730126564,
+        "liquid_relative_error": 0.0006758278767615983,
+        "injection_relative_error": 0.00011607992411368821,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2013,
+        "oil_relative_error": 4.433429186021429e-05,
+        "liquid_relative_error": 0.00024269927106497762,
+        "injection_relative_error": 6.714152534523731e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2014,
+        "oil_relative_error": 0.00037431868957017717,
+        "liquid_relative_error": 4.022411580512915e-05,
+        "injection_relative_error": 3.613414626766366e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2015,
+        "oil_relative_error": 0.000300695479248123,
+        "liquid_relative_error": 9.864997526879825e-05,
+        "injection_relative_error": 3.3759505725130345e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2016,
+        "oil_relative_error": 0.00028191471209453067,
+        "liquid_relative_error": 0.0003341351101539362,
+        "injection_relative_error": 5.46801790169373e-06,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2017,
+        "oil_relative_error": 0.001653751433142403,
+        "liquid_relative_error": 0.0007674127232402547,
+        "injection_relative_error": 6.795046300815769e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2018,
+        "oil_relative_error": 0.0018072238426940581,
+        "liquid_relative_error": 0.0002727488735466632,
+        "injection_relative_error": 5.811151005285211e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2019,
+        "oil_relative_error": 0.000999981003682527,
+        "liquid_relative_error": 0.00012340021978213278,
+        "injection_relative_error": 0.00012074568887778725,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2020,
+        "oil_relative_error": 0.00022362504079731727,
+        "liquid_relative_error": 0.0004749561808640775,
+        "injection_relative_error": 1.546873480390256e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2021,
+        "oil_relative_error": 0.0007066178056224003,
+        "liquid_relative_error": 0.00032349446669685083,
+        "injection_relative_error": 0.00012568123785351945,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2022,
+        "oil_relative_error": 0.0028952334024233994,
+        "liquid_relative_error": 0.00027227682873195763,
+        "injection_relative_error": 0.00011608699386011428,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2023,
+        "oil_relative_error": 4.371469577498353e-05,
+        "liquid_relative_error": 0.0003111383303720068,
+        "injection_relative_error": 3.4675983800990416e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2024,
+        "oil_relative_error": 0.006316770114081732,
+        "liquid_relative_error": 3.7945809509336845e-05,
+        "injection_relative_error": 0.00010859222367618962,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2025,
+        "oil_relative_error": 0.006437237209886797,
+        "liquid_relative_error": 5.987478291759193e-05,
+        "injection_relative_error": 1.879531260937299e-05,
+        "active_well_month_relative_error": 0.0
+      }
+    ],
+    "thresholds": {
+      "max_npv_relative_error": 0.005,
+      "max_mean_physical_relative_error": 0.01,
+      "max_annual_physical_relative_error": 0.02,
+      "max_mean_active_well_month_relative_error": 0.02
+    }
+  },
+  "dynamic_selection": {
+    "winner": "additive-m52-ls6-g0.15",
+    "validation": [
+      {
+        "name": "additive-m52-ls6-g0.15",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9880003275531931,
+            "FWPT": 0.9859077291030746,
+            "FWIT": 0.9904102543938749,
+            "FOPR": 0.9305738071893602,
+            "FWPR": 0.9794904138643798,
+            "FWIR": 0.9873700269803384,
+            "FLPR": 0.9759092700685603,
+            "FPR": 0.9694564978875503
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.026711804569529894,
+            "FWPT": 0.019564261409648422,
+            "FWIT": 0.01932342548531776,
+            "FOPR": 0.0457446246834911,
+            "FWPR": 0.028672021086974336,
+            "FWIR": 0.0253386878396784,
+            "FLPR": 0.030993303053848776,
+            "FPR": 0.037847752391667246
+          },
+          "mean_aggregate_channel_r2": 0.9758897908800415,
+          "min_aggregate_channel_r2": 0.9305738071893602,
+          "mean_aggregate_channel_nrmse": 0.029274485065019493,
+          "max_aggregate_channel_nrmse": 0.0457446246834911,
+          "p10_scenario_channel_r2": 0.7240572243600489,
+          "worst_scenario_channel": {
+            "scenario_id": 48,
+            "channel": "FOPR",
+            "r2": 0.2543275478010226
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls8-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.987082920655445,
+            "FWPT": 0.9887329597853357,
+            "FWIT": 0.9929941684363833,
+            "FOPR": 0.9274763707984937,
+            "FWPR": 0.9833367198247639,
+            "FWIR": 0.9904938840504635,
+            "FLPR": 0.9797923386268826,
+            "FPR": 0.9790911304726648
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.027714094699269748,
+            "FWPT": 0.017493547465710135,
+            "FWIT": 0.016516210880918494,
+            "FOPR": 0.04675393385322038,
+            "FWPR": 0.025844022310024417,
+            "FWIR": 0.021982873636324618,
+            "FLPR": 0.02838578514069773,
+            "FPR": 0.03131453407332133
+          },
+          "mean_aggregate_channel_r2": 0.978625061581304,
+          "min_aggregate_channel_r2": 0.9274763707984937,
+          "mean_aggregate_channel_nrmse": 0.027000625257435858,
+          "max_aggregate_channel_nrmse": 0.04675393385322038,
+          "p10_scenario_channel_r2": 0.7176613237349933,
+          "worst_scenario_channel": {
+            "scenario_id": 48,
+            "channel": "FOPR",
+            "r2": 0.33131158483352874
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "quadratic-ridge-0.01",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9759265070560755,
+            "FWPT": 0.9741049028564903,
+            "FWIT": 0.9798578823521397,
+            "FOPR": 0.9260961997920224,
+            "FWPR": 0.968110800040468,
+            "FWIR": 0.9749143685749401,
+            "FLPR": 0.9628389040934936,
+            "FPR": 0.9551110718401056
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.037834507704618686,
+            "FWPT": 0.02652050183789438,
+            "FWIT": 0.028004842703359994,
+            "FOPR": 0.04719671579421636,
+            "FWPR": 0.03575210942308784,
+            "FWIR": 0.03571045866987359,
+            "FLPR": 0.03849347686988143,
+            "FPR": 0.04588284045052316
+          },
+          "mean_aggregate_channel_r2": 0.9646200795757169,
+          "min_aggregate_channel_r2": 0.9260961997920224,
+          "mean_aggregate_channel_nrmse": 0.03692443168168193,
+          "max_aggregate_channel_nrmse": 0.04719671579421636,
+          "p10_scenario_channel_r2": 0.7162714750713851,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": 0.343173755354405
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls6-g0.35",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9804786917507375,
+            "FWPT": 0.9781468619506756,
+            "FWIT": 0.9838073204339832,
+            "FOPR": 0.9241394645028673,
+            "FWPR": 0.9710636200518485,
+            "FWIR": 0.9789273110896349,
+            "FLPR": 0.9660917169713295,
+            "FPR": 0.9601521048568925
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.03407006738818772,
+            "FWPT": 0.024362949788827644,
+            "FWIT": 0.02510960809650939,
+            "FOPR": 0.04781744265449387,
+            "FWPR": 0.03405665250946622,
+            "FWIR": 0.032729765051962956,
+            "FLPR": 0.03677018230507957,
+            "FPR": 0.04322981439374243
+          },
+          "mean_aggregate_channel_r2": 0.9678508864509962,
+          "min_aggregate_channel_r2": 0.9241394645028673,
+          "mean_aggregate_channel_nrmse": 0.03476831027353373,
+          "max_aggregate_channel_nrmse": 0.04781744265449387,
+          "p10_scenario_channel_r2": 0.7135795933735027,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": 0.2119533711510142
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls8-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9800870200310469,
+            "FWPT": 0.9792802480635614,
+            "FWIT": 0.9850552749797709,
+            "FOPR": 0.9236142719478933,
+            "FWPR": 0.9725652364560256,
+            "FWIR": 0.9804490849907003,
+            "FLPR": 0.9675477715977997,
+            "FPR": 0.9657718970529938
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.03441015757634688,
+            "FWPT": 0.023722761427815497,
+            "FWIT": 0.02412262345908793,
+            "FOPR": 0.047982680407813706,
+            "FWPR": 0.03316121769808764,
+            "FWIR": 0.031525824512214765,
+            "FLPR": 0.03597204643014562,
+            "FPR": 0.04006564076168101
+          },
+          "mean_aggregate_channel_r2": 0.9692963506399739,
+          "min_aggregate_channel_r2": 0.9236142719478933,
+          "mean_aggregate_channel_nrmse": 0.03387036903414913,
+          "max_aggregate_channel_nrmse": 0.047982680407813706,
+          "p10_scenario_channel_r2": 0.6485844532867469,
+          "worst_scenario_channel": {
+            "scenario_id": 48,
+            "channel": "FOPR",
+            "r2": 0.26119373792699496
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls6-g0",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9950128311838334,
+            "FWPT": 0.9957219762666923,
+            "FWIT": 0.9971833261692405,
+            "FOPR": 0.9223944098575858,
+            "FWPR": 0.9867996907173449,
+            "FWIR": 0.9953174869754339,
+            "FLPR": 0.9857898066989388,
+            "FPR": 0.9749014118348373
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.017220492488206018,
+            "FWPT": 0.010779399314201925,
+            "FWIT": 0.010472463441492606,
+            "FOPR": 0.04836429890694303,
+            "FWPR": 0.02300233437972935,
+            "FWIR": 0.015428453889069119,
+            "FLPR": 0.023803612742095314,
+            "FPR": 0.03430878387771327
+          },
+          "mean_aggregate_channel_r2": 0.9816401174629884,
+          "min_aggregate_channel_r2": 0.9223944098575858,
+          "mean_aggregate_channel_nrmse": 0.02292247987993133,
+          "max_aggregate_channel_nrmse": 0.04836429890694303,
+          "p10_scenario_channel_r2": 0.6936015185486473,
+          "worst_scenario_channel": {
+            "scenario_id": 5,
+            "channel": "FOPR",
+            "r2": 0.11975263627195576
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls8-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9815921440873572,
+            "FWPT": 0.9817324998474334,
+            "FWIT": 0.9869638025806005,
+            "FOPR": 0.921317917738488,
+            "FWPR": 0.974934994808711,
+            "FWIR": 0.9829625826746949,
+            "FLPR": 0.9701660301229791,
+            "FPR": 0.9701734345465832
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.03308416179959511,
+            "FWPT": 0.02227473394103567,
+            "FWIT": 0.022529732636213887,
+            "FOPR": 0.048698582040470506,
+            "FWPR": 0.03169667876432791,
+            "FWIR": 0.029429629222758547,
+            "FLPR": 0.03449041395228895,
+            "FPR": 0.03740092139403915
+          },
+          "mean_aggregate_channel_r2": 0.971230425800856,
+          "min_aggregate_channel_r2": 0.921317917738488,
+          "mean_aggregate_channel_nrmse": 0.032450606718841216,
+          "max_aggregate_channel_nrmse": 0.048698582040470506,
+          "p10_scenario_channel_r2": 0.6493063218165813,
+          "worst_scenario_channel": {
+            "scenario_id": 48,
+            "channel": "FOPR",
+            "r2": 0.22312761191508146
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls3-g0",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9906207185831936,
+            "FWPT": 0.9884144681379955,
+            "FWIT": 0.9892993132961617,
+            "FOPR": 0.9159780553383801,
+            "FWPR": 0.9774833494864296,
+            "FWIR": 0.9880095790795925,
+            "FLPR": 0.9774131561163447,
+            "FPR": 0.9546590935672152
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.023615835571032504,
+            "FWPT": 0.017739074329404966,
+            "FWIT": 0.020412039401589775,
+            "FOPR": 0.050323954167751116,
+            "FWPR": 0.030042201349362876,
+            "FWIR": 0.02468880812233912,
+            "FLPR": 0.030010322215038306,
+            "FPR": 0.046113254798875826
+          },
+          "mean_aggregate_channel_r2": 0.9727347167006641,
+          "min_aggregate_channel_r2": 0.9159780553383801,
+          "mean_aggregate_channel_nrmse": 0.030368186244424313,
+          "max_aggregate_channel_nrmse": 0.050323954167751116,
+          "p10_scenario_channel_r2": 0.4262374016026667,
+          "worst_scenario_channel": {
+            "scenario_id": 12,
+            "channel": "FWPR",
+            "r2": -0.5290336107989198
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls3-g0.15",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9683527732123569,
+            "FWPT": 0.9598797179516946,
+            "FWIT": 0.9645632321860977,
+            "FOPR": 0.9186727592169975,
+            "FWPR": 0.9493351831500334,
+            "FWIR": 0.9546440656246175,
+            "FLPR": 0.9433583863715077,
+            "FPR": 0.911418916543181
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.04337968185687206,
+            "FWPT": 0.033010716760855346,
+            "FWIT": 0.03714562115174458,
+            "FOPR": 0.04951039745453167,
+            "FWPR": 0.04506434857283465,
+            "FWIR": 0.04801754687088161,
+            "FLPR": 0.047523748833745875,
+            "FPR": 0.06445419251601198
+          },
+          "mean_aggregate_channel_r2": 0.9462781292820608,
+          "min_aggregate_channel_r2": 0.911418916543181,
+          "mean_aggregate_channel_nrmse": 0.04601328175218472,
+          "max_aggregate_channel_nrmse": 0.06445419251601198,
+          "p10_scenario_channel_r2": 0.5355965975839928,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -0.6540795732119533
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "quadratic-ridge-0.0001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9837085559800064,
+            "FWPT": 0.9877883207297427,
+            "FWIT": 0.9901631487296391,
+            "FOPR": 0.91084526482899,
+            "FWPR": 0.9810361083683345,
+            "FWIR": 0.9880530824096291,
+            "FLPR": 0.9771683145351464,
+            "FPR": 0.9800195139840651
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.031124209017747543,
+            "FWPT": 0.018212126583465358,
+            "FWIT": 0.019570802130877845,
+            "FOPR": 0.05183828210929303,
+            "FWPR": 0.027570433290846748,
+            "FWIR": 0.0246439797817747,
+            "FLPR": 0.0301725398647444,
+            "FPR": 0.030611435921343907
+          },
+          "mean_aggregate_channel_r2": 0.9748477886956941,
+          "min_aggregate_channel_r2": 0.91084526482899,
+          "mean_aggregate_channel_nrmse": 0.029217976087511692,
+          "max_aggregate_channel_nrmse": 0.05183828210929303,
+          "p10_scenario_channel_r2": 0.6560394489452273,
+          "worst_scenario_channel": {
+            "scenario_id": 48,
+            "channel": "FOPR",
+            "r2": 0.3480175116323023
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "quadratic-ridge-1e-06",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9832946365140856,
+            "FWPT": 0.9878571882709914,
+            "FWIT": 0.9901442864381499,
+            "FOPR": 0.9086727893019884,
+            "FWPR": 0.9809320324202335,
+            "FWIR": 0.9880521956581393,
+            "FLPR": 0.9770561661766101,
+            "FPR": 0.9802273868249091
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.03151711800922731,
+            "FWPT": 0.01816070049993759,
+            "FWIT": 0.019589556779657957,
+            "FOPR": 0.052466064706501565,
+            "FWPR": 0.027645984577562694,
+            "FWIR": 0.02464489435576953,
+            "FLPR": 0.030246552265694327,
+            "FPR": 0.03045178206261127
+          },
+          "mean_aggregate_channel_r2": 0.9745295852006384,
+          "min_aggregate_channel_r2": 0.9086727893019884,
+          "mean_aggregate_channel_nrmse": 0.02934033165712028,
+          "max_aggregate_channel_nrmse": 0.052466064706501565,
+          "p10_scenario_channel_r2": 0.6725097302100357,
+          "worst_scenario_channel": {
+            "scenario_id": 48,
+            "channel": "FOPR",
+            "r2": 0.3463809890415639
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls4-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9632053595351195,
+            "FWPT": 0.9695899524255305,
+            "FWIT": 0.975096005544009,
+            "FOPR": 0.9040098086378741,
+            "FWPR": 0.9623214472217116,
+            "FWIR": 0.9716838129354628,
+            "FLPR": 0.9560051703557657,
+            "FPR": 0.9650790298285188
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.046774678895634185,
+            "FWPT": 0.028739652676122582,
+            "FWIT": 0.03113974694812007,
+            "FOPR": 0.05378879590174403,
+            "FWPR": 0.03886216269942311,
+            "FWIR": 0.03794025943081268,
+            "FLPR": 0.041883571088632644,
+            "FPR": 0.04046912629398273
+          },
+          "mean_aggregate_channel_r2": 0.958373823310499,
+          "min_aggregate_channel_r2": 0.9040098086378741,
+          "mean_aggregate_channel_nrmse": 0.039949749241809,
+          "max_aggregate_channel_nrmse": 0.05378879590174403,
+          "p10_scenario_channel_r2": 0.5582037446146401,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -0.19454128968628814
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls8-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9783214383092477,
+            "FWPT": 0.9899743675636007,
+            "FWIT": 0.9923555531990147,
+            "FOPR": 0.8924230322981126,
+            "FWPR": 0.9815402385976808,
+            "FWIR": 0.990212563997298,
+            "FLPR": 0.9780108932904286,
+            "FPR": 0.9818499107447552
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.03590325017784587,
+            "FWPT": 0.01650170635553119,
+            "FWIT": 0.017252562320788516,
+            "FOPR": 0.05694269831085176,
+            "FWPR": 0.02720150295775601,
+            "FWIR": 0.022305778101891,
+            "FLPR": 0.029610563807004307,
+            "FPR": 0.029175617759063147
+          },
+          "mean_aggregate_channel_r2": 0.9730859997500173,
+          "min_aggregate_channel_r2": 0.8924230322981126,
+          "mean_aggregate_channel_nrmse": 0.029361709973841476,
+          "max_aggregate_channel_nrmse": 0.05694269831085176,
+          "p10_scenario_channel_r2": 0.613317251739642,
+          "worst_scenario_channel": {
+            "scenario_id": 12,
+            "channel": "FWPR",
+            "r2": 0.3517420985616665
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls4-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.95653669638693,
+            "FWPT": 0.9689341354180723,
+            "FWIT": 0.973859056515726,
+            "FOPR": 0.8869716119255331,
+            "FWPR": 0.9612875072492928,
+            "FWIR": 0.9711151380021741,
+            "FLPR": 0.9545658505251156,
+            "FPR": 0.9688297037413053
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.05083699833808924,
+            "FWPT": 0.029047896462254145,
+            "FWIT": 0.03190371100188046,
+            "FOPR": 0.05836764363379399,
+            "FWPR": 0.039391763832135926,
+            "FWIR": 0.03831934335370998,
+            "FLPR": 0.04256318165349366,
+            "FPR": 0.038234123882301546
+          },
+          "mean_aggregate_channel_r2": 0.9552624624705186,
+          "min_aggregate_channel_r2": 0.8869716119255331,
+          "mean_aggregate_channel_nrmse": 0.04108308276970737,
+          "max_aggregate_channel_nrmse": 0.05836764363379399,
+          "p10_scenario_channel_r2": 0.5163104620470532,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -0.23656869802758473
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls4-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9393260437071606,
+            "FWPT": 0.9306439690455676,
+            "FWIT": 0.9382855869479919,
+            "FOPR": 0.8931362224447337,
+            "FWPR": 0.916162442216745,
+            "FWIR": 0.9204112074595571,
+            "FLPR": 0.9065183067690424,
+            "FPR": 0.884327825266422
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.06006475226301019,
+            "FWPT": 0.043402533543445164,
+            "FWIT": 0.049020064118737,
+            "FOPR": 0.05675363133539973,
+            "FWPR": 0.05796944845369752,
+            "FWIR": 0.06360757926986282,
+            "FLPR": 0.061052881829175974,
+            "FPR": 0.07365379493531557
+          },
+          "mean_aggregate_channel_r2": 0.9161014504821525,
+          "min_aggregate_channel_r2": 0.884327825266422,
+          "mean_aggregate_channel_nrmse": 0.0581905857185805,
+          "max_aggregate_channel_nrmse": 0.07365379493531557,
+          "p10_scenario_channel_r2": 0.5388569379238277,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -2.1014266600484817
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls1.5-g0",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.963763552898948,
+            "FWPT": 0.963722762292153,
+            "FWIT": 0.9567067651358453,
+            "FOPR": 0.8981099948559055,
+            "FWPR": 0.9502160999569463,
+            "FWIR": 0.9529334299073072,
+            "FLPR": 0.9494300071613163,
+            "FPR": 0.8826974704749744
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.04641852517017648,
+            "FWPT": 0.03138991002780691,
+            "FWIT": 0.04105731949791347,
+            "FOPR": 0.05541714983370149,
+            "FWPR": 0.04467086035252203,
+            "FWIR": 0.04891467646061606,
+            "FLPR": 0.04490444462141295,
+            "FPR": 0.07417103966983037
+          },
+          "mean_aggregate_channel_r2": 0.9396975103354245,
+          "min_aggregate_channel_r2": 0.8826974704749744,
+          "mean_aggregate_channel_nrmse": 0.048367990704247465,
+          "max_aggregate_channel_nrmse": 0.07417103966983037,
+          "p10_scenario_channel_r2": -0.09989430016328317,
+          "worst_scenario_channel": {
+            "scenario_id": 12,
+            "channel": "FWPR",
+            "r2": -2.192804448827987
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls4-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9385498760001627,
+            "FWPT": 0.9296064822696323,
+            "FWIT": 0.937270311950148,
+            "FOPR": 0.8926654226363674,
+            "FWPR": 0.9148427679478585,
+            "FWIR": 0.9189718112356342,
+            "FLPR": 0.9051576333832876,
+            "FPR": 0.8820452162092735
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.06044771863857461,
+            "FWPT": 0.04372595462306439,
+            "FWIT": 0.04942163824494185,
+            "FOPR": 0.0568785110420825,
+            "FWPR": 0.05842391117304781,
+            "FWIR": 0.06418018659748229,
+            "FLPR": 0.06149560444285216,
+            "FPR": 0.07437696580037409
+          },
+          "mean_aggregate_channel_r2": 0.9148886902040455,
+          "min_aggregate_channel_r2": 0.8820452162092735,
+          "mean_aggregate_channel_nrmse": 0.05861881132030246,
+          "max_aggregate_channel_nrmse": 0.07437696580037409,
+          "p10_scenario_channel_r2": 0.5344256370775978,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -2.1398003662590463
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls3-g0.35",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.940299204193465,
+            "FWPT": 0.927806544186946,
+            "FWIT": 0.93384348986796,
+            "FOPR": 0.894186596891352,
+            "FWPR": 0.9111054373966974,
+            "FWIR": 0.9133875913647826,
+            "FLPR": 0.9021052238834767,
+            "FPR": 0.8606396346829354
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.05958111044258202,
+            "FWPT": 0.04428145487354559,
+            "FWIT": 0.05075360170968853,
+            "FOPR": 0.05647402409030264,
+            "FWPR": 0.05969218244054674,
+            "FWIR": 0.06635489525574569,
+            "FLPR": 0.06247735598258576,
+            "FPR": 0.0808444695851325
+          },
+          "mean_aggregate_channel_r2": 0.9104217153084518,
+          "min_aggregate_channel_r2": 0.8606396346829354,
+          "mean_aggregate_channel_nrmse": 0.06005738679751618,
+          "max_aggregate_channel_nrmse": 0.0808444695851325,
+          "p10_scenario_channel_r2": 0.4748468491841501,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -2.1938849269029674
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls2-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.8468454596568799,
+            "FWPT": 0.8424693561166021,
+            "FWIT": 0.8460901156215477,
+            "FOPR": 0.7994475023793303,
+            "FWPR": 0.8142087684842366,
+            "FWIR": 0.809280584827197,
+            "FLPR": 0.7975995815350221,
+            "FPR": 0.7804435430904142
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.09542968078070227,
+            "FWPT": 0.06541170803104497,
+            "FWIT": 0.07741298777488499,
+            "FOPR": 0.07774857379309214,
+            "FWPR": 0.08629635766588956,
+            "FWIR": 0.09846465487538869,
+            "FLPR": 0.08983562350454823,
+            "FPR": 0.1014737674386764
+          },
+          "mean_aggregate_channel_r2": 0.8170481139639038,
+          "min_aggregate_channel_r2": 0.7804435430904142,
+          "mean_aggregate_channel_nrmse": 0.0865091692330284,
+          "max_aggregate_channel_nrmse": 0.1014737674386764,
+          "p10_scenario_channel_r2": 0.017590509390971138,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -6.224743587112222
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls2-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.8469132102678814,
+            "FWPT": 0.8420473540535437,
+            "FWIT": 0.8456724711157041,
+            "FOPR": 0.8002895009568174,
+            "FWPR": 0.8135759982531232,
+            "FWIR": 0.8085495010494984,
+            "FLPR": 0.7970190226408049,
+            "FPR": 0.7786047159306703
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.09540857094501826,
+            "FWPT": 0.06549926373788642,
+            "FWIT": 0.07751794921293903,
+            "FOPR": 0.077585192521208,
+            "FWPR": 0.08644318739107795,
+            "FWIR": 0.09865319639825292,
+            "FLPR": 0.08996437206233224,
+            "FPR": 0.10189781249369499
+          },
+          "mean_aggregate_channel_r2": 0.8165839717835054,
+          "min_aggregate_channel_r2": 0.7786047159306703,
+          "mean_aggregate_channel_nrmse": 0.08662119309530122,
+          "max_aggregate_channel_nrmse": 0.10189781249369499,
+          "p10_scenario_channel_r2": 0.042070813126703646,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -6.2383572635342635
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls1.5-g0.15",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.9162630551331364,
+            "FWPT": 0.9031493723594207,
+            "FWIT": 0.9004633130007075,
+            "FOPR": 0.8703552588914355,
+            "FWPR": 0.8763596824530422,
+            "FWIR": 0.8709337417815106,
+            "FLPR": 0.8689613901501126,
+            "FPR": 0.7656344916922713
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.07056300847699981,
+            "FWPT": 0.05128899453447067,
+            "FWIT": 0.06225470281559568,
+            "FOPR": 0.06251091358568696,
+            "FWPR": 0.07039793416093447,
+            "FWIR": 0.08100079280592973,
+            "FLPR": 0.07228405736761692,
+            "FPR": 0.10484012408779922
+          },
+          "mean_aggregate_channel_r2": 0.8715150381827046,
+          "min_aggregate_channel_r2": 0.7656344916922713,
+          "mean_aggregate_channel_nrmse": 0.07189256597937918,
+          "max_aggregate_channel_nrmse": 0.10484012408779922,
+          "p10_scenario_channel_r2": 0.1821771435109491,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -2.804732846125869
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls0.75-g0",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.8513593917569221,
+            "FWPT": 0.8622225140791031,
+            "FWIT": 0.8393472328199995,
+            "FOPR": 0.7944343605885549,
+            "FWPR": 0.8300804923961655,
+            "FWIR": 0.8138722794694165,
+            "FLPR": 0.8242053865170033,
+            "FPR": 0.6306141940209316
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.0940128611172902,
+            "FWPT": 0.06117332594614148,
+            "FWIT": 0.0790905651373241,
+            "FOPR": 0.0787143032175094,
+            "FWPR": 0.08252803021009296,
+            "FWIR": 0.0972721329805881,
+            "FLPR": 0.08372317030610865,
+            "FPR": 0.13161966453512777
+          },
+          "mean_aggregate_channel_r2": 0.805766981456012,
+          "min_aggregate_channel_r2": 0.6306141940209316,
+          "mean_aggregate_channel_nrmse": 0.08851675668127282,
+          "max_aggregate_channel_nrmse": 0.13161966453512777,
+          "p10_scenario_channel_r2": -1.7617488607437803,
+          "worst_scenario_channel": {
+            "scenario_id": 18,
+            "channel": "FOPT",
+            "r2": -12.134940912923268
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls1.5-g0.35",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.8363837192402069,
+            "FWPT": 0.8116493419929561,
+            "FWIT": 0.8083721073619602,
+            "FOPR": 0.8081481763691478,
+            "FWPR": 0.7623158177154528,
+            "FWIR": 0.7473075201895787,
+            "FLPR": 0.7523559971341411,
+            "FPR": 0.6187065511460008
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.09863516856613988,
+            "FWPT": 0.07152478094635956,
+            "FWIT": 0.08637935072766464,
+            "FOPR": 0.07604337076460843,
+            "FWPR": 0.09760678303172443,
+            "FWIR": 0.11333891963214246,
+            "FLPR": 0.09937034347231652,
+            "FPR": 0.13372430509158317
+          },
+          "mean_aggregate_channel_r2": 0.7681549038936806,
+          "min_aggregate_channel_r2": 0.6187065511460008,
+          "mean_aggregate_channel_nrmse": 0.09707787777906739,
+          "max_aggregate_channel_nrmse": 0.13372430509158317,
+          "p10_scenario_channel_r2": -0.0860684196878789,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -6.48118770365745
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls2-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.7797191769993947,
+            "FWPT": 0.7515341626339589,
+            "FWIT": 0.7507649929073701,
+            "FOPR": 0.7606163472542393,
+            "FWPR": 0.6934788710487618,
+            "FWIR": 0.6741524289744023,
+            "FLPR": 0.6782097373369715,
+            "FPR": 0.5754547405898953
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.1144476496360083,
+            "FWPT": 0.08214976162963243,
+            "FWIT": 0.09851108326645222,
+            "FOPR": 0.08494261727726818,
+            "FWPR": 0.11084345829007926,
+            "FWIR": 0.1287034396743868,
+            "FLPR": 0.11327376411549799,
+            "FPR": 0.14110508862261179
+          },
+          "mean_aggregate_channel_r2": 0.7079913072181243,
+          "min_aggregate_channel_r2": 0.5754547405898953,
+          "mean_aggregate_channel_nrmse": 0.10924710781399212,
+          "max_aggregate_channel_nrmse": 0.14110508862261179,
+          "p10_scenario_channel_r2": -0.34663435430119527,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -9.412454666929467
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls2-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.7792310041824382,
+            "FWPT": 0.7509980545008093,
+            "FWIT": 0.7501992264603244,
+            "FOPR": 0.7602296789618302,
+            "FWPR": 0.6927885984749057,
+            "FWIR": 0.6733949860093391,
+            "FLPR": 0.6775222789603061,
+            "FPR": 0.574444848974546
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.11457439537575309,
+            "FWPT": 0.08223834005312919,
+            "FWIT": 0.09862283055410327,
+            "FOPR": 0.08501119206067757,
+            "FWPR": 0.11096819548582863,
+            "FWIR": 0.12885294044918794,
+            "FLPR": 0.11339469607236857,
+            "FPR": 0.14127281656152224
+          },
+          "mean_aggregate_channel_r2": 0.7073510845655624,
+          "min_aggregate_channel_r2": 0.574444848974546,
+          "mean_aggregate_channel_nrmse": 0.10936692582657132,
+          "max_aggregate_channel_nrmse": 0.14127281656152224,
+          "p10_scenario_channel_r2": -0.3499547024322156,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -9.427593003685544
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls0.75-g0.15",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.7753168896246668,
+            "FWPT": 0.7733447756600076,
+            "FWIT": 0.753721811939238,
+            "FOPR": 0.7490115615927067,
+            "FWPR": 0.7225352720450311,
+            "FWIR": 0.7011709310173162,
+            "FLPR": 0.7173483626846828,
+            "FPR": 0.48645845813909705
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.1155856039669156,
+            "FWPT": 0.07846136014635759,
+            "FWIT": 0.0979249928207245,
+            "FOPR": 0.08697716582042817,
+            "FWPR": 0.10545902458978626,
+            "FWIR": 0.12325210087808294,
+            "FLPR": 0.10616188863969744,
+            "FPR": 0.15519169206457675
+          },
+          "mean_aggregate_channel_r2": 0.7098635078378432,
+          "min_aggregate_channel_r2": 0.48645845813909705,
+          "mean_aggregate_channel_nrmse": 0.10862672861582115,
+          "max_aggregate_channel_nrmse": 0.15519169206457675,
+          "p10_scenario_channel_r2": -1.3959024971786442,
+          "worst_scenario_channel": {
+            "scenario_id": 18,
+            "channel": "FOPT",
+            "r2": -8.1120247399787
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "additive-m52-ls0.75-g0.35",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.6507135471719003,
+            "FWPT": 0.6394201830276167,
+            "FWIT": 0.6194191632666648,
+            "FOPR": 0.6623058255144109,
+            "FWPR": 0.5656102880566047,
+            "FWIR": 0.5369416945732051,
+            "FLPR": 0.5611068189401538,
+            "FPR": 0.30642637928179206
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.1441150722633736,
+            "FWPT": 0.09896318692540006,
+            "FWIT": 0.12173179664427851,
+            "FOPR": 0.10088815456904542,
+            "FWPR": 0.13195310814171843,
+            "FWIR": 0.15342663105904727,
+            "FLPR": 0.13228856334454683,
+            "FPR": 0.18035449110514976
+          },
+          "mean_aggregate_channel_r2": 0.5677429874790436,
+          "min_aggregate_channel_r2": 0.30642637928179206,
+          "mean_aggregate_channel_nrmse": 0.13296512550656997,
+          "max_aggregate_channel_nrmse": 0.18035449110514976,
+          "p10_scenario_channel_r2": -1.8652979969833772,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -9.058424866255812
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls1-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.25958717978823287,
+            "FWPT": 0.26458624803239383,
+            "FWIT": 0.23689571906323237,
+            "FOPR": 0.3477721390584867,
+            "FWPR": 0.1623615445791443,
+            "FWIR": 0.12042900390971745,
+            "FLPR": 0.14823302378704206,
+            "FPR": 0.027140247041581134
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.20982416231371018,
+            "FWPT": 0.14133145788865178,
+            "FWIT": 0.17237430116508864,
+            "FOPR": 0.14020970220635828,
+            "FWPR": 0.18323488613443006,
+            "FWIR": 0.21145519527696105,
+            "FLPR": 0.18429064174826604,
+            "FPR": 0.21360223692828662
+          },
+          "mean_aggregate_channel_r2": 0.19587563815747883,
+          "min_aggregate_channel_r2": 0.027140247041581134,
+          "mean_aggregate_channel_nrmse": 0.18204032295771908,
+          "max_aggregate_channel_nrmse": 0.21360223692828662,
+          "p10_scenario_channel_r2": -3.336099548059974,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -18.793739944975282
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "rbf-ls1-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.259288975502051,
+            "FWPT": 0.26432872381709394,
+            "FWIT": 0.23662195328734137,
+            "FOPR": 0.34753279849746377,
+            "FWPR": 0.16210262573311884,
+            "FWIR": 0.12015392274570669,
+            "FLPR": 0.14797315595402916,
+            "FPR": 0.02680128063130993
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.2098664118291018,
+            "FWPT": 0.1413562011620645,
+            "FWIT": 0.1724052182715953,
+            "FOPR": 0.14023542541811812,
+            "FWPR": 0.18326320342293678,
+            "FWIR": 0.2114882584374908,
+            "FLPR": 0.1843187524632833,
+            "FPR": 0.21363944562026824
+          },
+          "mean_aggregate_channel_r2": 0.1956004295210143,
+          "min_aggregate_channel_r2": 0.02680128063130993,
+          "mean_aggregate_channel_nrmse": 0.18207161457810736,
+          "max_aggregate_channel_nrmse": 0.21363944562026824,
+          "p10_scenario_channel_r2": -3.3379067476433675,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -18.795678619177366
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls1-r1e-05",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.29175234040359166,
+            "FWPT": 0.28796777363457504,
+            "FWIT": 0.2597907389502856,
+            "FOPR": 0.3783743803445847,
+            "FWPR": 0.18002999849396006,
+            "FWIR": 0.13248978947965917,
+            "FLPR": 0.16620865572048615,
+            "FPR": -0.006426560338712584
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.2052159474428864,
+            "FWPT": 0.13906658518645099,
+            "FWIT": 0.16976878118069355,
+            "FOPR": 0.13688089817474675,
+            "FWPR": 0.18129208387292486,
+            "FWIR": 0.21000044131266837,
+            "FLPR": 0.18233564366940572,
+            "FPR": 0.21725597172147748
+          },
+          "mean_aggregate_channel_r2": 0.21127338958605374,
+          "min_aggregate_channel_r2": -0.006426560338712584,
+          "mean_aggregate_channel_nrmse": 0.18022704407015677,
+          "max_aggregate_channel_nrmse": 0.21725597172147748,
+          "p10_scenario_channel_r2": -3.1283670190210824,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -18.543400616352088
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      },
+      {
+        "name": "matern52-ls1-r0.001",
+        "report": {
+          "aggregate_channel_r2": {
+            "FOPT": 0.29142391752356556,
+            "FWPT": 0.28768882759771,
+            "FWIT": 0.25949475474502137,
+            "FOPR": 0.37810070476979274,
+            "FWPR": 0.17975766167223117,
+            "FWIR": 0.1322077482961429,
+            "FLPR": 0.1659353826743164,
+            "FPR": -0.0067356564949867526
+          },
+          "aggregate_channel_nrmse": {
+            "FOPT": 0.20526352246845508,
+            "FWPT": 0.13909382291025496,
+            "FWIT": 0.16980272013432818,
+            "FOPR": 0.13691102630580224,
+            "FWPR": 0.1813221876639116,
+            "FWIR": 0.21003457575801557,
+            "FLPR": 0.18236552124913744,
+            "FPR": 0.21728933124972213
+          },
+          "mean_aggregate_channel_r2": 0.21098416759797417,
+          "min_aggregate_channel_r2": -0.0067356564949867526,
+          "mean_aggregate_channel_nrmse": 0.1802603384674534,
+          "max_aggregate_channel_nrmse": 0.21728933124972213,
+          "p10_scenario_channel_r2": -3.1302749307317406,
+          "worst_scenario_channel": {
+            "scenario_id": 17,
+            "channel": "FWIR",
+            "r2": -18.5457724744435
+          },
+          "evaluated_scenarios": [
+            5,
+            12,
+            13,
+            17,
+            18,
+            44,
+            48,
+            60
+          ]
+        }
+      }
+    ],
+    "holdout": {
+      "aggregate_channel_r2": {
+        "FOPT": 0.9904149798457211,
+        "FWPT": 0.9937661490876678,
+        "FWIT": 0.9979918124223556,
+        "FOPR": 0.9512247034582642,
+        "FWPR": 0.9858501607263976,
+        "FWIR": 0.9936863376310743,
+        "FLPR": 0.9851781272542138,
+        "FPR": 0.9865036807368921
+      },
+      "aggregate_channel_nrmse": {
+        "FOPT": 0.023065493734361894,
+        "FWPT": 0.010798446485614146,
+        "FWIT": 0.0073643033062233115,
+        "FOPR": 0.027523284453274358,
+        "FWPR": 0.02195112694327559,
+        "FWIR": 0.01902796321895145,
+        "FLPR": 0.024535056590270193,
+        "FPR": 0.025736662577401953
+      },
+      "mean_aggregate_channel_r2": 0.9855769938953233,
+      "min_aggregate_channel_r2": 0.9512247034582642,
+      "mean_aggregate_channel_nrmse": 0.02000029216367161,
+      "max_aggregate_channel_nrmse": 0.027523284453274358,
+      "p10_scenario_channel_r2": 0.8046193620746503,
+      "worst_scenario_channel": {
+        "scenario_id": 29,
+        "channel": "FOPT",
+        "r2": -16.173408503542756
+      },
+      "evaluated_scenarios": [
+        2,
+        8,
+        14,
+        16,
+        20,
+        21,
+        28,
+        29,
+        31,
+        37,
+        40,
+        41,
+        47,
+        49,
+        52,
+        63
+      ]
+    }
+  },
+  "npv_selection": {
+    "winner": "additive-m52-ls6-g0",
+    "validation": [
+      {
+        "name": "additive-m52-ls6-g0",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 12.149958143243566,
+          "max_abs_error": 25.01668740335481
+        }
+      },
+      {
+        "name": "additive-m52-ls3-g0",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 13.829935995410779,
+          "max_abs_error": 46.45084957602012
+        }
+      },
+      {
+        "name": "additive-m52-ls6-g0.15",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 15.32258173163359,
+          "max_abs_error": 44.09404988215647
+        }
+      },
+      {
+        "name": "matern52-ls8-r1e-05",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 18.01675374387878,
+          "max_abs_error": 58.7511002199808
+        }
+      },
+      {
+        "name": "additive-m52-ls6-g0.35",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 18.155009272384405,
+          "max_abs_error": 58.59732591377724
+        }
+      },
+      {
+        "name": "matern52-ls8-r0.001",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 18.588051144290375,
+          "max_abs_error": 60.12291814600212
+        }
+      },
+      {
+        "name": "rbf-ls8-r0.001",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 19.02174091778579,
+          "max_abs_error": 45.04423417424914
+        }
+      },
+      {
+        "name": "additive-m52-ls3-g0.15",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 21.5913854425105,
+          "max_abs_error": 72.25603311235864
+        }
+      },
+      {
+        "name": "quadratic-ridge-0.01",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 23.22787211660807,
+          "max_abs_error": 61.24736904402198
+        }
+      },
+      {
+        "name": "additive-m52-ls1.5-g0",
+        "report": {
+          "spearman": 1.0,
+          "pairwise_accuracy": 1.0,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 26.078595395662433,
+          "max_abs_error": 86.6940395931997
+        }
+      },
+      {
+        "name": "quadratic-ridge-0.0001",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 23.37423632822606,
+          "max_abs_error": 60.99138105124803
+        }
+      },
+      {
+        "name": "quadratic-ridge-1e-06",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 23.670670252103264,
+          "max_abs_error": 62.21290650944502
+        }
+      },
+      {
+        "name": "matern52-ls4-r1e-05",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 27.18646609878965,
+          "max_abs_error": 106.40675074767387
+        }
+      },
+      {
+        "name": "matern52-ls4-r0.001",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 27.472056596369384,
+          "max_abs_error": 106.8452549415797
+        }
+      },
+      {
+        "name": "additive-m52-ls3-g0.35",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 27.915404828018154,
+          "max_abs_error": 100.6331754059538
+        }
+      },
+      {
+        "name": "rbf-ls8-r1e-05",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 28.211569236494597,
+          "max_abs_error": 71.36877948358597
+        }
+      },
+      {
+        "name": "rbf-ls4-r0.001",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 29.168969903956395,
+          "max_abs_error": 91.80316236098224
+        }
+      },
+      {
+        "name": "rbf-ls4-r1e-05",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 33.17774306155593,
+          "max_abs_error": 99.81860582961417
+        }
+      },
+      {
+        "name": "additive-m52-ls1.5-g0.15",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 38.4297269059698,
+          "max_abs_error": 102.83820873543118
+        }
+      },
+      {
+        "name": "rbf-ls2-r1e-05",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 40.97163708348489,
+          "max_abs_error": 174.2817938345015
+        }
+      },
+      {
+        "name": "rbf-ls2-r0.001",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 41.0116905064599,
+          "max_abs_error": 173.97676635968674
+        }
+      },
+      {
+        "name": "additive-m52-ls1.5-g0.35",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 52.87281400391112,
+          "max_abs_error": 147.5793830588973
+        }
+      },
+      {
+        "name": "matern52-ls2-r1e-05",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 55.229870486642994,
+          "max_abs_error": 186.2133093982211
+        }
+      },
+      {
+        "name": "matern52-ls2-r0.001",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 55.31587898784869,
+          "max_abs_error": 186.3318735286557
+        }
+      },
+      {
+        "name": "additive-m52-ls0.75-g0",
+        "report": {
+          "spearman": 0.9761904761904763,
+          "pairwise_accuracy": 0.9642857142857143,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 60.13837802057674,
+          "max_abs_error": 141.81547715387205
+        }
+      },
+      {
+        "name": "matern52-ls1-r1e-05",
+        "report": {
+          "spearman": 0.9285714285714287,
+          "pairwise_accuracy": 0.9285714285714286,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 114.62331279765954,
+          "max_abs_error": 270.2747421793574
+        }
+      },
+      {
+        "name": "matern52-ls1-r0.001",
+        "report": {
+          "spearman": 0.9285714285714287,
+          "pairwise_accuracy": 0.9285714285714286,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 114.6570711811562,
+          "max_abs_error": 270.29465112380785
+        }
+      },
+      {
+        "name": "additive-m52-ls0.75-g0.15",
+        "report": {
+          "spearman": 0.9285714285714287,
+          "pairwise_accuracy": 0.9285714285714286,
+          "top_k_recall": 0.6666666666666666,
+          "simple_regret": 0.0,
+          "mae": 73.89908200432569,
+          "max_abs_error": 134.35594871144895
+        }
+      },
+      {
+        "name": "additive-m52-ls0.75-g0.35",
+        "report": {
+          "spearman": 0.9285714285714287,
+          "pairwise_accuracy": 0.9285714285714286,
+          "top_k_recall": 0.6666666666666666,
+          "simple_regret": 0.0,
+          "mae": 89.99274566591407,
+          "max_abs_error": 171.61636779181754
+        }
+      },
+      {
+        "name": "rbf-ls1-r1e-05",
+        "report": {
+          "spearman": 0.880952380952381,
+          "pairwise_accuracy": 0.8928571428571429,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 116.38251851191717,
+          "max_abs_error": 280.69606139510324
+        }
+      },
+      {
+        "name": "rbf-ls1-r0.001",
+        "report": {
+          "spearman": 0.880952380952381,
+          "pairwise_accuracy": 0.8928571428571429,
+          "top_k_recall": 1.0,
+          "simple_regret": 0.0,
+          "mae": 116.41523527089862,
+          "max_abs_error": 280.70275950331416
+        }
+      }
+    ],
+    "holdout": {
+      "spearman": 0.9911764705882352,
+      "pairwise_accuracy": 0.975,
+      "top_k_recall": 0.6666666666666666,
+      "simple_regret": 0.0,
+      "mae": 19.854902036333897,
+      "max_abs_error": 68.94899540281949
+    }
+  },
+  "passed": false,
+  "failures": [
+    "NPV_TOP3_RECALL_LT_090"
+  ],
+  "baseline_npv_mrub": 11891.994046426242,
+  "observed_best_npv_mrub": 12223.686829240849,
+  "observed_best_scenario": 63
+}
