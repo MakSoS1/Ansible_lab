@@ -1,0 +1,28 @@
+name: Probe AI Journey data source
+
+on:
+  push:
+    paths:
+      - "hackathon-3d/source-probe-trigger.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Probe archive headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://rndml-team-xr.obs.ru-moscow-1.hc.sbercloud.ru/mazurov/AIC_data.tar"
+          echo "=== HEAD ==="
+          curl --fail --location --silent --show-error --head "$url"
+          echo "=== RANGE 0-0 ==="
+          curl --fail --location --silent --show-error \
+            --range 0-0 \
+            --dump-header - \
+            --output /dev/null \
+            "$url"
