@@ -1,0 +1,53 @@
+name: AIIJC Lighting Structural Split Audit
+
+on:
+  push:
+    branches:
+      - feature/aijc-lighting-transformers
+    paths:
+      - 'aijc-lighting/src/structural_split.py'
+      - 'aijc-lighting/scripts/structural_split_audit.py'
+      - '.github/workflows/aijc-lighting-structural-split.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install audit dependencies
+        working-directory: aijc-lighting
+        run: python -m pip install -q numpy pandas scikit-learn requests huggingface_hub
+      - name: Restore official manifest
+        working-directory: aijc-lighting
+        run: |
+          python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+          python scripts/download_mailru.py --keep-zip
+      - name: Scan split generator seeds
+        working-directory: aijc-lighting
+        run: |
+          python scripts/structural_split_audit.py \
+            --test-csv data/test.csv \
+            --output outputs-structural-split \
+            --seed-stop 50000 \
+            --top 25
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aijc-lighting-structural-split
+          path: aijc-lighting/outputs-structural-split/
+          retention-days: 30
