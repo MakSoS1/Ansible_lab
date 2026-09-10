@@ -1,0 +1,53 @@
+name: AIIJC Lighting Semantic Neighbours
+
+on:
+  push:
+    branches:
+      - feature/aijc-lighting-transformers
+    paths:
+      - 'aijc-lighting/src/semantic_neighbors.py'
+      - 'aijc-lighting/scripts/semantic_neighbor_probe.py'
+      - '.github/workflows/aijc-lighting-semantic-neighbors.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.'
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install CPU dependencies
+        working-directory: aijc-lighting
+        run: |
+          python -m pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q timm numpy pandas pillow scikit-learn huggingface_hub pytest
+      - name: Utility tests
+        working-directory: aijc-lighting
+        run: pytest tests/test_semantic_neighbors.py -q
+      - name: Restore official data
+        working-directory: aijc-lighting
+        run: |
+          python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
+          python scripts/download_mailru.py --keep-zip
+      - name: Probe DINOv2 exposure-normalized neighbours
+        working-directory: aijc-lighting
+        run: python scripts/semantic_neighbor_probe.py --data data --output outputs-semantic-neighbors --batch-size 24
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aijc-lighting-semantic-neighbors
+          path: aijc-lighting/outputs-semantic-neighbors/
+          retention-days: 14
