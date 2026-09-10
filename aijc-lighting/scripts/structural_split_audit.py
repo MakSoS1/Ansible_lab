@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import requests
 
+from src.original_manifest_order import restore_original_test_order
 from src.structural_split import rank_candidate_seeds, replay_balanced_test_labels
 
 
@@ -39,6 +40,19 @@ def read_public_submission(filename: str, timeout: int = 30) -> pd.DataFrame:
     if frame.id.duplicated().any():
         raise ValueError(f"duplicate ids in {url}")
     return frame
+
+
+def restore_supplied_manifest_order(synthetic_test_df: pd.DataFrame) -> pd.DataFrame:
+    ids = synthetic_test_df["id"].astype(str).tolist()
+    sorted_ids = sorted(ids)
+    if ids != sorted_ids:
+        raise ValueError(
+            "structural audit expects the image-only archive's synthesized, sorted test manifest"
+        )
+    original_ids = restore_original_test_order(sorted_ids)
+    if sorted(original_ids) != sorted_ids:
+        raise ValueError("original manifest permutation changed the official test ID set")
+    return pd.DataFrame({"id": original_ids})
 
 
 def align_predictions(test_df: pd.DataFrame, submission: pd.DataFrame, name: str) -> np.ndarray:
@@ -102,7 +116,7 @@ def scan_seeds(
         }
         for name, agreement in zip(proxy_names, item["agreements"]):
             row[f"agreement_{name}"] = agreement
-        # Consensus and master are deliberately reported separately.  The
+        # Consensus and master are deliberately reported separately. The
         # ranking score downweights the many highly-correlated public variants.
         master_agreement = row.get("agreement_master", item["mean_agreement"])
         row["robust_score"] = (
@@ -138,6 +152,12 @@ def main() -> None:
     parser.add_argument("--seed-stop", type=int, default=50_000)
     parser.add_argument("--per-class-total", type=int, default=600)
     parser.add_argument("--top", type=int, default=25)
+    parser.add_argument(
+        "--manifest-order",
+        choices=("original", "as-is"),
+        default="original",
+        help="Restore the separately supplied non-sorted test.csv order before replaying split labels.",
+    )
     args = parser.parse_args()
 
     out = Path(args.output)
@@ -145,6 +165,15 @@ def main() -> None:
     test_df = pd.read_csv(args.test_csv)
     if len(test_df) != 300 or "id" not in test_df:
         raise ValueError(f"unexpected test manifest: shape={test_df.shape}")
+    test_df = test_df[["id"]].copy()
+    test_df["id"] = test_df["id"].astype(str)
+
+    synthetic_prefix = test_df.id.head(5).tolist()
+    if args.manifest_order == "original":
+        test_df = restore_supplied_manifest_order(test_df)
+    original_prefix = test_df.id.head(5).tolist()
+    print(f"synthetic sorted prefix={synthetic_prefix}", flush=True)
+    print(f"audit/original prefix={original_prefix}", flush=True)
 
     public: dict[str, np.ndarray] = {}
     public_distributions = {}
@@ -192,6 +221,9 @@ def main() -> None:
             "full source had 600 examples per class and sklearn stratified "
             "train_test_split preserved the returned test order"
         ),
+        "manifest_order": args.manifest_order,
+        "synthetic_sorted_prefix": synthetic_prefix,
+        "restored_original_prefix": original_prefix,
         "seed_range": [0, args.seed_stop - 1],
         "test_rows": len(test_df),
         "public_submissions": list(public),
