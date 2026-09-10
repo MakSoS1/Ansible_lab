@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
 from src.data import discover_layout, load_manifests, resolve_image_paths
-from src.semantic_neighbors import cosine_knn_probabilities, fuse_normalized_views
+from src.semantic_neighbors import cosine_knn_probabilities, fuse_normalized_views, model_input_size
 
 
 MEAN = [0.485, 0.456, 0.406]
@@ -54,8 +54,8 @@ class ViewDataset(Dataset):
             return self.tf(im)
 
 
-def extract_embeddings(model, paths, view: str, batch_size=24, workers=2):
-    ds = ViewDataset(paths, view=view)
+def extract_embeddings(model, paths, view: str, image_size: int, batch_size=24, workers=2):
+    ds = ViewDataset(paths, view=view, image_size=image_size)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=workers)
     rows = []
     with torch.inference_mode():
@@ -120,6 +120,7 @@ def main():
     ap.add_argument("--data", default="data")
     ap.add_argument("--output", default="outputs-semantic-neighbors")
     ap.add_argument("--batch-size", type=int, default=24)
+    ap.add_argument("--image-size", type=int, default=224)
     args = ap.parse_args()
 
     import timm
@@ -136,11 +137,19 @@ def main():
     y = train_df.label.to_numpy(int)
 
     model_name = "vit_small_patch14_dinov2.lvd142m"
-    model = timm.create_model(model_name, pretrained=True, num_classes=0, global_pool="token").eval()
+    model = timm.create_model(
+        model_name,
+        pretrained=True,
+        num_classes=0,
+        global_pool="token",
+        dynamic_img_size=True,
+    ).eval()
+    image_size = model_input_size(model, fallback=args.image_size)
+    print(f"semantic backbone={model_name} dynamic_img_size={getattr(model, 'dynamic_img_size', False)} image_size={image_size}", flush=True)
 
     views = {}
     for view in ("clean", "equalized", "autocontrast_gray"):
-        views[view] = extract_embeddings(model, paths, view, args.batch_size)
+        views[view] = extract_embeddings(model, paths, view, image_size, args.batch_size)
         np.save(out / f"embeddings_{view}.npy", views[view])
 
     n = len(y)
@@ -158,7 +167,13 @@ def main():
         ),
     }
 
-    report = {"model": model_name, "variants": {}, "complement_rule": {}}
+    report = {
+        "model": model_name,
+        "dynamic_img_size": bool(getattr(model, "dynamic_img_size", False)),
+        "image_size": image_size,
+        "variants": {},
+        "complement_rule": {},
+    }
     best_acc = -1.0
     best_name = None
     best_probs = None
@@ -185,7 +200,6 @@ def main():
         diag, order, sims = complement_rule_diagnostics(x, y)
         report["complement_rule"][variant] = diag
 
-        # Save the most similar cross-split neighbours for manual audit.
         cross = normalize(xt) @ normalize(x).T
         top = np.argsort(-cross, axis=1)[:, :5]
         audit_rows = []
