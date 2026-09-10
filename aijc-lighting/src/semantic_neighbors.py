@@ -9,6 +9,38 @@ def _l2_normalize(x: np.ndarray) -> np.ndarray:
     return x / np.maximum(norms, 1e-12)
 
 
+def model_input_size(model, fallback: int = 224) -> int:
+    """Resolve the square image size accepted by a timm-style backbone.
+
+    Dynamic-image-size ViTs intentionally use the caller's fallback. Fixed-size
+    models use their patch embedding/pretrained configuration so preprocessing
+    cannot silently disagree with the backbone contract.
+    """
+    if getattr(model, "dynamic_img_size", False):
+        return int(fallback)
+
+    patch_embed = getattr(model, "patch_embed", None)
+    patch_size = getattr(patch_embed, "img_size", None)
+    if patch_size is not None:
+        if isinstance(patch_size, (tuple, list)):
+            if len(patch_size) >= 2 and int(patch_size[-2]) != int(patch_size[-1]):
+                raise ValueError(f"non-square model input is not supported: {patch_size}")
+            return int(patch_size[-1])
+        return int(patch_size)
+
+    for attr in ("pretrained_cfg", "default_cfg"):
+        cfg = getattr(model, attr, None)
+        if isinstance(cfg, dict) and cfg.get("input_size"):
+            size = cfg["input_size"]
+            if isinstance(size, (tuple, list)):
+                if len(size) >= 2 and int(size[-2]) != int(size[-1]):
+                    raise ValueError(f"non-square model input is not supported: {size}")
+                return int(size[-1])
+            return int(size)
+
+    return int(fallback)
+
+
 def fuse_normalized_views(views: list[np.ndarray]) -> np.ndarray:
     """Concatenate independently normalized embedding views and normalize again."""
     if not views:
