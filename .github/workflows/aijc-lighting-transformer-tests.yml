@@ -11,6 +11,7 @@ on:
       - 'aijc-lighting/src/semantic_neighbors.py'
       - 'aijc-lighting/tests/test_structural_split.py'
       - 'aijc-lighting/src/structural_split.py'
+      - 'aijc-lighting/src/original_manifest_order.py'
       - '.github/workflows/aijc-lighting-transformer-tests.yml'
 
 permissions:
