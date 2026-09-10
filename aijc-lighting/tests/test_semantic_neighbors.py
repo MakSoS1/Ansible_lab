@@ -28,3 +28,15 @@ def test_neighbor_margin_detects_unambiguous_match():
     similarities = np.array([[0.95, 0.70, 0.20], [0.80, 0.79, 0.10]], dtype=np.float32)
     margin = nearest_neighbor_margin(similarities)
     assert np.allclose(margin, [0.25, 0.01], atol=1e-6)
+
+
+def test_model_input_size_uses_backbone_contract_instead_of_fixed_224():
+    from src.semantic_neighbors import model_input_size
+
+    class FakePatchEmbed:
+        img_size = (518, 518)
+
+    class FakeModel:
+        patch_embed = FakePatchEmbed()
+
+    assert model_input_size(FakeModel()) == 518
