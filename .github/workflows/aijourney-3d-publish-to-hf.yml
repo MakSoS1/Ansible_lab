@@ -1,0 +1,366 @@
+name: Publish AI Journey 3D dataset to Hugging Face
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "hackathon-3d/upload-trigger.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-journey-3d-hf-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_DATASET_SLUG: ai-journey-3d-mesh-quality-2026
+      AIC_TAR_URL: https://rndml-team-xr.obs.ru-moscow-1.hc.sbercloud.ru/mazurov/AIC_data.tar
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            "huggingface_hub==0.36.0" \
+            "pandas==2.3.2"
+
+      - name: Check Hugging Face secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::error::GitHub secret HF_TOKEN is empty or unavailable."
+            exit 1
+          fi
+
+      - name: Resolve private Hugging Face dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          owner = api.whoami()["name"]
+          dataset_id = f"{owner}/{os.environ['HF_DATASET_SLUG']}"
+          api.create_repo(
+              repo_id=dataset_id,
+              repo_type="dataset",
+              private=True,
+              exist_ok=True,
+          )
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write(f"HF_DATASET_ID={dataset_id}\n")
+          print(f"HF dataset target: {dataset_id}")
+          PY
+
+      - name: Download official competition archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/aic-download"
+          archive="${RUNNER_TEMP}/aic-download/AIC_data.tar"
+
+          curl \
+            --fail \
+            --location \
+            --retry 8 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            --continue-at - \
+            --output "${archive}" \
+            "${AIC_TAR_URL}"
+
+          test -s "${archive}"
+          echo "Downloaded archive:"
+          ls -lh "${archive}"
+          sha256sum "${archive}" | tee "${RUNNER_TEMP}/aic-download/AIC_data.tar.sha256"
+
+      - name: Extract and normalize dataset layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AIC_ARCHIVE="${RUNNER_TEMP}/aic-download/AIC_data.tar"
+          export HF_UPLOAD_DIR="${RUNNER_TEMP}/aic-hf"
+
+          rm -rf "${HF_UPLOAD_DIR}"
+          mkdir -p "${HF_UPLOAD_DIR}/data" "${HF_UPLOAD_DIR}/metadata"
+
+          python - <<'PY'
+          import os
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          archive = Path(os.environ["AIC_ARCHIVE"])
+          upload = Path(os.environ["HF_UPLOAD_DIR"])
+          data_dir = upload / "data"
+
+          def safe_target(base: Path, name: str) -> Path:
+              target = (base / name).resolve()
+              base_resolved = base.resolve()
+              if target != base_resolved and base_resolved not in target.parents:
+                  raise RuntimeError(f"Unsafe archive member path: {name}")
+              return target
+
+          with tarfile.open(archive, "r:*") as tf:
+              for member in tf.getmembers():
+                  safe_target(data_dir, member.name)
+              tf.extractall(data_dir, filter="data")
+
+          zip_files = sorted(p for p in data_dir.rglob("*.zip") if p.is_file())
+          for zip_path in zip_files:
+              target_root = zip_path.with_suffix("")
+              target_root.mkdir(parents=True, exist_ok=True)
+              with zipfile.ZipFile(zip_path) as zf:
+                  for info in zf.infolist():
+                      safe_target(target_root, info.filename)
+                  zf.extractall(target_root)
+              zip_path.unlink()
+
+          file_count = sum(1 for p in data_dir.rglob("*") if p.is_file())
+          if file_count == 0:
+              raise RuntimeError("No dataset files found after extraction")
+          print(f"Prepared {file_count} files under {data_dir}")
+          PY
+
+          # The source hash is already recorded; free runner disk before the HF upload.
+          rm -f "${AIC_ARCHIVE}"
+
+      - name: Validate labels and build metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HF_UPLOAD_DIR="${RUNNER_TEMP}/aic-hf"
+          export AIC_ARCHIVE_SHA256="$(cut -d' ' -f1 "${RUNNER_TEMP}/aic-download/AIC_data.tar.sha256")"
+
+          python - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          import pandas as pd
+
+          root = Path(os.environ["HF_UPLOAD_DIR"])
+          data = root / "data"
+          metadata = root / "metadata"
+          metadata.mkdir(parents=True, exist_ok=True)
+
+          expected_targets = [
+              "abstract",
+              "artifacts",
+              "intersection",
+              "lowpoly",
+              "noisy",
+              "open",
+              "partial",
+              "scale",
+              "set",
+              "simple",
+          ]
+          expected_train_cols = ["item_id", *expected_targets, "quality"]
+
+          csv_files = sorted(data.rglob("*.csv"))
+          train_candidates = [p for p in csv_files if p.name.lower() == "train.csv"]
+          test_candidates = [p for p in csv_files if p.name.lower() == "test.csv"]
+
+          if len(train_candidates) != 1:
+              raise RuntimeError(f"Expected exactly one train.csv, found: {train_candidates}")
+          if len(test_candidates) != 1:
+              raise RuntimeError(f"Expected exactly one test.csv, found: {test_candidates}")
+
+          train_path = train_candidates[0]
+          test_path = test_candidates[0]
+          train = pd.read_csv(train_path)
+          test = pd.read_csv(test_path)
+
+          if list(train.columns) != expected_train_cols:
+              raise RuntimeError(
+                  f"Unexpected train columns: {list(train.columns)}; "
+                  f"expected: {expected_train_cols}"
+              )
+          if list(test.columns) != ["item_id"]:
+              raise RuntimeError(f"Unexpected test columns: {list(test.columns)}")
+          if len(train) != 8964:
+              raise RuntimeError(f"Unexpected train row count: {len(train)} (expected 8964)")
+          if len(test) != 669:
+              raise RuntimeError(f"Unexpected test row count: {len(test)} (expected 669)")
+          if train["item_id"].duplicated().any():
+              raise RuntimeError("Duplicate item_id values in train.csv")
+          if test["item_id"].duplicated().any():
+              raise RuntimeError("Duplicate item_id values in test.csv")
+          if set(train["item_id"]) & set(test["item_id"]):
+              raise RuntimeError("train/test item_id overlap detected")
+
+          binary_cols = [*expected_targets, "quality"]
+          invalid_binary = {
+              col: sorted(set(train[col].dropna().unique()) - {0, 1})
+              for col in binary_cols
+          }
+          invalid_binary = {k: v for k, v in invalid_binary.items() if v}
+          if invalid_binary:
+              raise RuntimeError(f"Non-binary target values: {invalid_binary}")
+
+          expected_quality = (train[expected_targets].sum(axis=1) == 0).astype("int64")
+          quality_mismatches = int((expected_quality != train["quality"]).sum())
+          if quality_mismatches:
+              raise RuntimeError(
+                  f"quality != 1 iff no artifacts for {quality_mismatches} rows"
+              )
+
+          sample = pd.DataFrame({"item_id": test["item_id"]})
+          for col in expected_targets:
+              sample[col] = 0
+          sample["quality"] = 1
+          sample.to_csv(metadata / "sample_submission.csv", index=False)
+
+          suffix_counts = Counter(
+              p.suffix.lower() if p.suffix else "<no_suffix>"
+              for p in data.rglob("*")
+              if p.is_file()
+          )
+          total_bytes = sum(p.stat().st_size for p in data.rglob("*") if p.is_file())
+
+          prevalence = {
+              col: float(train[col].mean())
+              for col in [*expected_targets, "quality"]
+          }
+
+          manifest = {
+              "source_url": os.environ["AIC_TAR_URL"],
+              "source_archive_sha256": os.environ["AIC_ARCHIVE_SHA256"],
+              "train_rows": int(len(train)),
+              "test_rows": int(len(test)),
+              "targets": expected_targets,
+              "train_columns": expected_train_cols,
+              "quality_rule_verified": True,
+              "quality_mismatches": quality_mismatches,
+              "class_prevalence": prevalence,
+              "file_suffix_counts": dict(sorted(suffix_counts.items())),
+              "total_unpacked_bytes": total_bytes,
+              "train_csv_relative_path": str(train_path.relative_to(root)),
+              "test_csv_relative_path": str(test_path.relative_to(root)),
+              "github_repository": os.environ["GITHUB_REPOSITORY"],
+              "github_sha": os.environ["GITHUB_SHA"],
+          }
+          with (metadata / "dataset_manifest.json").open("w", encoding="utf-8") as fh:
+              json.dump(manifest, fh, ensure_ascii=False, indent=2)
+
+          inventory = []
+          for p in sorted(x for x in data.rglob("*") if x.is_file()):
+              inventory.append({
+                  "path": str(p.relative_to(root)),
+                  "bytes": p.stat().st_size,
+              })
+          with (metadata / "file_inventory.json").open("w", encoding="utf-8") as fh:
+              json.dump(inventory, fh, ensure_ascii=False)
+
+          readme = f"""---
+pretty_name: AI Journey 3D Mesh Quality 2026
+task_categories:
+- image-classification
+- tabular-classification
+tags:
+- 3d
+- mesh
+- multi-label-classification
+- computer-vision
+- ai-journey
+---
+
+# AI Journey 3D Mesh Quality 2026
+
+Private working copy of the official hackathon dataset.
+
+## Contents
+
+- `data/` — unpacked files from the official `AIC_data.tar`.
+- `metadata/dataset_manifest.json` — source hash, row counts, target prevalence, file counts.
+- `metadata/file_inventory.json` — complete file inventory.
+- `metadata/sample_submission.csv` — valid submission schema generated from `test.csv`.
+
+## Targets
+
+`abstract`, `artifacts`, `intersection`, `lowpoly`, `noisy`, `open`,
+`partial`, `scale`, `set`, `simple`, and `quality`.
+
+`quality=1` is verified to be exactly equivalent to all ten artifact labels being 0
+in the supplied training labels.
+
+## Metric
+
+`10 * F1(quality) + 10 * weighted_F1(artifact_labels)`.
+
+## Reproducibility
+
+Source archive SHA-256: `{os.environ["AIC_ARCHIVE_SHA256"]}`
+
+GitHub source commit: `{os.environ["GITHUB_SHA"]}`
+"""
+          (root / "README.md").write_text(readme, encoding="utf-8")
+
+          print(json.dumps(manifest, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload prepared dataset to Hugging Face
+        shell: bash
+        run: |
+          set -euo pipefail
+          hf upload-large-folder \
+            "${HF_DATASET_ID}" \
+            "${RUNNER_TEMP}/aic-hf" \
+            --repo-type dataset \
+            --private \
+            --num-workers 8
+
+      - name: Verify remote dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          info = api.dataset_info(os.environ["HF_DATASET_ID"], files_metadata=True)
+
+          if info.private is not True:
+              raise RuntimeError("Dataset must remain private")
+
+          names = {item.rfilename for item in info.siblings}
+          required = {
+              "README.md",
+              "metadata/dataset_manifest.json",
+              "metadata/file_inventory.json",
+              "metadata/sample_submission.csv",
+          }
+          missing = sorted(required - names)
+          if missing:
+              raise RuntimeError(f"Missing remote files: {missing}")
+
+          payload = {
+              "dataset": os.environ["HF_DATASET_ID"],
+              "private": info.private,
+              "remote_file_count": len(names),
+          }
+          print(json.dumps(payload, ensure_ascii=False))
+          print(f"https://huggingface.co/datasets/{os.environ['HF_DATASET_ID']}")
+          PY
