@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+runs
+ui/node_modules
+ui/dist
+aios-track2/recordings
+aios-track2/transcripts
+worktrees
+.worktrees
+.mypy_cache
+.pytest_cache
+.ruff_cache
+*.egg-info

@@ -1,0 +1,5 @@
+n_scenarios: 32
+n_quarters: 8
+max_quarterly_change: 0.2
+cluster_count: 6
+seed: 42

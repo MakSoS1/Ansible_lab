@@ -1,0 +1,9 @@
+seed: 42
+economic_start: 2007-01-01
+max_wlpr_m3_day: 500.0
+hf_dataset_id: <HF_TOKEN_OWNER>/aios-track2-runs
+device: auto
+paths:
+  deck: aios-track2/materials/41_Model_Z_final_OPM.zip
+  work_dir: runs/local
+  materials: aios-track2/materials
