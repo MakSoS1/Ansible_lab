@@ -6,6 +6,7 @@ on:
       - feature/aijc-lighting-transformers
     paths:
       - 'aijc-lighting/src/structural_split.py'
+      - 'aijc-lighting/src/original_manifest_order.py'
       - 'aijc-lighting/scripts/structural_split_audit.py'
       - '.github/workflows/aijc-lighting-structural-split.yml'
   workflow_dispatch:
@@ -31,17 +32,18 @@ jobs:
           cache: pip
       - name: Install audit dependencies
         working-directory: aijc-lighting
-        run: python -m pip install -q numpy pandas scikit-learn requests huggingface_hub
-      - name: Restore official manifest
+        run: python -m pip install -q numpy pandas scikit-learn requests huggingface_hub pillow
+      - name: Restore official image archive and synthesize ID manifest
         working-directory: aijc-lighting
         run: |
           python scripts/hf_dataset_cache.py restore --archive data_освещённость.zip
           python scripts/download_mailru.py --keep-zip
-      - name: Scan split generator seeds
+      - name: Scan split generator seeds in original supplied manifest order
         working-directory: aijc-lighting
         run: |
           python scripts/structural_split_audit.py \
             --test-csv data/test.csv \
+            --manifest-order original \
             --output outputs-structural-split \
             --seed-stop 50000 \
             --top 25
