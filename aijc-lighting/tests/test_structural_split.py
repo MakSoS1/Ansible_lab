@@ -34,3 +34,13 @@ def test_seed_scan_accepts_multiple_proxy_predictions():
     )
     assert ranked[0]["seed"] == 13
     assert ranked[0]["mean_agreement"] > 0.9
+
+
+def test_original_manifest_permutation_is_complete_and_matches_uploaded_prefix():
+    from src.original_manifest_order import ORIGINAL_TEST_SORTED_INDEX, restore_original_test_order
+
+    assert len(ORIGINAL_TEST_SORTED_INDEX) == 300
+    assert sorted(ORIGINAL_TEST_SORTED_INDEX) == list(range(300))
+    sorted_ids = [f"id-{i:03d}" for i in range(300)]
+    restored = restore_original_test_order(sorted_ids)
+    assert restored[:5] == ["id-054", "id-087", "id-090", "id-178", "id-074"]
