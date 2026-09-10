@@ -19,6 +19,7 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.'
       OMP_NUM_THREADS: '4'
       MKL_NUM_THREADS: '4'
     steps:
