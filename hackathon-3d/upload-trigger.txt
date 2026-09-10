@@ -1,0 +1,4 @@
+AI Journey 3D dataset upload trigger
+created_at=2026-09-10T20:07:00+03:00
+source=https://rndml-team-xr.obs.ru-moscow-1.hc.sbercloud.ru/mazurov/AIC_data.tar
+target_slug=ai-journey-3d-mesh-quality-2026
