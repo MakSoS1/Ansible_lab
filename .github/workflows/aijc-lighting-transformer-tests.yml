@@ -9,6 +9,8 @@ on:
       - 'aijc-lighting/src/transformer_solution.py'
       - 'aijc-lighting/tests/test_semantic_neighbors.py'
       - 'aijc-lighting/src/semantic_neighbors.py'
+      - 'aijc-lighting/tests/test_structural_split.py'
+      - 'aijc-lighting/src/structural_split.py'
       - '.github/workflows/aijc-lighting-transformer-tests.yml'
 
 permissions:
@@ -26,8 +28,8 @@ jobs:
       - name: Install test dependencies
         working-directory: aijc-lighting
         run: |
-          python -m pip install -q pytest pillow numpy
+          python -m pip install -q pytest pillow numpy scikit-learn
           python -m pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
       - name: Unit tests
         working-directory: aijc-lighting
-        run: pytest tests/test_transformer_solution.py tests/test_semantic_neighbors.py -q
+        run: pytest tests/test_transformer_solution.py tests/test_semantic_neighbors.py tests/test_structural_split.py -q
