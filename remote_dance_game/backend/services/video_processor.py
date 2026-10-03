@@ -12,7 +12,7 @@ def get_ffprobe_path() -> str:
     return os.environ.get("FFPROBE_BIN", "ffprobe")
 
 
-def _run(cmd, timeout: int):
+def _run(cmd, timeout: Optional[float] = None):
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:
         message = (result.stderr or result.stdout or "media command failed").strip()
@@ -61,7 +61,7 @@ def normalize_video(input_path: str, output_path: str, clip_start: float = 0.0,
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
         "-pix_fmt", "yuv420p", "-an", output_path,
     ])
-    _run(cmd, timeout=900)
+    _run(cmd, timeout=None)
     return output_path
 
 
@@ -75,7 +75,7 @@ def extract_audio(input_path: str, output_path: str, clip_start: float = 0.0,
     if clip_end is not None:
         cmd.extend(["-t", str(clip_end - clip_start)])
     cmd.extend(["-vn", "-acodec", "libmp3lame", "-q:a", "2", output_path])
-    _run(cmd, timeout=600)
+    _run(cmd, timeout=None)
     return output_path
 
 
@@ -94,5 +94,5 @@ def create_preview_video(input_path: str, output_path: str, clip_start: float = 
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", output_path,
     ])
-    _run(cmd, timeout=900)
+    _run(cmd, timeout=None)
     return output_path
