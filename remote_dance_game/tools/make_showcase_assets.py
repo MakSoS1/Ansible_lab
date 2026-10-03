@@ -20,6 +20,8 @@ source = OUT / "source.mp4"
 audio = OUT / "audio.m4a"
 game = OUT / "game.mp4"
 poster = OUT / "poster.jpg"
+source_webm = OUT / "source.webm"
+game_webm = OUT / "game.webm"
 
 W,H,FPS,DUR = 640,360,18,8
 writer = cv2.VideoWriter(str(source), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W,H))
@@ -54,4 +56,6 @@ writer.release()
 subprocess.run(['ffmpeg','-y','-f','lavfi','-i','sine=frequency=246:sample_rate=44100','-f','lavfi','-i','sine=frequency=492:sample_rate=44100','-filter_complex','[0:a]volume=0.30[a0];[1:a]volume=0.12[a1];[a0][a1]amix=inputs=2','-t',str(DUR),'-c:a','aac',str(audio)],check=True)
 beats=list(range(0,DUR*1000,500)); strong=list(range(0,DUR*1000,1000))
 render_game_video(str(source),str(game),{'fps':FPS,'duration_ms':DUR*1000,'total_frames':len(frames),'frames':frames},{'tempo':120,'beat_ms':beats,'strong_beat_ms':strong},str(audio),'Night Move',str(poster),False,W,H,FPS)
-print(game)
+subprocess.run(['ffmpeg','-y','-i',str(source),'-c:v','libvpx-vp9','-deadline','realtime','-cpu-used','6','-b:v','900k','-an',str(source_webm)],check=True)
+subprocess.run(['ffmpeg','-y','-i',str(game),'-c:v','libvpx-vp9','-deadline','realtime','-cpu-used','6','-b:v','1100k','-c:a','libopus','-b:a','96k',str(game_webm)],check=True)
+print(game_webm)
