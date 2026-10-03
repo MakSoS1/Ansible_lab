@@ -82,7 +82,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 34 components
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
