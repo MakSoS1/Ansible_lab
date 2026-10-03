@@ -2,14 +2,8 @@ const envApiBase = (import.meta as any).env?.VITE_API_BASE as string | undefined
 
 function defaultApiBase(): string {
   if (typeof window === 'undefined') return 'http://localhost:8000';
-
-  // When React app is served by FastAPI or HTTPS tunnel, keep API same-origin.
-  // When using Vite dev server, backend is on port 8000.
   const devPorts = new Set(['5173', '5174']);
-  if (!devPorts.has(window.location.port)) {
-    return window.location.origin;
-  }
-
+  if (!devPorts.has(window.location.port)) return window.location.origin;
   const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
   const hostname = window.location.hostname || 'localhost';
   return `${protocol}//${hostname}:8000`;
@@ -33,9 +27,7 @@ export async function apiGet(path: string) {
 
 export async function apiPost(path: string, body: any) {
   const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await parseApiError(res));
   return res.json();
@@ -56,12 +48,8 @@ export async function apiUploadVideo(file: File, onProgress?: (fraction: number)
       if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
     };
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(xhr.response);
-      } else {
-        const detail = xhr.response?.detail || `HTTP ${xhr.status}`;
-        reject(new Error(String(detail)));
-      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+      else reject(new Error(String(xhr.response?.detail || `HTTP ${xhr.status}`)));
     };
     xhr.onerror = () => reject(new Error('Upload failed'));
     const form = new FormData();
@@ -76,12 +64,17 @@ export function wsUrl(path: string) {
   return `${proto}//${base.host}${path}`;
 }
 
-export function videoUrl(danceId: string) {
-  return `${API_BASE}/video/${danceId}`;
-}
+export function videoUrl(danceId: string) { return `${API_BASE}/video/${danceId}`; }
+export function audioUrl(danceId: string) { return `${API_BASE}/audio/${danceId}`; }
+export function posterUrl(danceId: string) { return `${API_BASE}/api/dances/${danceId}/poster`; }
 
-export function audioUrl(danceId: string) {
-  return `${API_BASE}/audio/${danceId}`;
+export interface DanceTheme {
+  name?: string;
+  primary?: number[];
+  secondary?: number[];
+  accent?: number[];
+  deep?: number[];
+  motif?: string;
 }
 
 export interface Dance {
@@ -91,6 +84,9 @@ export interface Dance {
   difficulty: string;
   created_at: string;
   has_video: boolean;
+  has_poster?: boolean;
+  preview_mode?: string;
+  theme?: DanceTheme;
 }
 
 export interface DanceDetail {
@@ -107,6 +103,8 @@ export interface DanceDetail {
   num_events: number;
   video_path?: string;
   audio_path?: string;
+  has_poster?: boolean;
+  theme?: DanceTheme;
 }
 
 export interface JobStatus {
@@ -118,12 +116,7 @@ export interface JobStatus {
   dance_id?: string;
 }
 
-export interface GameSession {
-  session_id: string;
-  dance_id: string;
-  connect_url: string;
-  qr_data: string;
-}
+export interface GameSession { session_id: string; dance_id: string; connect_url: string; qr_data: string; }
 
 export interface ScoreEvent {
   type: string;

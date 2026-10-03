@@ -10,3 +10,7 @@ mediapipe>=0.10.14
 librosa>=0.10
 websockets>=16.0
 yt-dlp>=2025.1.1
+# Primary offline person segmentation for the game-video compiler.
+# The renderer automatically falls back to the already extracted pose matte if
+# this dependency/model cannot be used on a particular machine.
+ultralytics>=8.3

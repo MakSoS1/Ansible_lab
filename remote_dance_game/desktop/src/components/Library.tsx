@@ -1,18 +1,46 @@
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { apiGet, apiDelete, Dance } from '../api'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { apiDelete, apiGet, Dance, posterUrl, videoUrl } from '../api'
+
+function fmt(ms: number) {
+  const sec = Math.max(0, Math.floor(ms / 1000))
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+}
+
+function themeStyle(dance?: Dance): React.CSSProperties {
+  const p = dance?.theme?.primary || [76, 232, 255]
+  const s = dance?.theme?.secondary || [255, 67, 183]
+  const a = dance?.theme?.accent || [255, 232, 91]
+  return {
+    '--theme-primary': `rgb(${p.join(',')})`,
+    '--theme-secondary': `rgb(${s.join(',')})`,
+    '--theme-accent': `rgb(${a.join(',')})`,
+  } as React.CSSProperties
+}
 
 export default function Library() {
   const [dances, setDances] = useState<Dance[]>([])
+  const [selected, setSelected] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [previewReady, setPreviewReady] = useState(false)
+  const [hasGesture, setHasGesture] = useState(false)
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const previewRef = useRef<HTMLVideoElement | null>(null)
+  const railRef = useRef<HTMLDivElement | null>(null)
 
-  const loadDances = async () => {
+  const active = dances[selected]
+
+  const load = async () => {
     try {
-      setLoading(true)
-      const data = await apiGet('/api/dances')
+      const data: Dance[] = await apiGet('/api/dances')
       setDances(data)
+      const focus = searchParams.get('focus')
+      if (focus) {
+        const idx = data.findIndex(d => d.dance_id === focus)
+        if (idx >= 0) setSelected(idx)
+      }
       setError('')
     } catch (e: any) {
       setError(e.message)
@@ -21,91 +49,135 @@ export default function Library() {
     }
   }
 
-  useEffect(() => { loadDances() }, [])
+  useEffect(() => { load() }, [])
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this dance?')) return
-    try {
-      await apiDelete(`/api/dances/${id}`)
-      loadDances()
-    } catch (e: any) {
-      alert('Delete failed: ' + e.message)
+  useEffect(() => {
+    setPreviewReady(false)
+    if (!active?.has_video) return
+    const timer = window.setTimeout(() => setPreviewReady(true), 850)
+    return () => window.clearTimeout(timer)
+  }, [active?.dance_id])
+
+  useEffect(() => {
+    const video = previewRef.current
+    if (!video || !previewReady) return
+    video.currentTime = 0
+    video.volume = hasGesture ? 0.12 : 0
+    video.muted = !hasGesture
+    video.play().catch(() => {
+      video.muted = true
+      video.play().catch(() => {})
+    })
+  }, [previewReady, active?.dance_id, hasGesture])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!dances.length) return
+      if (event.key === 'ArrowRight') {
+        event.preventDefault(); setHasGesture(true); setSelected(i => Math.min(dances.length - 1, i + 1))
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault(); setHasGesture(true); setSelected(i => Math.max(0, i - 1))
+      } else if (event.key === 'Enter' && active) {
+        event.preventDefault(); setHasGesture(true); navigate(`/connect/${active.dance_id}`)
+      }
     }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [dances.length, active?.dance_id])
+
+  useEffect(() => {
+    const card = railRef.current?.querySelector(`[data-index="${selected}"]`) as HTMLElement | null
+    card?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }, [selected])
+
+  const background = useMemo(() => active?.has_video ? videoUrl(active.dance_id) : '', [active?.dance_id])
+
+  const remove = async () => {
+    if (!active || !confirm(`Delete “${active.title}”?`)) return
+    await apiDelete(`/api/dances/${active.dance_id}`)
+    await load()
+    setSelected(i => Math.max(0, Math.min(i, dances.length - 2)))
   }
 
-  const handlePlay = async (danceId: string) => {
-    navigate(`/connect/${danceId}`)
-  }
+  if (loading) return <div className="tv-loader"><div className="tv-logo">DANCE<span>FLOW</span></div></div>
 
-  const formatDuration = (ms: number) => {
-    const s = Math.floor(ms / 1000)
-    const m = Math.floor(s / 60)
-    return `${m}:${(s % 60).toString().padStart(2, '0')}`
+  if (!dances.length) {
+    return (
+      <div className="tv-empty" onPointerDown={() => setHasGesture(true)}>
+        <div className="tv-logo">DANCE<span>FLOW</span></div>
+        <div className="empty-orb" />
+        <h1>Your dance shelf is empty.</h1>
+        <p>Drop in a video. The game will learn the choreography and build the stage automatically.</p>
+        <button className="tv-play" onClick={() => navigate('/build')}>＋ ADD A DANCE</button>
+        {error && <div className="tv-error">{error}</div>}
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-dance-bg p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Dance Coach Game</h1>
-          <div className="flex gap-3">
-            <button
-              onClick={() => navigate('/settings')}
-              className="px-4 py-2 bg-dance-card rounded-lg hover:bg-gray-700 transition"
-            >
-              Settings
-            </button>
-            <button
-              onClick={() => navigate('/build')}
-              className="px-4 py-2 bg-dance-accent rounded-lg hover:bg-purple-700 transition font-semibold"
-            >
-              + Create Dance
-            </button>
-          </div>
-        </div>
-
-        {loading && <p className="text-gray-400">Loading dances...</p>}
-        {error && <p className="text-red-400">Error: {error}</p>}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {dances.map(d => (
-            <div key={d.dance_id} className="bg-dance-card rounded-xl p-5 border border-gray-800 hover:border-dance-accent transition">
-              <h3 className="text-lg font-semibold mb-2 truncate">{d.title}</h3>
-              <div className="flex gap-4 text-sm text-gray-400 mb-4">
-                <span>{formatDuration(d.duration_ms)}</span>
-                <span className="capitalize">{d.difficulty}</span>
-                <span>{d.has_video ? 'Video' : 'No video'}</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handlePlay(d.dance_id)}
-                  className="flex-1 px-4 py-2 bg-dance-accent rounded-lg hover:bg-purple-700 transition font-semibold"
-                >
-                  Play
-                </button>
-                <button
-                  onClick={() => handleDelete(d.dance_id)}
-                  className="px-3 py-2 bg-red-900/50 rounded-lg hover:bg-red-800 transition text-red-300"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {dances.length === 0 && !loading && (
-          <div className="text-center py-20 text-gray-500">
-            <p className="text-xl mb-4">No dances yet</p>
-            <button
-              onClick={() => navigate('/build')}
-              className="px-6 py-3 bg-dance-accent rounded-lg hover:bg-purple-700 transition font-semibold text-lg"
-            >
-              Create Your First Dance
-            </button>
-          </div>
+    <main className="tv-library" style={themeStyle(active)} onPointerDown={() => setHasGesture(true)}>
+      <div className="library-backdrop">
+        {background && previewReady && (
+          <video key={active.dance_id} ref={previewRef} src={background} className="library-preview" loop playsInline preload="metadata" />
         )}
+        {!previewReady && active?.has_poster && <img src={posterUrl(active.dance_id)} className="library-poster-bg" />}
+        <div className="library-wash" />
+        <div className="library-color-field" />
       </div>
-    </div>
+
+      <header className="tv-header">
+        <div className="tv-logo">DANCE<span>FLOW</span></div>
+        <div className="tv-header-actions">
+          <button aria-label="Add dance" className="tv-icon" onClick={() => navigate('/build')}>＋</button>
+          <button aria-label="Settings" className="tv-icon tv-icon-muted" onClick={() => navigate('/settings')}>⚙</button>
+        </div>
+      </header>
+
+      <section className="active-copy">
+        <div className="active-eyebrow">{active.theme?.name || 'PLAYABLE ROUTINE'}</div>
+        <h1>{active.title}</h1>
+        <div className="active-meta"><span>{fmt(active.duration_ms)}</span><span>•</span><span>{active.difficulty}</span></div>
+        <div className="active-actions">
+          <button className="tv-play" onClick={() => navigate(`/connect/${active.dance_id}`)}>▶ PLAY</button>
+          <button className="tv-more" title="Delete" onClick={remove}>•••</button>
+        </div>
+      </section>
+
+      <section className="carousel-shell">
+        <div className="carousel-hint">YOUR DANCES</div>
+        <div className="dance-rail" ref={railRef} onWheel={e => {
+          if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+            e.preventDefault()
+            setHasGesture(true)
+            setSelected(i => Math.max(0, Math.min(dances.length - 1, i + (e.deltaY > 0 ? 1 : -1))))
+          }
+        }}>
+          {dances.map((dance, index) => (
+            <button
+              key={dance.dance_id}
+              data-index={index}
+              className={`dance-tile ${index === selected ? 'active' : ''}`}
+              onMouseEnter={() => setSelected(index)}
+              onFocus={() => setSelected(index)}
+              onClick={() => index === selected ? navigate(`/connect/${dance.dance_id}`) : setSelected(index)}
+              style={themeStyle(dance)}
+            >
+              <div className="tile-art">
+                {dance.has_poster ? <img src={posterUrl(dance.dance_id)} /> : <div className="tile-fallback" />}
+                <div className="tile-shade" />
+                <div className="tile-play">▶</div>
+              </div>
+              <div className="tile-title">{dance.title}</div>
+            </button>
+          ))}
+          <button className="dance-tile add-tile" onClick={() => navigate('/build')}>
+            <div className="add-circle">＋</div><div className="tile-title">Add dance</div>
+          </button>
+        </div>
+      </section>
+
+      <div className="tv-nav-hint"><span>← →</span> choose <span>ENTER</span> play</div>
+      {error && <div className="tv-error">{error}</div>}
+    </main>
   )
 }

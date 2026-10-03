@@ -8,6 +8,7 @@ import ConnectPhone from './components/ConnectPhone'
 import Gameplay from './components/Gameplay'
 import Results from './components/Results'
 import Settings from './components/Settings'
+import Showcase from './components/Showcase'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -19,6 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/play/:danceId/:sessionId" element={<Gameplay />} />
         <Route path="/results/:sessionId" element={<Results />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/showcase" element={<Showcase />} />
       </Routes>
     </HashRouter>
   </React.StrictMode>,

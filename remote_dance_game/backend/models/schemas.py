@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class SourceType(str, Enum):
@@ -38,6 +39,9 @@ class DanceListItem(BaseModel):
     difficulty: str
     created_at: str
     has_video: bool = False
+    has_poster: bool = False
+    preview_mode: str = "local_video"
+    theme: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DanceDetailResponse(BaseModel):
@@ -54,6 +58,8 @@ class DanceDetailResponse(BaseModel):
     num_events: int = 0
     video_path: Optional[str] = None
     audio_path: Optional[str] = None
+    has_poster: bool = False
+    theme: Dict[str, Any] = Field(default_factory=dict)
 
 
 class Landmark(BaseModel):

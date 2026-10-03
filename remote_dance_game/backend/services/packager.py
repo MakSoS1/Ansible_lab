@@ -9,7 +9,6 @@ from config import DANCES_DIR
 
 
 def _portable_path(path: Optional[str], dance_dir: str) -> str:
-    """Store paths inside a dance package relative to its own directory."""
     if not path:
         return ""
     absolute = os.path.abspath(path)
@@ -39,10 +38,10 @@ def save_dance_package(dance_id: str, data: Dict[str, Any]) -> str:
     manifest = {
         "dance_id": dance_id,
         "title": data.get("title", dance_id),
-        "version": data.get("version", 2),
+        "version": data.get("version", 3),
         "duration_ms": data.get("duration_ms", 0),
         "skeleton_format": "blazepose_33",
-        "preview_mode": data.get("preview_mode", "local_video"),
+        "preview_mode": data.get("preview_mode", "stylized_game_video"),
         "difficulty": data.get("difficulty", "medium"),
         "mirror_mode": data.get("mirror_mode", True),
         "created_at": data.get("created_at", ""),
@@ -55,28 +54,24 @@ def save_dance_package(dance_id: str, data: Dict[str, Any]) -> str:
     with open(os.path.join(dance_dir, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 
-    if "reference_pose" in data:
-        with open(os.path.join(dance_dir, "reference_pose.json"), "w", encoding="utf-8") as f:
-            json.dump(data["reference_pose"], f)
-
-    if "timing" in data:
-        with open(os.path.join(dance_dir, "timing.json"), "w", encoding="utf-8") as f:
-            json.dump(data["timing"], f, indent=2)
-
-    if "events" in data:
-        with open(os.path.join(dance_dir, "events.json"), "w", encoding="utf-8") as f:
-            json.dump(data["events"], f, indent=2)
-
-    if "weights" in data:
-        with open(os.path.join(dance_dir, "weights.json"), "w", encoding="utf-8") as f:
-            json.dump(data["weights"], f, indent=2)
+    for key, filename in (
+        ("reference_pose", "reference_pose.json"),
+        ("timing", "timing.json"),
+        ("events", "events.json"),
+        ("weights", "weights.json"),
+        ("theme", "theme.json"),
+        ("render", "render.json"),
+    ):
+        if key in data:
+            with open(os.path.join(dance_dir, filename), "w", encoding="utf-8") as f:
+                json.dump(data[key], f, indent=2, ensure_ascii=False)
 
     preview = dict(data.get("preview", {
         "video_path": data.get("video_path", ""),
         "audio_path": data.get("audio_path", ""),
     }))
-    preview["video_path"] = _portable_path(preview.get("video_path"), dance_dir)
-    preview["audio_path"] = _portable_path(preview.get("audio_path"), dance_dir)
+    for key in ("video_path", "audio_path", "poster_path", "source_preview_path"):
+        preview[key] = _portable_path(preview.get(key), dance_dir)
     with open(os.path.join(dance_dir, "preview.json"), "w", encoding="utf-8") as f:
         json.dump(preview, f, indent=2)
 
@@ -89,7 +84,7 @@ def load_dance_package(dance_id: str, load_pose: bool = True) -> Optional[Dict[s
         return None
 
     result: Dict[str, Any] = {}
-    load_files = ["manifest.json", "timing.json", "events.json", "weights.json", "preview.json"]
+    load_files = ["manifest.json", "timing.json", "events.json", "weights.json", "theme.json", "render.json", "preview.json"]
     if load_pose:
         load_files.insert(1, "reference_pose.json")
 
@@ -105,8 +100,8 @@ def load_dance_package(dance_id: str, load_pose: bool = True) -> Optional[Dict[s
 
     preview = result.get("preview")
     if isinstance(preview, dict):
-        preview["video_path"] = _resolved_path(preview.get("video_path"), dance_dir)
-        preview["audio_path"] = _resolved_path(preview.get("audio_path"), dance_dir)
+        for key in ("video_path", "audio_path", "poster_path", "source_preview_path"):
+            preview[key] = _resolved_path(preview.get(key), dance_dir)
 
     result["dance_dir"] = dance_dir
     return result
@@ -146,7 +141,6 @@ def import_dance_pack(pack_path: str, dance_id: Optional[str] = None) -> str:
             raise ValueError("No manifest.json in pack")
 
         did = dance_id or str(manifest_data.get("dance_id", "imported"))
-        # IDs become directory names, so restrict them to a simple safe subset.
         if not did or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in did):
             raise ValueError("Invalid dance_id in pack")
         dance_dir = os.path.join(DANCES_DIR, did)

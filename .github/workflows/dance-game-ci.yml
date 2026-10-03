@@ -38,7 +38,7 @@ jobs:
       - name: Install lightweight test dependencies
         run: python -m pip install -r requirements-ci.txt
       - name: Compile backend
-        run: python -m compileall -q backend tests
+        run: python -m compileall -q backend tests tools
       - name: Run scoring and package tests
         run: python -m pytest -q tests
 
@@ -67,7 +67,7 @@ jobs:
         run: npm run build
 
   media-smoke:
-    name: FFmpeg media smoke
+    name: FFmpeg + game-video compiler
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -79,10 +79,14 @@ jobs:
           python-version: "3.11"
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Install lightweight test dependencies
+      - name: Install media test dependencies
         run: python -m pip install -r requirements-ci.txt
       - name: Exercise probe, normalize and preview pipeline
         run: python tests/media_smoke.py
+      - name: Render stylized dancer, thematic stage and poster
+        env:
+          DANCE_DISABLE_YOLO: "1"
+        run: python tests/stylizer_smoke.py
 
   android:
     name: Android tracker build
@@ -113,4 +117,57 @@ jobs:
         with:
           name: dance-coach-mobile-debug
           path: remote_dance_game/mobile-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  showcase:
+    name: Record TV gameplay showcase
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: remote_dance_game
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: remote_dance_game/desktop/package-lock.json
+      - name: Install FFmpeg and Python media dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          python -m pip install -r requirements-ci.txt
+      - name: Generate source and compiled showcase videos
+        env:
+          DANCE_DISABLE_YOLO: "1"
+        run: python tools/make_showcase_assets.py
+      - name: Install desktop and browser recorder
+        working-directory: remote_dance_game/desktop
+        run: |
+          npm ci
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start TV UI and record walkthrough
+        shell: bash
+        run: |
+          cd desktop
+          npm run dev -- --host 127.0.0.1 > /tmp/dance-vite.log 2>&1 &
+          npx wait-on http://127.0.0.1:5173
+          node tools/record_showcase.mjs
+      - name: Add preview/game audio and encode MP4
+        shell: bash
+        run: |
+          mkdir -p artifacts/final
+          ffmpeg -y \
+            -i desktop/artifacts/showcase.webm \
+            -stream_loop 2 -i desktop/public/showcase/game.mp4 \
+            -filter_complex "[1:a]asplit=2[p][g];[p]atrim=0:6,volume=0.10,adelay=10000:all=1[pd];[g]atrim=0:10,volume=0.62,adelay=19000:all=1[gd];[pd][gd]amix=inputs=2:normalize=0[a]" \
+            -map 0:v:0 -map "[a]" -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p -c:a aac -b:a 160k -shortest \
+            artifacts/final/dance-game-showcase.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dance-game-showcase-video
+          path: remote_dance_game/artifacts/final/dance-game-showcase.mp4
           if-no-files-found: error

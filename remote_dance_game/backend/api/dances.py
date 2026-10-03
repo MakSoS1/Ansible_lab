@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 import database as db
 from config import EXPORTS_DIR, INPUT_DIR
@@ -18,6 +19,13 @@ def _safe_filename(name: str) -> str:
     base = os.path.basename(name or "video.mp4")
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._")
     return cleaned or "video.mp4"
+
+
+def _pack_extras(dance_id: str):
+    pack = load_dance_package(dance_id, load_pose=False) or {}
+    preview = pack.get("preview", {}) if isinstance(pack.get("preview"), dict) else {}
+    poster_path = preview.get("poster_path") or ""
+    return pack, bool(poster_path and os.path.exists(poster_path))
 
 
 @router.post("/uploads/video")
@@ -117,17 +125,21 @@ async def get_job_status(job_id: str):
 @router.get("/dances", response_model=List[DanceListItem])
 async def list_dances():
     dances = await db.list_dances()
-    return [
-        DanceListItem(
+    result = []
+    for d in dances:
+        pack, has_poster = _pack_extras(d["dance_id"])
+        result.append(DanceListItem(
             dance_id=d["dance_id"],
             title=d["title"],
             duration_ms=d.get("duration_ms", 0),
             difficulty=d.get("difficulty", "medium"),
             created_at=d["created_at"],
             has_video=bool((d.get("video_path") or "") and os.path.exists(d.get("video_path") or "")),
-        )
-        for d in dances
-    ]
+            has_poster=has_poster,
+            preview_mode=d.get("preview_mode", pack.get("preview_mode", "local_video")),
+            theme=pack.get("theme", {}) if isinstance(pack.get("theme"), dict) else {},
+        ))
+    return result
 
 
 @router.get("/dances/{dance_id}", response_model=DanceDetailResponse)
@@ -135,6 +147,7 @@ async def get_dance(dance_id: str):
     d = await db.get_dance(dance_id)
     if not d:
         raise HTTPException(status_code=404, detail="Dance not found")
+    pack, has_poster = _pack_extras(dance_id)
     return DanceDetailResponse(
         dance_id=d["dance_id"],
         title=d["title"],
@@ -149,7 +162,20 @@ async def get_dance(dance_id: str):
         num_events=d.get("num_events", 0),
         video_path=d.get("video_path"),
         audio_path=d.get("audio_path"),
+        has_poster=has_poster,
+        theme=pack.get("theme", {}) if isinstance(pack.get("theme"), dict) else {},
     )
+
+
+@router.get("/dances/{dance_id}/poster")
+async def get_dance_poster(dance_id: str):
+    pack = load_dance_package(dance_id, load_pose=False)
+    if not pack:
+        raise HTTPException(status_code=404, detail="Dance not found")
+    poster_path = (pack.get("preview") or {}).get("poster_path", "")
+    if not poster_path or not os.path.exists(poster_path):
+        raise HTTPException(status_code=404, detail="Poster not found")
+    return FileResponse(poster_path, media_type="image/jpeg")
 
 
 @router.get("/dances/{dance_id}/playback")
@@ -167,6 +193,7 @@ async def get_playback(dance_id: str):
         "beat_ms": timing.get("beat_ms", []),
         "strong_beat_ms": timing.get("strong_beat_ms", []),
         "events": events[:200],
+        "theme": pack.get("theme", {}),
     }
 
 
@@ -209,6 +236,7 @@ async def import_dance(file: UploadFile = File(...)):
                 "duration_ms": pack.get("duration_ms", 0),
                 "difficulty": pack.get("difficulty", "medium"),
                 "mirror_mode": pack.get("mirror_mode", True),
+                "preview_mode": pack.get("preview_mode", "local_video"),
                 "created_at": pack.get("created_at", now),
                 "num_frames": pack.get("num_frames", 0),
                 "num_events": pack.get("num_events", 0),
