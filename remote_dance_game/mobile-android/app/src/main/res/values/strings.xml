@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dance Coach Mobile</string>
+    <string name="connect_url_hint">http://PC-IP:8000/mobile?session=...</string>
+    <string name="connect_button">Connect To Session</string>
+    <string name="status_idle">Insert session URL from desktop QR and press Connect.</string>
+    <string name="status_need_camera">Camera permission is required for tracking.</string>
+    <string name="status_invalid_url">Invalid URL. Need /mobile?session=...</string>
+    <string name="status_missing_session">Session id was not found in URL.</string>
+    <string name="status_loading">Opening local tracker for session %1$s on %2$s</string>
+</resources>

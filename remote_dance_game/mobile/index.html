@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Dance Coach - Phone Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <div id="status-bar">
+            <div id="connection-status" class="status-item">
+                <span class="dot red" id="conn-dot"></span>
+                <span id="conn-text">Connecting...</span>
+            </div>
+            <div id="tracking-status" class="status-item">
+                <span class="dot red" id="track-dot"></span>
+                <span id="track-text">No tracking</span>
+            </div>
+            <div id="latency-display" class="status-item">
+                <span id="latency-text">--ms</span>
+            </div>
+        </div>
+
+        <div id="camera-container">
+            <video id="camera-preview" autoplay playsinline muted></video>
+            <canvas id="skeleton-overlay"></canvas>
+        </div>
+
+        <div id="feedback-overlay">
+            <div id="grade-display" class="hidden"></div>
+            <div id="score-display" class="hidden"></div>
+            <div id="combo-display" class="hidden"></div>
+            <div id="hold-indicator" class="hidden">HOLD!</div>
+            <div id="yeah-indicator" class="hidden">YEAH!</div>
+        </div>
+
+        <div id="calibration-panel" class="hidden">
+            <h3>Calibration</h3>
+            <div id="calibration-checks"></div>
+            <div id="calibration-message"></div>
+        </div>
+
+        <div id="hint-text" class="hidden"></div>
+
+        <div id="start-panel">
+            <button id="start-btn" disabled>Waiting for game...</button>
+        </div>
+    </div>
+
+    <script src="app.js?v=20260522-browserfix"></script>
+</body>
+</html>
