@@ -1,0 +1,82 @@
+name: MoveVerse V3 HQ Pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Number of coaches to build
+        required: false
+        default: '1'
+  push:
+    paths:
+      - 'tools/moveverse_3d_v3/**'
+      - '.github/workflows/moveverse-v3-hq.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      LIMIT: ${{ github.event.inputs.limit || '1' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MakeHuman headless core
+        run: |
+          git clone --depth 1 https://github.com/vidya-hub/makehuman-core.git /tmp/makehuman-core
+          python -m pip install --upgrade pip
+          python -m pip install -e /tmp/makehuman-core
+
+      - name: Generate high-quality anatomical bases
+        run: |
+          mkdir -p artifacts/v3/bases
+          python tools/moveverse_3d_v3/generate_bases.py             --specs tools/moveverse_3d_v3/specs.json             --out artifacts/v3/bases             --limit "$LIMIT"
+
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+          blender --version
+
+      - name: Build unique outfits, hair, rigged garments and physics
+        run: |
+          mkdir -p artifacts/v3/final
+          blender --background --factory-startup             --python tools/moveverse_3d_v3/build_coaches_blender.py --             --specs tools/moveverse_3d_v3/specs.json             --bases artifacts/v3/bases             --out artifacts/v3/final             --limit "$LIMIT"
+
+      - name: Validate outputs
+        run: |
+          cat artifacts/v3/final/build_report.json
+          test "$(find artifacts/v3/final/glb -name '*.glb' | wc -l)" -eq "$LIMIT"
+          test "$(find artifacts/v3/final/source -name '*.blend' | wc -l)" -eq "$LIMIT"
+          test "$(find artifacts/v3/final/previews -name '*.png' | wc -l)" -ge "$((LIMIT*3))"
+          python - <<'PY'
+          import json
+          r=json.load(open('artifacts/v3/final/build_report.json'))
+          for x in r:
+              assert x['triangles_evaluated'] >= 30000, x
+              assert x['physics_objects'] >= 0
+              print(x['tag'], x['triangles_evaluated'], 'tris', x['physics_objects'], 'physics')
+          PY
+
+      - name: Package
+        run: |
+          cd artifacts/v3
+          zip -r -9 moveverse_v3_hq.zip final >/dev/null
+          ls -lh moveverse_v3_hq.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moveverse-v3-hq-${{ env.LIMIT }}
+          path: |
+            artifacts/v3/moveverse_v3_hq.zip
+            artifacts/v3/final/build_report.json
+            artifacts/v3/final/previews/
+          retention-days: 30
