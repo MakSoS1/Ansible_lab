@@ -180,11 +180,38 @@ async def get_dance_poster(dance_id: str):
 
 @router.get("/dances/{dance_id}/playback")
 async def get_playback(dance_id: str):
-    pack = load_dance_package(dance_id, load_pose=False)
+    # Gameplay gets a sparse pose timeline for the TV-style "next moves" rail.
+    # It is sampled aggressively so the response stays small; scoring still uses
+    # the full reference timeline inside the server-side scoring engine.
+    pack = load_dance_package(dance_id, load_pose=True)
     if not pack:
         raise HTTPException(status_code=404, detail="Dance not found")
     timing = pack.get("timing", {})
     events = pack.get("events", {}).get("events", [])
+    pose_frames = (pack.get("reference_pose") or {}).get("frames", [])
+    preview_indices = {0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32}
+    move_previews = []
+    last_preview_ms = -10_000
+    for frame in pose_frames:
+        t_ms = int(frame.get("t_ms", 0) or 0)
+        if t_ms - last_preview_ms < 850:
+            continue
+        source = frame.get("landmarks", []) or []
+        compact = []
+        for idx in range(33):
+            if idx in preview_indices and idx < len(source):
+                lm = source[idx] or {}
+                compact.append({
+                    "x": round(float(lm.get("x", 0.0)), 4),
+                    "y": round(float(lm.get("y", 0.0)), 4),
+                    "v": round(float(lm.get("v", 0.0)), 3),
+                })
+            else:
+                compact.append({"x": 0.0, "y": 0.0, "v": 0.0})
+        move_previews.append({"t_ms": t_ms, "landmarks": compact})
+        last_preview_ms = t_ms
+        if len(move_previews) >= 480:
+            break
     return {
         "dance_id": dance_id,
         "duration_ms": int(pack.get("duration_ms", 0) or 0),
@@ -194,6 +221,7 @@ async def get_playback(dance_id: str):
         "strong_beat_ms": timing.get("strong_beat_ms", []),
         "events": events[:200],
         "theme": pack.get("theme", {}),
+        "move_previews": move_previews,
     }
 
 
