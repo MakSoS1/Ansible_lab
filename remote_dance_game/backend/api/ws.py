@@ -324,10 +324,16 @@ async def _handle_player_pose(session: Dict[str, Any], pose_msg: Dict[str, Any])
                 player["ready"] = tracking_score >= 0.55
 
         active = [p for p in session["players"].values() if int(time.time() * 1000) - int(p.get("last_seen_ms", 0)) < 1200]
-        if active and all(bool(p.get("ready", False)) for p in active):
-            session["calibrated"] = True
-            session["state"] = "calibrated"
-            await db.update_session(session["session_id"], status="calibrated")
+        all_ready = bool(active) and all(bool(p.get("ready", False)) for p in active)
+        previous_calibrated = bool(session.get("calibrated", False))
+        session["calibrated"] = all_ready
+        if session.get("state") != "playing":
+            session["state"] = "calibrated" if all_ready else "calibrating"
+        if previous_calibrated != all_ready:
+            await db.update_session(
+                session["session_id"],
+                status="calibrated" if all_ready else "calibrating",
+            )
 
     if is_new:
         await _broadcast_players(session)
