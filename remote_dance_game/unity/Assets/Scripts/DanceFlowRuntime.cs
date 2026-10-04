@@ -29,7 +29,7 @@ namespace DanceFlow.UnityClient
     [Serializable] public class PoseTimelineFrame { public int t_ms; public Landmark[] landmarks; }
     [Serializable] public class PoseTimeline { public string dance_id; public int fps; public int duration_ms; public string space; public PoseTimelineFrame[] frames; }
     [Serializable] public class MotionHint { public int joint; public float dx; public float dy; public float magnitude; }
-    [Serializable] public class MovePreview { public int t_ms; public int move_index; public int cue_index; public float motion; public Landmark[] landmarks; public MotionHint[] motion_hints; }
+    [Serializable] public class MovePreview { public int t_ms; public int move_index; public int cue_index; public float motion; public Landmark[] start_landmarks; public Landmark[] landmarks; public MotionHint[] motion_hints; }
     [Serializable] public class CoachCueTrack { public int coach_index; public MovePreview[] cues; }
     [Serializable] public class CoachInfo { public int coach_index; public string label; public string preview_path; public float coverage; public float avg_x; }
     [Serializable] public class PlaybackData
@@ -320,6 +320,7 @@ namespace DanceFlow.UnityClient
             {24,26},{26,28}
         };
         private Landmark[] pose = Array.Empty<Landmark>();
+        private Landmark[] ghostPose = Array.Empty<Landmark>();
         private MotionHint[] motionHints = Array.Empty<MotionHint>();
         private bool primary;
         private Color32 tint = new Color32(255, 64, 226, 255);
@@ -336,7 +337,19 @@ namespace DanceFlow.UnityClient
 
         public void SetPose(Landmark[] value, bool isPrimary, Color32 tintColor, MotionHint[] hints)
         {
+            ghostPose = Array.Empty<Landmark>();
             pose = value ?? Array.Empty<Landmark>();
+            motionHints = hints ?? Array.Empty<MotionHint>();
+            primary = isPrimary;
+            tint = tintColor;
+            color = Color.white;
+            SetVerticesDirty();
+        }
+
+        public void SetMotionPreview(Landmark[] startPose, Landmark[] targetPose, bool isPrimary, Color32 tintColor, MotionHint[] hints)
+        {
+            ghostPose = startPose ?? Array.Empty<Landmark>();
+            pose = targetPose ?? Array.Empty<Landmark>();
             motionHints = hints ?? Array.Empty<MotionHint>();
             primary = isPrimary;
             tint = tintColor;
@@ -359,6 +372,17 @@ namespace DanceFlow.UnityClient
                 minX = Mathf.Min(minX, lm.x); maxX = Mathf.Max(maxX, lm.x);
                 minY = Mathf.Min(minY, lm.y); maxY = Mathf.Max(maxY, lm.y);
             }
+            if (ghostPose != null && ghostPose.Length >= 29)
+            {
+                foreach (int idx in joints)
+                {
+                    if (idx >= ghostPose.Length) continue;
+                    Landmark lm = ghostPose[idx];
+                    if (lm == null || lm.v < 0.10f) continue;
+                    minX = Mathf.Min(minX, lm.x); maxX = Mathf.Max(maxX, lm.x);
+                    minY = Mathf.Min(minY, lm.y); maxY = Mathf.Max(maxY, lm.y);
+                }
+            }
             if (maxX <= minX || maxY <= minY) return;
 
             Rect rect = rectTransform.rect;
@@ -367,13 +391,14 @@ namespace DanceFlow.UnityClient
                                     (rect.height - pad * 2f) / Mathf.Max(maxY - minY, 0.001f));
             Vector2 center = rect.center;
 
-            Vector2 Map(int idx)
+            Vector2 MapFrom(Landmark[] source, int idx)
             {
-                Landmark lm = pose[idx];
+                Landmark lm = source[idx];
                 float x = (lm.x - (minX + maxX) * 0.5f) * scale;
                 float y = -(lm.y - (minY + maxY) * 0.5f) * scale;
                 return center + new Vector2(x, y);
             }
+            Vector2 Map(int idx) { return MapFrom(pose, idx); }
 
             float lineWidth = primary ? 8.5f : 7f;
             Color32 outer = new Color32(tint.r, tint.g, tint.b, (byte)(primary ? 245 : 220));
@@ -381,6 +406,17 @@ namespace DanceFlow.UnityClient
             Color32 inner = new Color32(255,255,255,(byte)(primary ? 255 : 235));
 
             int boneCount = Bones.GetLength(0);
+            if (ghostPose != null && ghostPose.Length >= 29)
+            {
+                Color32 ghost = new Color32(tint.r, tint.g, tint.b, 64);
+                for (int i = 0; i < boneCount; i++)
+                {
+                    int a = Bones[i,0], b = Bones[i,1];
+                    if (ghostPose[a] == null || ghostPose[b] == null || Mathf.Min(ghostPose[a].v, ghostPose[b].v) < 0.10f) continue;
+                    AddLine(vh, MapFrom(ghostPose, a), MapFrom(ghostPose, b), primary ? 5.5f : 4.5f, ghost);
+                }
+            }
+
             for (int i = 0; i < boneCount; i++)
             {
                 int a = Bones[i,0], b = Bones[i,1];
@@ -413,13 +449,21 @@ namespace DanceFlow.UnityClient
                     if (lm == null || lm.v < 0.10f) continue;
 
                     Vector2 end = Map(hint.joint);
-                    Vector2 delta = new Vector2(hint.dx, -hint.dy) * scale;
-                    float maxLen = Mathf.Min(rect.width, rect.height) * .34f;
-                    if (delta.magnitude > maxLen) delta = delta.normalized * maxLen;
-                    if (delta.magnitude < 14f) continue;
-
-                    Vector2 start = end - delta;
-                    AddArrow(vh, start, end, primary ? 5.5f : 4.5f, outer);
+                    Vector2 start;
+                    if (ghostPose != null && ghostPose.Length > hint.joint && ghostPose[hint.joint] != null && ghostPose[hint.joint].v >= 0.10f)
+                    {
+                        start = MapFrom(ghostPose, hint.joint);
+                    }
+                    else
+                    {
+                        Vector2 delta = new Vector2(hint.dx, -hint.dy) * scale;
+                        float maxLen = Mathf.Min(rect.width, rect.height) * .34f;
+                        if (delta.magnitude > maxLen) delta = delta.normalized * maxLen;
+                        if (delta.magnitude < 14f) continue;
+                        start = end - delta;
+                    }
+                    if ((end - start).magnitude < 14f) continue;
+                    AddArrow(vh, start, end, primary ? 6.5f : 5f, outer);
                 }
             }
         }
@@ -494,7 +538,7 @@ namespace DanceFlow.UnityClient
         }
         public void ShowLibrary() { NewScreen<LibraryScreen>("LibraryScreen").Initialize(this); }
         public void ShowConnect(DanceListItem dance) { SelectedDance = dance; NewScreen<ConnectScreen>("ConnectScreen").Initialize(this, dance); }
-        public void ShowCoachSelect(GameSession session, PlayerStatus[] players) { CurrentSession = session; NewScreen<CoachSelectScreen>("CoachSelectScreen").Initialize(this, SelectedDance, session, players); }
+        public void ShowCoachSelect(GameSession session, PlayerStatus[] players, int coachCount) { CurrentSession = session; NewScreen<CoachSelectScreen>("CoachSelectScreen").Initialize(this, SelectedDance, session, players, coachCount); }
         public void ShowGameplay(GameSession session) { CurrentSession = session; NewScreen<GameplayScreen>("GameplayScreen").Initialize(this, SelectedDance, session); }
     }
 
@@ -647,7 +691,7 @@ namespace DanceFlow.UnityClient
             if (players.Length == 0)
                 players = new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, ready = true, active = true } };
             int coachCount = lastStatus != null ? Mathf.Max(1, lastStatus.coach_count) : Mathf.Max(1, dance.coach_count);
-            if (coachCount > 1 || players.Length > 1) app.ShowCoachSelect(session, players);
+            if (coachCount > 1 || players.Length > 1) app.ShowCoachSelect(session, players, coachCount);
             else app.ShowGameplay(session);
         }
         private void Back() { app.ShowLibrary(); }
@@ -668,6 +712,7 @@ namespace DanceFlow.UnityClient
         private readonly List<Text> cardLabels = new List<Text>();
         private int playerCursor;
         private int selectedCoach;
+        private int coachCount = 1;
         private bool committing;
 
         private static Color32 SlotColor(int slot)
@@ -692,11 +737,12 @@ namespace DanceFlow.UnityClient
             return colors[Mathf.Abs(coachIndex) % colors.Length];
         }
 
-        public void Initialize(DanceFlowApp value, DanceListItem selectedDance, GameSession currentSession, PlayerStatus[] detectedPlayers)
+        public void Initialize(DanceFlowApp value, DanceListItem selectedDance, GameSession currentSession, PlayerStatus[] detectedPlayers, int detectedCoachCount)
         {
             app = value;
             dance = selectedDance;
             session = currentSession;
+            coachCount = Mathf.Clamp(Mathf.Max(1, detectedCoachCount), 1, 4);
             players = detectedPlayers != null && detectedPlayers.Length > 0
                 ? detectedPlayers.OrderBy(p => p.slot).ToArray()
                 : new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, ready = true, active = true } };
@@ -721,13 +767,13 @@ namespace DanceFlow.UnityClient
             playerLabel = RuntimeUi.Label(canvas.transform, "Player", "", 42, TextAnchor.MiddleCenter, RuntimeUi.Cyan,
                 new Vector2(.25f,1), new Vector2(.75f,1), new Vector2(0,-300), new Vector2(0,-220));
 
-            int coachCount = Mathf.Clamp(Mathf.Max(1, dance.coach_count), 1, 4);
-            float cardWidth = coachCount == 1 ? 840f : coachCount == 2 ? 730f : coachCount == 3 ? 610f : 520f;
+            int visibleCoachCount = coachCount;
+            float cardWidth = visibleCoachCount == 1 ? 840f : visibleCoachCount == 2 ? 730f : visibleCoachCount == 3 ? 610f : 520f;
             float gap = 55f;
-            float total = coachCount * cardWidth + (coachCount - 1) * gap;
+            float total = visibleCoachCount * cardWidth + (visibleCoachCount - 1) * gap;
             float left = -total * .5f;
 
-            for (int i = 0; i < coachCount; i++)
+            for (int i = 0; i < visibleCoachCount; i++)
             {
                 float x0 = left + i * (cardWidth + gap);
                 RawImage card = RuntimeUi.Panel(canvas.transform, "CoachCard" + i, new Color(0.08f,0.03f,0.16f,.92f),
@@ -824,6 +870,7 @@ namespace DanceFlow.UnityClient
         private sealed class PlayerHud
         {
             public GameObject root;
+            public RectTransform rect;
             public PosePreviewGraphic mirror;
             public Text playerLabel;
             public Text grade;
@@ -933,33 +980,32 @@ namespace DanceFlow.UnityClient
 
         private void BuildPlayerCards(Canvas canvas)
         {
-            const float cardWidth = 570f;
-            const float gap = 22f;
-            const float startX = 1400f;
-
+            const float cardWidth = 420f;
             for (int i = 0; i < playerHuds.Length; i++)
             {
-                float x0 = startX + i * (cardWidth + gap);
-                RawImage panel = RuntimeUi.Panel(canvas.transform, "PlayerHud" + i, new Color(0.025f,0.018f,0.09f,.78f),
-                    new Vector2(0,1), new Vector2(0,1), new Vector2(x0,-205), new Vector2(x0 + cardWidth,-45));
+                RawImage panel = RuntimeUi.Panel(canvas.transform, "PlayerHud" + i, new Color(0.025f,0.018f,0.09f,.66f),
+                    new Vector2(0,1), new Vector2(0,1), new Vector2(0,-178), new Vector2(cardWidth,-38));
                 panel.gameObject.SetActive(false);
 
+                RuntimeUi.Panel(panel.transform, "Accent", SlotColor(i), new Vector2(0,0), new Vector2(0,1),
+                    new Vector2(0,0), new Vector2(7,0));
                 RectTransform mirrorRect = RuntimeUi.Rect(panel.transform, "LiveMirror", Vector2.zero, Vector2.zero,
-                    new Vector2(12,12), new Vector2(155,148));
+                    new Vector2(13,13), new Vector2(120,127));
                 PosePreviewGraphic mirror = mirrorRect.gameObject.AddComponent<PosePreviewGraphic>();
                 mirror.raycastTarget = false;
 
-                Text playerLabel = RuntimeUi.Label(panel.transform, "Player", "P" + (i + 1), 24, TextAnchor.UpperLeft,
-                    RuntimeUi.White, Vector2.zero, Vector2.one, new Vector2(172,-2), new Vector2(-12,-12));
-                Text grade = RuntimeUi.Label(panel.transform, "Grade", "", 45, TextAnchor.MiddleLeft,
-                    RuntimeUi.Cyan, Vector2.zero, Vector2.one, new Vector2(172,45), new Vector2(-12,-46));
-                Text score = RuntimeUi.Label(panel.transform, "Score", "0", 31, TextAnchor.LowerLeft,
-                    RuntimeUi.White, Vector2.zero, Vector2.one, new Vector2(172,10), new Vector2(-190,-10));
-                Text combo = RuntimeUi.Label(panel.transform, "Combo", "COMBO 0", 23, TextAnchor.LowerRight,
-                    new Color(.93f,.90f,1,1), Vector2.zero, Vector2.one, new Vector2(325,10), new Vector2(-14,-10));
+                Text playerLabel = RuntimeUi.Label(panel.transform, "Player", "P" + (i + 1), 22, TextAnchor.UpperLeft,
+                    RuntimeUi.White, Vector2.zero, Vector2.one, new Vector2(140,-4), new Vector2(-10,-12));
+                Text grade = RuntimeUi.Label(panel.transform, "Grade", "", 36, TextAnchor.MiddleLeft,
+                    RuntimeUi.Cyan, Vector2.zero, Vector2.one, new Vector2(140,33), new Vector2(-10,-43));
+                Text score = RuntimeUi.Label(panel.transform, "Score", "0", 28, TextAnchor.LowerLeft,
+                    RuntimeUi.White, Vector2.zero, Vector2.one, new Vector2(140,9), new Vector2(-150,-8));
+                Text combo = RuntimeUi.Label(panel.transform, "Combo", "", 20, TextAnchor.LowerRight,
+                    new Color(.93f,.90f,1,1), Vector2.zero, Vector2.one, new Vector2(250,9), new Vector2(-12,-8));
 
                 playerHuds[i] = new PlayerHud {
                     root = panel.gameObject,
+                    rect = panel.rectTransform,
                     mirror = mirror,
                     playerLabel = playerLabel,
                     grade = grade,
@@ -972,25 +1018,44 @@ namespace DanceFlow.UnityClient
             }
         }
 
+        private void LayoutPlayerCards(int activeCount)
+        {
+            activeCount = Mathf.Clamp(activeCount, 1, playerHuds.Length);
+            const float cardWidth = 420f;
+            const float gap = 18f;
+            const float centerX = 2120f;
+            float total = activeCount * cardWidth + (activeCount - 1) * gap;
+            float left = centerX - total * .5f;
+            int visibleIndex = 0;
+            foreach (PlayerHud hud in playerHuds)
+            {
+                if (hud == null || !hud.root.activeSelf) continue;
+                float x0 = left + visibleIndex * (cardWidth + gap);
+                hud.rect.offsetMin = new Vector2(x0, -178);
+                hud.rect.offsetMax = new Vector2(x0 + cardWidth, -38);
+                visibleIndex++;
+            }
+        }
+
         private void BuildCueStrip(Canvas canvas)
         {
-            // Just Dance-style pictograms: one readable upcoming pose per active
-            // coach/player, small and bottom-right. No three-card stack.
+            // Match the reference game: compact, color-coded pictograms live on
+            // the bottom-right edge. They are not permanently visible.
             for (int i = 0; i < cueGraphics.Length; i++)
             {
-                float right = -55f - i * 185f;
-                RawImage cueRoot = RuntimeUi.Panel(canvas.transform, "Cue" + i, new Color(0.01f,0.01f,0.03f,.18f),
-                    new Vector2(1,0), new Vector2(1,0), new Vector2(right - 165,55), new Vector2(right,260));
+                float right = -50f - i * 178f;
+                RawImage cueRoot = RuntimeUi.Panel(canvas.transform, "Cue" + i, new Color(0.01f,0.01f,0.03f,.10f),
+                    new Vector2(1,0), new Vector2(1,0), new Vector2(right - 158,48), new Vector2(right,238));
                 cueRoot.gameObject.SetActive(false);
 
                 RectTransform glyphRect = RuntimeUi.Rect(cueRoot.transform, "Glyph", Vector2.zero, Vector2.one,
-                    new Vector2(8,22), new Vector2(-8,-14));
+                    new Vector2(4,18), new Vector2(-4,-10));
                 PosePreviewGraphic glyph = glyphRect.gameObject.AddComponent<PosePreviewGraphic>();
                 glyph.raycastTarget = false;
                 cueGraphics[i] = glyph;
 
-                RawImage baseLine = RuntimeUi.Panel(cueRoot.transform, "BaseLine", new Color(1,1,1,.22f),
-                    new Vector2(.08f,0), new Vector2(.92f,0), new Vector2(0,8), new Vector2(0,14));
+                RawImage baseLine = RuntimeUi.Panel(cueRoot.transform, "BaseLine", new Color(1,1,1,.20f),
+                    new Vector2(.10f,0), new Vector2(.90f,0), new Vector2(0,7), new Vector2(0,12));
                 RawImage fill = RuntimeUi.Panel(baseLine.transform, "CueProgress", Color.white,
                     Vector2.zero, new Vector2(1,1), Vector2.zero, Vector2.zero);
                 cueProgress[i] = fill;
@@ -1047,6 +1112,7 @@ namespace DanceFlow.UnityClient
                 hud.grade.color = coachColor;
                 if (hud.mirror != null) hud.mirror.SetPose(Array.Empty<Landmark>(), true, playerColor);
             }
+            LayoutPlayerCards(source.Length);
         }
 
         private PlayerHud FindHud(SocketEnvelope message)
@@ -1073,38 +1139,51 @@ namespace DanceFlow.UnityClient
             if (playback == null || playback.coach_cues == null) return;
 
             int coachCount = Mathf.Clamp(playback.coach_count > 0 ? playback.coach_count : playback.coach_cues.Length, 1, cueGraphics.Length);
+            const int leadWindowMs = 1900;
             for (int coach = 0; coach < cueGraphics.Length; coach++)
             {
                 if (cueGraphics[coach] == null) continue;
-                bool active = coach < coachCount;
-                cueGraphics[coach].transform.parent.gameObject.SetActive(active);
-                if (!active) continue;
+                GameObject cueRoot = cueGraphics[coach].transform.parent.gameObject;
+                if (coach >= coachCount)
+                {
+                    cueRoot.SetActive(false);
+                    continue;
+                }
 
                 CoachCueTrack track = CueTrack(coach);
                 if (track == null || track.cues == null || track.cues.Length == 0)
                 {
-                    cueGraphics[coach].SetPose(Array.Empty<Landmark>(), true, CoachColor(coach));
+                    cueRoot.SetActive(false);
                     continue;
                 }
 
-                // Show the destination pose that is coming next.  The cue itself
-                // is sparse (~1 s+) and already selected from the real reference
-                // coach, so this behaves like the supplied Just Dance pictograms
-                // rather than a constantly changing pose monitor.
                 int idx = 0;
-                while (idx < track.cues.Length && track.cues[idx].t_ms <= mediaMs + 80) idx++;
-                idx = Mathf.Clamp(idx, 0, track.cues.Length - 1);
+                while (idx < track.cues.Length && track.cues[idx].t_ms <= mediaMs + 90) idx++;
+                if (idx >= track.cues.Length)
+                {
+                    cueRoot.SetActive(false);
+                    continue;
+                }
+
                 MovePreview cue = track.cues[idx];
+                int untilCue = cue.t_ms - mediaMs;
+                bool visible = untilCue >= 0 && untilCue <= leadWindowMs;
+                cueRoot.SetActive(visible);
+                if (!visible) continue;
 
                 if (lastCueIndex[coach] != idx)
                 {
                     lastCueIndex[coach] = idx;
-                    cueGraphics[coach].SetPose(cue.landmarks ?? Array.Empty<Landmark>(), true, CoachColor(coach), cue.motion_hints);
+                    cueGraphics[coach].SetMotionPreview(
+                        cue.start_landmarks ?? Array.Empty<Landmark>(),
+                        cue.landmarks ?? Array.Empty<Landmark>(),
+                        true,
+                        CoachColor(coach),
+                        cue.motion_hints
+                    );
                 }
 
-                int previousT = idx > 0 ? track.cues[idx - 1].t_ms : Mathf.Max(0, cue.t_ms - 1450);
-                float span = Mathf.Max(650, cue.t_ms - previousT);
-                float remain = Mathf.Clamp01((cue.t_ms - mediaMs) / span);
+                float remain = Mathf.Clamp01(untilCue / (float)leadWindowMs);
                 if (cueProgress[coach] != null)
                 {
                     cueProgress[coach].color = CoachColor(coach);
@@ -1203,7 +1282,7 @@ namespace DanceFlow.UnityClient
                 {
                     hud.grade.text = string.IsNullOrEmpty(message.grade) ? "" : message.grade.ToUpperInvariant();
                     hud.grade.color = message.grade == "x" ? new Color32(255,92,116,255) : coachColor;
-                    hud.gradeUntil = Time.unscaledTime + 0.62f;
+                    hud.gradeUntil = Time.unscaledTime + 0.82f;
                 }
             }
             else if (message.type == "players_changed")
