@@ -978,3 +978,24 @@ button.ref-primary { border:2px solid rgba(255,255,255,.88); }
   .ref-timeline { left:7vw; right:7vw; bottom:22px; height:54px; }
   .ref-wave { flex-basis:64px; }
 }
+
+
+/* Clean menu CTA surfaces: no decorative seam/scan lines over buttons. */
+.ref-selected-actions .ref-primary,
+.ref-selected-actions .ref-secondary {
+  border:0 !important;
+  outline:0 !important;
+  background-clip:padding-box;
+  box-shadow:0 16px 34px rgba(0,0,0,.30), 0 0 22px rgba(226,45,255,.26) !important;
+  overflow:hidden;
+}
+.ref-selected-actions .ref-primary::before,
+.ref-selected-actions .ref-primary::after,
+.ref-selected-actions .ref-secondary::before,
+.ref-selected-actions .ref-secondary::after {
+  content:none !important;
+  display:none !important;
+}
+.ref-selected-actions .ref-secondary {
+  box-shadow:0 14px 28px rgba(0,0,0,.26) !important;
+}
