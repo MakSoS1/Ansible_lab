@@ -1,0 +1,51 @@
+name: Dance Unity player
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate Unity project contracts
+        working-directory: remote_dance_game
+        run: python -m pytest -q tests/unity_project_smoke.py
+
+  build-windows:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Unity activation secrets
+        shell: bash
+        env:
+          UNITY_LICENSE: \${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: \${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: \${{ secrets.UNITY_PASSWORD }}
+        run: |
+          test -n "$UNITY_LICENSE" || (echo "Add UNITY_LICENSE, UNITY_EMAIL and UNITY_PASSWORD repository secrets before running a Unity player build." && exit 1)
+          test -n "$UNITY_EMAIL"
+          test -n "$UNITY_PASSWORD"
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: \${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: \${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: \${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: remote_dance_game/unity
+          unityVersion: 6000.3.0f1
+          targetPlatform: StandaloneWindows64
+          buildName: DanceFlow
+          buildsPath: build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DanceFlow-Windows
+          path: build/StandaloneWindows64
+          if-no-files-found: error
