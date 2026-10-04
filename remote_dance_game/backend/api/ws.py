@@ -306,6 +306,9 @@ async def _handle_player_pose(session: Dict[str, Any], pose_msg: Dict[str, Any])
         engine = _engine_for_player(session, player_id)
         engine.add_pose_frame(_pose_payload(pose_msg, session))
     else:
+        if is_new:
+            session["calibrated"] = False
+            session["state"] = "calibrating"
         buffers = session["calibration_frames"].setdefault(player_id, [])
         landmarks = pose_msg.get("landmarks", [])
         if landmarks:
