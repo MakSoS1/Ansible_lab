@@ -77,9 +77,15 @@ export default function Showcase() {
     <video src="/showcase/game.webm" className="ref-game-video" autoPlay muted loop playsInline/>
     <div className="ref-game-vignette"/>
     <section className="ref-song-panel"><div className="ref-song-cover"><img src="/showcase/poster.jpg"/></div><div className="ref-song-copy"><h1>Night Move</h1><p>DANCEFLOW CREW <i>│</i> POP <i>│</i> 2026</p><div className="ref-song-progress"><b style={{width:`${progress}%`}}/><em/></div></div><div className="ref-song-time">1:28 / 3:12</div></section>
-    <section className="ref-score-panel"><div className="ref-score-copy"><span>♕ SCORE</span><strong>{score.toLocaleString()}</strong></div><div className="ref-stars">{[0,1,2,3,4].map(i=><b key={i} className={i<4?'earned':''}>★</b>)}</div><div className="ref-combo"><span>COMBO</span><strong>{combo}</strong></div></section>
-    <aside className="ref-next-moves">{[0,1,2].map(i=><div key={i} className={`ref-move-card ${i===0?'active':''}`}><PoseGlyph active={i===0} variant={moveNo+i}/></div>)}<span>NEXT<br/>MOVES</span></aside>
-    <div key={moveNo} className={`ref-grade ${gradeClass(grade)}`}><span>♕</span><strong>{grade}</strong><em>MOVE {moveNo+1}</em></div>
+    <section className="showcase-player-huds">
+      {[0,1].map((player)=><div key={player} className={`showcase-player-card player-${player}`}>
+        <div className="showcase-live-mirror"><PoseGlyph active variant={moveNo+player}/></div>
+        <div className="showcase-player-copy"><span>P{player+1} · COACH {player+1}</span><b key={`${moveNo}-${player}`}>{player===0 ? grade : ['PERFECT','GOOD','SUPER'][moveNo%3]}</b><small>{(score-player*4200).toLocaleString()} · COMBO {Math.max(1,combo-player*2)}</small></div>
+      </div>)}
+    </section>
+    <aside className="showcase-cues">
+      {[0,1].map((player)=><div key={player} className={`showcase-cue player-${player}`}><PoseGlyph active variant={moveNo+player+2}/><i><b style={{width:`${25+((moveNo*23+player*17)%70)}%`}}/></i></div>)}
+    </aside>
     <section className="ref-timeline"><div className="ref-wave">{Array.from({length:13},(_,i)=><i key={i} style={{height:`${10+((i*13)%30)}px`}}/>)}</div><div className="ref-timeline-track"><div className="ref-timeline-fill" style={{width:`${progress}%`}}/>{[12,30,49,68,87].map((p,i)=><i key={i} className="ref-timeline-marker" style={{left:`${p}%`}}/>)}<b className="ref-timeline-cursor" style={{left:`${progress}%`}}/></div><div className="ref-wave">{Array.from({length:13},(_,i)=><i key={i} style={{height:`${10+(((12-i)*13)%30)}px`}}/>)}</div></section>
   </main>
 }
