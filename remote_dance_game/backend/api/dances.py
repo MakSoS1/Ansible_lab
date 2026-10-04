@@ -218,6 +218,36 @@ async def get_playback(dance_id: str):
                 compact.append({"x": 0.0, "y": 0.0, "v": 0.0})
         return compact
 
+    def motion_hints(frames, idx):
+        if not frames or idx < 0 or idx >= len(frames):
+            return []
+        target_t = int(frames[idx].get("t_ms", 0))
+        prev_idx = idx
+        while prev_idx > 0 and target_t - int(frames[prev_idx].get("t_ms", 0)) < 320:
+            prev_idx -= 1
+        current = frames[idx].get("landmarks", []) or []
+        previous = frames[prev_idx].get("landmarks", []) or []
+        hints = []
+        for joint in (15, 16, 27, 28):
+            if joint >= len(current) or joint >= len(previous):
+                continue
+            a = previous[joint] or {}
+            b = current[joint] or {}
+            if min(float(a.get("v", 0.0)), float(b.get("v", 0.0))) < 0.22:
+                continue
+            dx = float(b.get("x", 0.0)) - float(a.get("x", 0.0))
+            dy = float(b.get("y", 0.0)) - float(a.get("y", 0.0))
+            mag = (dx * dx + dy * dy) ** 0.5
+            if mag < 0.035:
+                continue
+            hints.append({
+                "joint": joint,
+                "dx": round(dx, 4),
+                "dy": round(dy, 4),
+                "magnitude": round(min(mag, 0.45), 4),
+            })
+        return hints
+
     coach_cues = []
     for coach_index, track in enumerate(tracks[:4]):
         frames = track.get("frames") or []
@@ -231,6 +261,7 @@ async def get_playback(dance_id: str):
                 "cue_index": int(marker.get("cue_index", len(cues))),
                 "motion": float(marker.get("motion", 0.0)),
                 "landmarks": compact_pose(frames[idx].get("landmarks", []) or []),
+                "motion_hints": motion_hints(frames, idx),
             })
         coach_cues.append({
             "coach_index": coach_index,
