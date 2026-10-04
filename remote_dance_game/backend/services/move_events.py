@@ -158,57 +158,148 @@ def _pose_novelty(a: Dict[str, Any], b: Dict[str, Any]) -> float:
     return sum(vals) / max(len(vals), 1)
 
 
+def _pose_extent(frame: Dict[str, Any]) -> float:
+    lm = frame.get("landmarks") or []
+    if len(lm) < 29:
+        return 0.0
+    points = []
+    for idx in (15, 16, 27, 28):
+        if idx < len(lm) and float(lm[idx].get("v", 0.0)) >= 0.25:
+            points.append((float(lm[idx].get("x", 0.0)), float(lm[idx].get("y", 0.0))))
+    if len(points) < 2:
+        return 0.0
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return (max(xs) - min(xs)) + (max(ys) - min(ys))
+
+
+def _destination_keyframe(
+    frames: List[Dict[str, Any]],
+    motion: List[float],
+    seed_index: int,
+    previous_keyframe: Dict[str, Any] | None,
+) -> int:
+    """Choose the readable destination pose after a motion burst.
+
+    Just Dance pictograms usually communicate where the body is going, not the
+    instant of maximum velocity.  Search roughly 0.15-0.55 s after a motion
+    peak and favour poses that are distinctive, extended and already settling.
+    """
+    if not frames:
+        return 0
+
+    seed_t = int(frames[seed_index].get("t_ms", 0))
+    candidate_indices = []
+    for i in range(seed_index, len(frames)):
+        dt = int(frames[i].get("t_ms", 0)) - seed_t
+        if dt < 140:
+            continue
+        if dt > 560:
+            break
+        candidate_indices.append(i)
+
+    if not candidate_indices:
+        return seed_index
+
+    local_motion = [motion[i] for i in candidate_indices]
+    max_motion = max(local_motion) if local_motion else 1.0
+    max_extent = max((_pose_extent(frames[i]) for i in candidate_indices), default=1.0)
+
+    best_idx = candidate_indices[0]
+    best_score = -1e9
+    anchor = previous_keyframe if previous_keyframe is not None else frames[max(0, seed_index - 8)]
+    for i in candidate_indices:
+        frame = frames[i]
+        novelty = _pose_novelty(anchor, frame)
+        settle = 1.0 - min(1.0, motion[i] / max(max_motion, 1e-6))
+        extent = _pose_extent(frame) / max(max_extent, 1e-6)
+        dt = int(frame.get("t_ms", 0)) - seed_t
+        # Slight preference for ~300 ms after the velocity peak.
+        temporal = max(0.0, 1.0 - abs(dt - 310) / 360.0)
+        score = novelty * 1.55 + settle * 0.52 + extent * 0.36 + temporal * 0.18
+        if score > best_score:
+            best_score = score
+            best_idx = i
+    return best_idx
+
+
 def build_pictogram_markers(
     frames: List[Dict[str, Any]],
     timing: Dict[str, Any],
-    min_gap_ms: int = 950,
-    max_gap_ms: int = 1750,
+    min_gap_ms: int = 900,
+    max_gap_ms: int = 1800,
 ) -> List[Dict[str, Any]]:
-    """Sparse, readable Just-Dance-style pictogram cues.
+    """Sparse Just-Dance-style visual instructions.
 
-    Scoring remains dense (~0.3-0.65 s), but the visual cue rail should not.
-    This selects distinctive key poses roughly once per second or slower and
-    only falls back to a quiet-section cue when the gap becomes too long.
+    Scoring can remain dense, but pictograms must be slower and legible.  Each
+    cue is based on a real reference dancer and depicts a destination key pose
+    after a motion burst rather than the raw maximum-velocity frame.
     """
     if not frames:
         return []
 
-    dense = build_move_markers(frames, timing)
-    if not dense:
-        return []
+    motion = [0.0]
+    for i in range(1, len(frames)):
+        motion.append(_frame_motion(frames[i - 1], frames[i]))
 
-    candidates = [m for m in dense if m.get("kind") == "motion_peak"]
-    if len(candidates) < 3:
-        candidates = dense
+    sorted_motion = sorted(motion)
+    threshold = sorted_motion[int((len(sorted_motion) - 1) * 0.58)] if sorted_motion else 0.0
 
+    seeds: List[int] = []
+    for i in range(2, max(2, len(frames) - 2)):
+        value = motion[i]
+        if value < max(0.0028, threshold):
+            continue
+        local = motion[max(0, i - 2): min(len(motion), i + 3)]
+        if value >= max(local):
+            seeds.append(i)
+
+    # If pose motion is subtle, strong musical beats keep the cue rail useful.
+    if len(seeds) < 3:
+        for beat in timing.get("strong_beat_ms") or timing.get("beat_ms") or []:
+            seeds.append(_nearest_frame_index(frames, int(beat)))
+
+    seeds = sorted(set(seeds))
     selected: List[Dict[str, Any]] = []
-    last_frame = None
-    last_t = -100000
-    for marker in candidates:
-        t_ms = int(marker["t_ms"])
+    previous_frame = None
+
+    for seed_idx in seeds:
+        key_idx = _destination_keyframe(frames, motion, seed_idx, previous_frame)
+        t_ms = int(frames[key_idx].get("t_ms", 0))
         if t_ms < 450:
             continue
-        idx = int(marker["frame_index"])
-        frame = frames[idx]
-        novelty = 1.0 if last_frame is None else _pose_novelty(last_frame, frame)
-        gap = t_ms - last_t
 
-        # A key pose should either be clearly different or have enough temporal
-        # distance to be useful as a visual instruction.
-        if not selected or (
-            gap >= min_gap_ms
-            and (novelty >= 0.085 or gap >= max_gap_ms)
-        ):
-            item = dict(marker)
-            item["novelty"] = round(float(novelty), 5)
-            item["kind"] = "pictogram"
-            selected.append(item)
-            last_frame = frame
-            last_t = t_ms
+        novelty = 1.0 if previous_frame is None else _pose_novelty(previous_frame, frames[key_idx])
+        if selected:
+            gap = t_ms - int(selected[-1]["t_ms"])
+            if gap < min_gap_ms:
+                # Within the same phrase keep only the more distinctive pose.
+                if novelty > float(selected[-1].get("novelty", 0.0)) * 1.18:
+                    selected[-1] = {
+                        "t_ms": t_ms,
+                        "frame_index": key_idx,
+                        "motion": round(float(motion[seed_idx]), 5),
+                        "novelty": round(float(novelty), 5),
+                        "kind": "pictogram",
+                    }
+                    previous_frame = frames[key_idx]
+                continue
+
+        if selected and novelty < 0.055 and t_ms - int(selected[-1]["t_ms"]) < max_gap_ms:
+            continue
+
+        selected.append({
+            "t_ms": t_ms,
+            "frame_index": key_idx,
+            "motion": round(float(motion[seed_idx]), 5),
+            "novelty": round(float(novelty), 5),
+            "kind": "pictogram",
+        })
+        previous_frame = frames[key_idx]
 
     end_ms = int(frames[-1].get("t_ms", 0))
     if not selected:
-        idx = _nearest_frame_index(frames, min(900, end_ms))
+        idx = _nearest_frame_index(frames, min(1000, end_ms))
         selected.append({
             "t_ms": int(frames[idx].get("t_ms", 0)),
             "frame_index": idx,
@@ -217,31 +308,33 @@ def build_pictogram_markers(
             "kind": "pictogram",
         })
 
-    # Fill only genuinely long holes, choosing the most dynamic dense marker in
-    # the interval rather than a random interpolated pose.
-    output: List[Dict[str, Any]] = []
-    for marker in selected:
-        if output and marker["t_ms"] - output[-1]["t_ms"] > max_gap_ms:
-            left = int(output[-1]["t_ms"]) + min_gap_ms
-            right = int(marker["t_ms"]) - min_gap_ms // 2
-            between = [m for m in dense if left <= int(m["t_ms"]) <= right]
-            if between:
-                filler = max(between, key=lambda m: float(m.get("motion", 0.0)))
-                filler = dict(filler)
-                filler["kind"] = "pictogram_fill"
-                filler["novelty"] = round(_pose_novelty(
+    # Fill long gaps using the most visually different destination pose in the
+    # missing interval, never an arbitrary interpolated frame.
+    output: List[Dict[str, Any]] = [selected[0]]
+    for marker in selected[1:]:
+        while int(marker["t_ms"]) - int(output[-1]["t_ms"]) > max_gap_ms:
+            target_t = int(output[-1]["t_ms"]) + max_gap_ms
+            seed_idx = _nearest_frame_index(frames, target_t - 300)
+            key_idx = _destination_keyframe(frames, motion, seed_idx, frames[int(output[-1]["frame_index"])])
+            key_t = int(frames[key_idx].get("t_ms", target_t))
+            if key_t <= int(output[-1]["t_ms"]) + min_gap_ms * 0.65:
+                key_t = min(target_t, end_ms)
+                key_idx = _nearest_frame_index(frames, key_t)
+            output.append({
+                "t_ms": int(frames[key_idx].get("t_ms", key_t)),
+                "frame_index": key_idx,
+                "motion": round(float(motion[min(seed_idx, len(motion)-1)]), 5),
+                "novelty": round(float(_pose_novelty(
                     frames[int(output[-1]["frame_index"])],
-                    frames[int(filler["frame_index"])],
-                ), 5)
-                output.append(filler)
+                    frames[key_idx],
+                )), 5),
+                "kind": "pictogram_fill",
+            })
         output.append(marker)
 
-    # Deduplicate after fill and assign a cue index.
     deduped: List[Dict[str, Any]] = []
     for marker in sorted(output, key=lambda m: int(m["t_ms"])):
-        if deduped and int(marker["t_ms"]) - int(deduped[-1]["t_ms"]) < min_gap_ms * 0.65:
-            if float(marker.get("motion", 0.0)) > float(deduped[-1].get("motion", 0.0)):
-                deduped[-1] = marker
+        if deduped and int(marker["t_ms"]) - int(deduped[-1]["t_ms"]) < int(min_gap_ms * 0.65):
             continue
         deduped.append(marker)
 
