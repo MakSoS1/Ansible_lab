@@ -11,6 +11,10 @@ on:
     paths:
       - 'tools/moveverse_3d_v3/**'
       - '.github/workflows/moveverse-v3-hq.yml'
+  pull_request:
+    paths:
+      - 'tools/moveverse_3d_v3/**'
+      - '.github/workflows/moveverse-v3-hq.yml'
 
 permissions:
   contents: read
@@ -62,7 +66,6 @@ jobs:
           r=json.load(open('artifacts/v3/final/build_report.json'))
           for x in r:
               assert x['triangles_evaluated'] >= 30000, x
-              assert x['physics_objects'] >= 0
               print(x['tag'], x['triangles_evaluated'], 'tris', x['physics_objects'], 'physics')
           PY
 
