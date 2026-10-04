@@ -226,8 +226,8 @@ def _destination_keyframe(
 def build_pictogram_markers(
     frames: List[Dict[str, Any]],
     timing: Dict[str, Any],
-    min_gap_ms: int = 900,
-    max_gap_ms: int = 1800,
+    min_gap_ms: int = 1200,
+    max_gap_ms: int = 2400,
 ) -> List[Dict[str, Any]]:
     """Sparse Just-Dance-style visual instructions.
 
@@ -242,8 +242,10 @@ def build_pictogram_markers(
     for i in range(1, len(frames)):
         motion.append(_frame_motion(frames[i - 1], frames[i]))
 
+    # Pictograms are instructions, not a pose monitor. Prefer only the most
+    # meaningful movement bursts so the player has time to read each cue.
     sorted_motion = sorted(motion)
-    threshold = sorted_motion[int((len(sorted_motion) - 1) * 0.58)] if sorted_motion else 0.0
+    threshold = sorted_motion[int((len(sorted_motion) - 1) * 0.68)] if sorted_motion else 0.0
 
     seeds: List[int] = []
     for i in range(2, max(2, len(frames) - 2)):
@@ -254,14 +256,32 @@ def build_pictogram_markers(
         if value >= max(local):
             seeds.append(i)
 
-    # If pose motion is subtle, strong musical beats keep the cue rail useful.
-    if len(seeds) < 3:
+    # If pose motion is unusually subtle, strong musical beats are only a
+    # fallback. They must not turn the pictogram rail into a beat visualizer.
+    if len(seeds) < 2:
         for beat in timing.get("strong_beat_ms") or timing.get("beat_ms") or []:
             seeds.append(_nearest_frame_index(frames, int(beat)))
 
     seeds = sorted(set(seeds))
     selected: List[Dict[str, Any]] = []
     previous_frame = None
+
+    def movement_start_index(key_idx: int) -> int:
+        """Find the settled pose immediately before the movement shown by a cue."""
+        key_t = int(frames[key_idx].get("t_ms", 0))
+        candidates = []
+        for i in range(key_idx - 1, -1, -1):
+            dt = key_t - int(frames[i].get("t_ms", 0))
+            if dt < 260:
+                continue
+            if dt > 820:
+                break
+            candidates.append(i)
+        if not candidates:
+            return max(0, key_idx - 1)
+        # A quiet frame gives a much clearer start -> destination gesture than
+        # measuring from an arbitrary frame 320 ms earlier.
+        return min(candidates, key=lambda i: motion[i])
 
     for seed_idx in seeds:
         key_idx = _destination_keyframe(frames, motion, seed_idx, previous_frame)
@@ -278,6 +298,7 @@ def build_pictogram_markers(
                     selected[-1] = {
                         "t_ms": t_ms,
                         "frame_index": key_idx,
+                        "start_frame_index": movement_start_index(key_idx),
                         "motion": round(float(motion[seed_idx]), 5),
                         "novelty": round(float(novelty), 5),
                         "kind": "pictogram",
@@ -291,6 +312,7 @@ def build_pictogram_markers(
         selected.append({
             "t_ms": t_ms,
             "frame_index": key_idx,
+            "start_frame_index": movement_start_index(key_idx),
             "motion": round(float(motion[seed_idx]), 5),
             "novelty": round(float(novelty), 5),
             "kind": "pictogram",
@@ -303,6 +325,7 @@ def build_pictogram_markers(
         selected.append({
             "t_ms": int(frames[idx].get("t_ms", 0)),
             "frame_index": idx,
+            "start_frame_index": movement_start_index(idx),
             "motion": 0.0,
             "novelty": 0.0,
             "kind": "pictogram",
@@ -323,6 +346,7 @@ def build_pictogram_markers(
             output.append({
                 "t_ms": int(frames[key_idx].get("t_ms", key_t)),
                 "frame_index": key_idx,
+                "start_frame_index": movement_start_index(key_idx),
                 "motion": round(float(motion[min(seed_idx, len(motion)-1)]), 5),
                 "novelty": round(float(_pose_novelty(
                     frames[int(output[-1]["frame_index"])],
@@ -334,7 +358,7 @@ def build_pictogram_markers(
 
     deduped: List[Dict[str, Any]] = []
     for marker in sorted(output, key=lambda m: int(m["t_ms"])):
-        if deduped and int(marker["t_ms"]) - int(deduped[-1]["t_ms"]) < int(min_gap_ms * 0.65):
+        if deduped and int(marker["t_ms"]) - int(deduped[-1]["t_ms"]) < min_gap_ms:
             continue
         deduped.append(marker)
 
