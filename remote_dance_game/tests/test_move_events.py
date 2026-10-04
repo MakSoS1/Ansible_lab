@@ -54,6 +54,12 @@ def test_pictograms_are_sparser_than_scoring_markers():
     assert len(cues) < len(dense)
     gaps = [cues[i + 1]["t_ms"] - cues[i]["t_ms"] for i in range(len(cues) - 1)]
     if gaps:
-        assert min(gaps) >= 600
-        assert max(gaps) <= 2200
+        assert min(gaps) >= 1200
+        assert max(gaps) <= 2800
     assert all(cue["kind"].startswith("pictogram") for cue in cues)
+    assert all("start_frame_index" in cue for cue in cues)
+    for cue in cues:
+        start_idx = cue["start_frame_index"]
+        target_idx = cue["frame_index"]
+        assert 0 <= start_idx <= target_idx < len(frames)
+        assert frames[target_idx]["t_ms"] - frames[start_idx]["t_ms"] <= 900
