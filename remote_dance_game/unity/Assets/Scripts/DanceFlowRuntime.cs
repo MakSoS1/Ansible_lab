@@ -25,8 +25,20 @@ namespace DanceFlow.UnityClient
     [Serializable] public class Landmark { public float x; public float y; public float z; public float v; }
     [Serializable] public class PoseTimelineFrame { public int t_ms; public Landmark[] landmarks; }
     [Serializable] public class PoseTimeline { public string dance_id; public int fps; public int duration_ms; public string space; public PoseTimelineFrame[] frames; }
+    [Serializable] public class MovePreview { public int t_ms; public int move_index; public float motion; public Landmark[] landmarks; }
+    [Serializable] public class PlaybackData
+    {
+        public string dance_id;
+        public int duration_ms;
+        public bool mirror_mode;
+        public float tempo;
+        public int[] beat_ms;
+        public int[] strong_beat_ms;
+        public MovePreview[] move_previews;
+        public int move_count;
+    }
     [Serializable] public class GameResults { public int total_score; public int max_combo; public float accuracy_arms; public float accuracy_legs; public float accuracy_torso; }
-    [Serializable] public class SocketEnvelope { public string type; public string grade; public int timestamp_ms; public int score; public int total_score; public int combo; public float similarity; public string hold_state; public float timing_offset_ms; public bool tracking_lost; public GameResults results; }
+    [Serializable] public class SocketEnvelope { public string type; public string grade; public int timestamp_ms; public int score; public int total_score; public int combo; public float similarity; public string hold_state; public float timing_offset_ms; public bool tracking_lost; public int move_index; public int move_count; public bool is_move_grade; public GameResults results; }
     [Serializable] public class MediaClockMessage { public string action = "media_clock"; public int media_time_ms; }
     [Serializable] public class GameActionMessage { public string action; public int media_time_ms; }
 
@@ -289,6 +301,101 @@ namespace DanceFlow.UnityClient
         }
     }
 
+    public sealed class PosePreviewGraphic : MaskableGraphic
+    {
+        private static readonly int[,] Bones = new int[,]
+        {
+            {11,12},{11,13},{13,15},{12,14},{14,16},
+            {11,23},{12,24},{23,24},{23,25},{25,27},
+            {24,26},{26,28}
+        };
+        private Landmark[] pose = Array.Empty<Landmark>();
+        private bool primary;
+
+        public void SetPose(Landmark[] value, bool isPrimary)
+        {
+            pose = value ?? Array.Empty<Landmark>();
+            primary = isPrimary;
+            color = isPrimary ? new Color32(255,255,255,255) : new Color32(210,190,255,225);
+            SetVerticesDirty();
+        }
+
+        protected override void OnPopulateMesh(VertexHelper vh)
+        {
+            vh.Clear();
+            if (pose == null || pose.Length < 29) return;
+
+            List<int> joints = new List<int> { 11,12,13,14,15,16,23,24,25,26,27,28 };
+            float minX = 10f, minY = 10f, maxX = -10f, maxY = -10f;
+            foreach (int idx in joints)
+            {
+                Landmark lm = pose[idx];
+                if (lm == null || lm.v < 0.12f) continue;
+                minX = Mathf.Min(minX, lm.x); maxX = Mathf.Max(maxX, lm.x);
+                minY = Mathf.Min(minY, lm.y); maxY = Mathf.Max(maxY, lm.y);
+            }
+            if (maxX <= minX || maxY <= minY) return;
+
+            Rect rect = rectTransform.rect;
+            float pad = Mathf.Min(rect.width, rect.height) * 0.14f;
+            float scale = Mathf.Min((rect.width - pad * 2f) / Mathf.Max(maxX - minX, 0.001f),
+                                    (rect.height - pad * 2f) / Mathf.Max(maxY - minY, 0.001f));
+            Vector2 center = rect.center;
+
+            Vector2 Map(int idx)
+            {
+                Landmark lm = pose[idx];
+                float x = (lm.x - (minX + maxX) * 0.5f) * scale;
+                float y = -(lm.y - (minY + maxY) * 0.5f) * scale;
+                return center + new Vector2(x, y);
+            }
+
+            float lineWidth = primary ? 9f : 7f;
+            Color32 lineColor = primary ? new Color32(255,255,255,255) : new Color32(218,201,255,235);
+            Color32 glowColor = primary ? new Color32(255,52,229,225) : new Color32(149,90,255,170);
+
+            int boneCount = Bones.GetLength(0);
+            for (int i = 0; i < boneCount; i++)
+            {
+                int a = Bones[i,0], b = Bones[i,1];
+                if (pose[a] == null || pose[b] == null || Mathf.Min(pose[a].v, pose[b].v) < 0.12f) continue;
+                AddLine(vh, Map(a), Map(b), lineWidth + 8f, glowColor);
+                AddLine(vh, Map(a), Map(b), lineWidth, lineColor);
+            }
+
+            foreach (int idx in new[] { 15,16,27,28 })
+            {
+                if (pose[idx] == null || pose[idx].v < 0.12f) continue;
+                AddSquare(vh, Map(idx), primary ? 12f : 9f, new Color32(255,255,255,255));
+            }
+        }
+
+        private static void AddLine(VertexHelper vh, Vector2 a, Vector2 b, float width, Color32 color)
+        {
+            Vector2 dir = (b - a).normalized;
+            if (dir.sqrMagnitude < 0.0001f) return;
+            Vector2 n = new Vector2(-dir.y, dir.x) * (width * 0.5f);
+            int start = vh.currentVertCount;
+            vh.AddVert(a - n, color, Vector2.zero);
+            vh.AddVert(a + n, color, Vector2.zero);
+            vh.AddVert(b + n, color, Vector2.zero);
+            vh.AddVert(b - n, color, Vector2.zero);
+            vh.AddTriangle(start, start + 1, start + 2);
+            vh.AddTriangle(start, start + 2, start + 3);
+        }
+
+        private static void AddSquare(VertexHelper vh, Vector2 center, float radius, Color32 color)
+        {
+            int start = vh.currentVertCount;
+            vh.AddVert(center + new Vector2(-radius,-radius), color, Vector2.zero);
+            vh.AddVert(center + new Vector2(-radius, radius), color, Vector2.zero);
+            vh.AddVert(center + new Vector2( radius, radius), color, Vector2.zero);
+            vh.AddVert(center + new Vector2( radius,-radius), color, Vector2.zero);
+            vh.AddTriangle(start, start + 1, start + 2);
+            vh.AddTriangle(start, start + 2, start + 3);
+        }
+    }
+
     public sealed class DanceFlowApp : MonoBehaviour
     {
         public static DanceFlowApp Instance { get; private set; }
@@ -460,6 +567,9 @@ namespace DanceFlow.UnityClient
         private DanceFlowApp app; private DanceListItem dance; private GameSession session; private GameSocketClient socket; private VideoPlayer video;
         private RenderTexture videoTexture; private RawImage videoSurface; private Text scoreText; private Text comboText; private Text gradeText; private Text progressText; private RawImage progressFill;
         private bool started; private bool paused; private float lastClockSend; private float gradeUntil;
+        private PlaybackData playback;
+        private PosePreviewGraphic[] nextMoveGraphics = new PosePreviewGraphic[3];
+        private int nextMoveStart = -1;
 
         public void Initialize(DanceFlowApp value, DanceListItem selected, GameSession currentSession) { app = value; dance = selected; session = currentSession; BuildUi(); app.Input.Cancel += Exit; app.Input.Submit += TogglePause; _ = StartGameAsync(); }
 
@@ -489,13 +599,50 @@ namespace DanceFlow.UnityClient
             RuntimeUi.Label(score.transform, "Stars", "★ ★ ★ ★ ★", 54, TextAnchor.UpperRight, RuntimeUi.Gold, new Vector2(0.50f,0.56f), new Vector2(1,1), Vector2.zero, new Vector2(-22,-12));
 
             for (int i = 0; i < 3; i++)
-                RuntimeUi.Panel(canvas.transform, "NextMove" + i, new Color(0.12f,0.05f,0.24f,0.78f), new Vector2(1,0.5f), new Vector2(1,0.5f), new Vector2(-345, 170 - i * 295), new Vector2(-95, 420 - i * 295));
+            {
+                RawImage moveCard = RuntimeUi.Panel(canvas.transform, "NextMove" + i, new Color(0.12f,0.05f,0.24f,0.78f),
+                    new Vector2(1,0.5f), new Vector2(1,0.5f), new Vector2(-345, 170 - i * 295), new Vector2(-95, 420 - i * 295));
+                RectTransform glyphRect = RuntimeUi.Rect(moveCard.transform, "PoseGlyph", Vector2.zero, Vector2.one, new Vector2(18,18), new Vector2(-18,-18));
+                PosePreviewGraphic glyph = glyphRect.gameObject.AddComponent<PosePreviewGraphic>();
+                glyph.raycastTarget = false;
+                nextMoveGraphics[i] = glyph;
+            }
             RuntimeUi.Label(canvas.transform, "NextMovesLabel", "NEXT\nMOVES", 26, TextAnchor.MiddleCenter, new Color(.9f,.9f,1,.78f), new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(-350,-720), new Vector2(-90,-620));
 
             gradeText = RuntimeUi.Label(canvas.transform, "Grade", "", 104, TextAnchor.MiddleCenter, RuntimeUi.Cyan, new Vector2(.69f,.47f), new Vector2(.88f,.66f), Vector2.zero, Vector2.zero);
             RawImage timeline = RuntimeUi.Panel(canvas.transform, "Timeline", new Color(0.04f,0.02f,0.12f,0.72f), new Vector2(.08f,0), new Vector2(.92f,0), new Vector2(0,45), new Vector2(0,155));
             RuntimeUi.Panel(timeline.transform, "Line", new Color(.78f,.93f,1,.72f), new Vector2(.05f,.5f), new Vector2(.95f,.5f), new Vector2(0,-3), new Vector2(0,3));
             CoachStage3D coach3D = gameObject.AddComponent<CoachStage3D>(); coach3D.Initialize(canvas, app.Api, dance.dance_id, video, videoSurface);
+            _ = LoadPlaybackAsync();
+        }
+
+        private async Task LoadPlaybackAsync()
+        {
+            try
+            {
+                playback = await app.Api.GetAsync<PlaybackData>("/api/dances/" + dance.dance_id + "/playback");
+                UpdateNextMoves(0);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Next Moves unavailable: " + e.Message);
+            }
+        }
+
+        private void UpdateNextMoves(int mediaMs)
+        {
+            if (playback == null || playback.move_previews == null || playback.move_previews.Length == 0) return;
+            int start = 0;
+            while (start < playback.move_previews.Length && playback.move_previews[start].t_ms < mediaMs + 120) start++;
+            start = Mathf.Clamp(start, 0, playback.move_previews.Length - 1);
+            if (start == nextMoveStart) return;
+            nextMoveStart = start;
+            for (int i = 0; i < nextMoveGraphics.Length; i++)
+            {
+                int idx = start + i;
+                Landmark[] pose = idx < playback.move_previews.Length ? playback.move_previews[idx].landmarks : Array.Empty<Landmark>();
+                if (nextMoveGraphics[i] != null) nextMoveGraphics[i].SetPose(pose, i == 0);
+            }
         }
 
         private async Task StartGameAsync()
@@ -536,7 +683,8 @@ namespace DanceFlow.UnityClient
             int currentMs = Mathf.Max(0, (int)(video.time * 1000.0)); int duration = Mathf.Max(dance.duration_ms, 1); float p = Mathf.Clamp01(currentMs / (float)duration);
             if (progressFill != null) progressFill.rectTransform.anchorMax = new Vector2(p, 1);
             progressText.text = currentMs / 60000 + ":" + (currentMs / 1000 % 60).ToString("00");
-            if (Time.unscaledTime - lastClockSend > 0.05f) { lastClockSend = Time.unscaledTime; _ = socket.SendAsync(new MediaClockMessage { media_time_ms = currentMs }); }
+            UpdateNextMoves(currentMs);
+            if (Time.unscaledTime - lastClockSend > 0.04f) { lastClockSend = Time.unscaledTime; _ = socket.SendAsync(new MediaClockMessage { media_time_ms = currentMs }); }
             if (gradeUntil > 0 && Time.unscaledTime > gradeUntil) { gradeText.text = ""; gradeUntil = 0; }
         }
 
@@ -544,8 +692,16 @@ namespace DanceFlow.UnityClient
         {
             if (message.type == "score_event")
             {
-                scoreText.text = message.total_score.ToString("N0"); comboText.text = "COMBO  " + message.combo; gradeText.text = string.IsNullOrEmpty(message.grade) ? "" : message.grade.ToUpperInvariant();
-                gradeText.color = message.grade == "perfect" ? RuntimeUi.Cyan : message.grade == "super" ? RuntimeUi.Pink : message.grade == "good" ? RuntimeUi.Gold : RuntimeUi.White; gradeUntil = Time.unscaledTime + 0.72f;
+                scoreText.text = message.total_score.ToString("N0");
+                comboText.text = "COMBO  " + message.combo;
+                if (message.is_move_grade)
+                {
+                    gradeText.text = string.IsNullOrEmpty(message.grade) ? "" : message.grade.ToUpperInvariant();
+                    gradeText.color = message.grade == "perfect" ? RuntimeUi.Cyan :
+                                      message.grade == "super" ? RuntimeUi.Pink :
+                                      message.grade == "good" ? RuntimeUi.Gold : RuntimeUi.White;
+                    gradeUntil = Time.unscaledTime + 0.52f;
+                }
             }
             else if (message.type == "phone_disconnected") { gradeText.text = "PHONE DISCONNECTED"; gradeText.color = RuntimeUi.Pink; }
             else if (message.type == "game_over") { started = false; gradeText.text = "ROUTINE COMPLETE"; gradeText.color = RuntimeUi.Gold; }
