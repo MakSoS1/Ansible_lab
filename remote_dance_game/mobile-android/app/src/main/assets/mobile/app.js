@@ -364,74 +364,134 @@
         return {x: hipX, y: (hipY + shY) * .5, scale:torso, signature};
     }
 
+    function trackMatchCost(track, det, now) {
+        const dt = Math.min(.45, Math.max(.016, now - track.lastSeen) / 1000);
+        const predictedX = track.x + (track.vx || 0) * dt;
+        const predictedY = track.y + (track.vy || 0) * dt;
+        const spatial = Math.hypot(predictedX - det.center.x, predictedY - det.center.y);
+        const scaleDelta = Math.abs(track.scale - det.center.scale) /
+            Math.max(track.scale, det.center.scale, .05);
+        const signatureDelta = Math.abs((track.signature || det.center.signature) - det.center.signature) /
+            Math.max(Math.abs(track.signature || 1), Math.abs(det.center.signature || 1), .25);
+
+        // Prediction is dominant, while body proportions and apparent size keep
+        // two dancers from swapping identities when their paths cross.
+        return spatial + .12 * scaleDelta + .085 * signatureDelta;
+    }
+
+    function bestGlobalAssignment(tracks, detections, now) {
+        let bestPairs = [];
+        let bestCost = Infinity;
+        const used = new Set();
+
+        function visit(trackIndex, pairs, cost) {
+            if (trackIndex >= tracks.length) {
+                if (pairs.length > bestPairs.length ||
+                    (pairs.length === bestPairs.length && cost < bestCost)) {
+                    bestPairs = pairs.slice();
+                    bestCost = cost;
+                }
+                return;
+            }
+
+            // A temporarily occluded player may legitimately have no detection.
+            visit(trackIndex + 1, pairs, cost);
+
+            const track = tracks[trackIndex];
+            for (let di = 0; di < detections.length; di++) {
+                if (used.has(di)) continue;
+                const matchCost = trackMatchCost(track, detections[di], now);
+                if (matchCost > .38) continue;
+                used.add(di);
+                pairs.push({track, det:detections[di], di});
+                visit(trackIndex + 1, pairs, cost + matchCost);
+                pairs.pop();
+                used.delete(di);
+            }
+        }
+
+        visit(0, [], 0);
+        return bestPairs;
+    }
+
     function associatePeople(poseLandmarks, worldLandmarks) {
         const now = Date.now();
+
+        // Remove truly expired identities before considering new dancers.
+        for (const [id, track] of personTracks.entries()) {
+            if (now - track.lastSeen > 3500) personTracks.delete(id);
+        }
+
         const detections = poseLandmarks.map((raw, index) => {
             const landmarks = normalizeLandmarks(raw);
             const world = normalizeLandmarks(worldLandmarks[index] || []);
             const center = centerOf(landmarks);
             const trackingScore = landmarks.length
-                ? landmarks.reduce((s, l) => s + (l.v || 0), 0) / landmarks.length
+                ? landmarks.reduce((sum, landmark) => sum + (landmark.v || 0), 0) / landmarks.length
                 : 0;
             return {index, landmarks, world, center, trackingScore};
-        });
+        }).filter(det =>
+            det.landmarks.length >= 29 &&
+            det.trackingScore >= .30 &&
+            det.center.scale >= .045
+        );
 
-        const activeTracks = [...personTracks.values()].filter(t => now - t.lastSeen < 850);
-        const edges = [];
-        activeTracks.forEach(track => detections.forEach((det, di) => {
-            const dt = Math.min(.18, Math.max(0, now - track.lastSeen) / 1000);
-            const predictedX = track.x + (track.vx || 0) * dt;
-            const predictedY = track.y + (track.vy || 0) * dt;
-            const spatial = Math.hypot(predictedX - det.center.x, predictedY - det.center.y);
-            const scaleDelta = Math.abs(track.scale - det.center.scale) / Math.max(track.scale, det.center.scale, .05);
-            const signatureDelta = Math.abs((track.signature || det.center.signature) - det.center.signature) /
-                Math.max(Math.abs(track.signature || 1), Math.abs(det.center.signature || 1), .25);
-            edges.push({cost: spatial + .10 * scaleDelta + .055 * signatureDelta, track, det, di});
-        }));
-        edges.sort((a,b) => a.cost - b.cost);
-
-        const usedTracks = new Set();
-        const usedDetections = new Set();
-        const assigned = [];
-        for (const edge of edges) {
-            if (edge.cost > .30 || usedTracks.has(edge.track.id) || usedDetections.has(edge.di)) continue;
-            usedTracks.add(edge.track.id);
-            usedDetections.add(edge.di);
-            assigned.push({track: edge.track, det: edge.det});
-        }
+        const activeTracks = [...personTracks.values()]
+            .filter(track => now - track.lastSeen < 1400)
+            .sort((a,b) => a.id - b.id);
+        const assigned = bestGlobalAssignment(activeTracks, detections, now);
+        const usedDetections = new Set(assigned.map(pair => pair.di));
 
         detections.forEach((det, di) => {
             if (usedDetections.has(di)) return;
-            if (personTracks.size >= MAX_PEOPLE) return;
+            if (personTracks.size >= MAX_PEOPLE) {
+                const oldest = [...personTracks.values()].sort((a,b) => a.lastSeen - b.lastSeen)[0];
+                if (!oldest || now - oldest.lastSeen < 1400) return;
+                personTracks.delete(oldest.id);
+            }
             const id = nextTrackId++;
-            const track = {id, x:det.center.x, y:det.center.y, scale:det.center.scale, signature:det.center.signature, vx:0, vy:0, lastSeen:now};
+            const track = {
+                id,
+                x:det.center.x,
+                y:det.center.y,
+                scale:det.center.scale,
+                signature:det.center.signature,
+                vx:0,
+                vy:0,
+                lastSeen:now,
+                seenFrames:0,
+            };
             personTracks.set(id, track);
-            assigned.push({track, det});
+            assigned.push({track, det, di});
         });
 
-        const output = assigned.map(({track, det}) => {
-            const dt = Math.max(.016, Math.min(.20, (now - track.lastSeen) / 1000));
+        const output = [];
+        for (const {track, det} of assigned) {
+            const previousSeen = track.lastSeen;
+            const dt = Math.max(.016, Math.min(.35, (now - previousSeen) / 1000));
             const measuredVx = (det.center.x - track.x) / dt;
             const measuredVy = (det.center.y - track.y) / dt;
-            track.vx = (track.vx || 0) * .72 + Math.max(-1.8, Math.min(1.8, measuredVx)) * .28;
-            track.vy = (track.vy || 0) * .72 + Math.max(-1.8, Math.min(1.8, measuredVy)) * .28;
-            track.x = track.x * .66 + det.center.x * .34;
-            track.y = track.y * .66 + det.center.y * .34;
-            track.scale = track.scale * .74 + det.center.scale * .26;
-            track.signature = (track.signature || det.center.signature) * .82 + det.center.signature * .18;
+            track.vx = (track.vx || 0) * .76 + Math.max(-1.8, Math.min(1.8, measuredVx)) * .24;
+            track.vy = (track.vy || 0) * .76 + Math.max(-1.8, Math.min(1.8, measuredVy)) * .24;
+            track.x = track.x * .62 + det.center.x * .38;
+            track.y = track.y * .62 + det.center.y * .38;
+            track.scale = track.scale * .76 + det.center.scale * .24;
+            track.signature = (track.signature || det.center.signature) * .86 + det.center.signature * .14;
             track.lastSeen = now;
-            return {
+            track.seenFrames = (track.seenFrames || 0) + 1;
+
+            // One-frame detections are usually passers-by or model noise. A
+            // dancer becomes a player after two consecutive observations.
+            if (track.seenFrames < 2) continue;
+            output.push({
                 player_id: `p${track.id}`,
                 tracking_score: Number(det.trackingScore.toFixed(3)),
                 landmarks: det.landmarks,
                 world_landmarks: det.world,
                 color: COLORS[track.id % COLORS.length],
-            };
-        });
-
-        for (const [id, track] of personTracks.entries()) {
-            if (now - track.lastSeen > 3000) personTracks.delete(id);
+            });
         }
+
         return output.sort((a,b) => Number(a.player_id.slice(1)) - Number(b.player_id.slice(1)));
     }
 
@@ -467,7 +527,7 @@
             const head = lm[0];
             if (head) {
                 skeletonCtx.font = 'bold 22px sans-serif';
-                skeletonCtx.fillText(`P${personIndex + 1}`, head.x * w + 12, head.y * h - 12);
+                skeletonCtx.fillText(`P${Number(person.player_id.slice(1)) + 1}`, head.x * w + 12, head.y * h - 12);
             }
         });
     }
