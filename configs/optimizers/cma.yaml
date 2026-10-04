@@ -1,0 +1,6 @@
+name: cma
+population: 16
+iterations: 8
+sigma: 0.2
+uncertainty_penalty: 1.0
+seed: 42

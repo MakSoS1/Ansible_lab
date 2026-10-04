@@ -1,0 +1,8 @@
+name: graph
+hidden_channels: 32
+message_layers: 2
+ensemble_seeds: [11, 23, 42]
+epochs: 8
+dropout: 0.1
+ood_variance_threshold: 1.5
+seed: 42
