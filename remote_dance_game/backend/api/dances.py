@@ -11,7 +11,7 @@ import database as db
 from config import EXPORTS_DIR, INPUT_DIR
 from models.schemas import DanceCreateRequest, DanceDetailResponse, DanceListItem, JobStatusResponse
 from services.packager import delete_dance_package, export_dance_pack, import_dance_pack, load_dance_package
-from services.move_events import build_move_markers
+from services.move_events import build_move_markers, build_pictogram_markers
 
 router = APIRouter(prefix="/api", tags=["dances"])
 
@@ -139,6 +139,7 @@ async def list_dances():
             has_poster=has_poster,
             preview_mode=d.get("preview_mode", pack.get("preview_mode", "local_video")),
             theme=pack.get("theme", {}) if isinstance(pack.get("theme"), dict) else {},
+            coach_count=int(pack.get("coach_count", ((pack.get("coaches") or {}).get("coach_count", 1)) or 1)),
         ))
     return result
 
@@ -165,6 +166,7 @@ async def get_dance(dance_id: str):
         audio_path=d.get("audio_path"),
         has_poster=has_poster,
         theme=pack.get("theme", {}) if isinstance(pack.get("theme"), dict) else {},
+        coach_count=int(pack.get("coach_count", ((pack.get("coaches") or {}).get("coach_count", 1)) or 1)),
     )
 
 
@@ -181,28 +183,32 @@ async def get_dance_poster(dance_id: str):
 
 @router.get("/dances/{dance_id}/playback")
 async def get_playback(dance_id: str):
-    # Gameplay gets a sparse pose timeline for the TV-style "next moves" rail.
-    # It is sampled aggressively so the response stays small; scoring still uses
-    # the full reference timeline inside the server-side scoring engine.
+    """Gameplay metadata plus sparse Just-Dance-style pictogram cues."""
     pack = load_dance_package(dance_id, load_pose=True)
     if not pack:
         raise HTTPException(status_code=404, detail="Dance not found")
+
     timing = pack.get("timing", {})
     events = pack.get("events", {}).get("events", [])
-    pose_frames = (pack.get("reference_pose") or {}).get("frames", [])
-    move_markers = build_move_markers(pose_frames, timing)
+    reference = pack.get("reference_pose") or {}
+    primary_frames = reference.get("frames") or []
+    tracks = reference.get("tracks") or []
+    if not tracks:
+        tracks = [{
+            "coach_index": 0,
+            "frames": primary_frames,
+            "weights": pack.get("weights", []),
+            "events": events,
+            "coverage": float(pack.get("pose_coverage", 1.0) or 1.0),
+        }]
+
     preview_indices = {0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32}
-    move_previews = []
-    for marker in move_markers[:720]:
-        idx = int(marker.get("frame_index", 0))
-        if idx < 0 or idx >= len(pose_frames):
-            continue
-        frame = pose_frames[idx]
-        source = frame.get("landmarks", []) or []
+
+    def compact_pose(source):
         compact = []
-        for joint_idx in range(33):
-            if joint_idx in preview_indices and joint_idx < len(source):
-                lm = source[joint_idx] or {}
+        for idx in range(33):
+            if idx in preview_indices and idx < len(source):
+                lm = source[idx] or {}
                 compact.append({
                     "x": round(float(lm.get("x", 0.0)), 4),
                     "y": round(float(lm.get("y", 0.0)), 4),
@@ -210,13 +216,43 @@ async def get_playback(dance_id: str):
                 })
             else:
                 compact.append({"x": 0.0, "y": 0.0, "v": 0.0})
+        return compact
+
+    coach_cues = []
+    for coach_index, track in enumerate(tracks[:4]):
+        frames = track.get("frames") or []
+        cues = []
+        for marker in build_pictogram_markers(frames, timing)[:240]:
+            idx = int(marker.get("frame_index", 0))
+            if idx < 0 or idx >= len(frames):
+                continue
+            cues.append({
+                "t_ms": int(marker.get("t_ms", 0)),
+                "cue_index": int(marker.get("cue_index", len(cues))),
+                "motion": float(marker.get("motion", 0.0)),
+                "landmarks": compact_pose(frames[idx].get("landmarks", []) or []),
+            })
+        coach_cues.append({
+            "coach_index": coach_index,
+            "cues": cues,
+        })
+
+    # Dense move markers are still exposed for debugging/analytics, while the TV
+    # HUD consumes coach_cues. This intentionally decouples grading cadence from
+    # visual-instruction cadence.
+    move_previews = []
+    for marker in build_move_markers(primary_frames, timing)[:720]:
+        idx = int(marker.get("frame_index", 0))
+        if idx < 0 or idx >= len(primary_frames):
+            continue
         move_previews.append({
             "t_ms": int(marker.get("t_ms", 0)),
             "move_index": int(marker.get("move_index", len(move_previews))),
             "motion": float(marker.get("motion", 0.0)),
-            "landmarks": compact,
+            "landmarks": compact_pose(primary_frames[idx].get("landmarks", []) or []),
         })
 
+    coaches = pack.get("coaches") if isinstance(pack.get("coaches"), dict) else {}
     return {
         "dance_id": dance_id,
         "duration_ms": int(pack.get("duration_ms", 0) or 0),
@@ -228,7 +264,42 @@ async def get_playback(dance_id: str):
         "theme": pack.get("theme", {}),
         "move_previews": move_previews,
         "move_count": len(move_previews),
+        "coach_count": max(1, len(coach_cues)),
+        "coach_cues": coach_cues,
+        "coaches": coaches.get("items", []),
     }
+
+
+@router.get("/dances/{dance_id}/coaches")
+async def get_dance_coaches(dance_id: str):
+    pack = load_dance_package(dance_id, load_pose=False)
+    if not pack:
+        raise HTTPException(status_code=404, detail="Dance not found")
+    coaches = pack.get("coaches") if isinstance(pack.get("coaches"), dict) else {}
+    items = coaches.get("items", [])
+    return {
+        "dance_id": dance_id,
+        "coach_count": int(pack.get("coach_count", coaches.get("coach_count", max(1, len(items)))) or 1),
+        "coaches": items,
+    }
+
+
+@router.get("/dances/{dance_id}/coaches/{coach_index}/preview")
+async def get_dance_coach_preview(dance_id: str, coach_index: int):
+    pack = load_dance_package(dance_id, load_pose=False)
+    if not pack:
+        raise HTTPException(status_code=404, detail="Dance not found")
+    coaches = pack.get("coaches") if isinstance(pack.get("coaches"), dict) else {}
+    items = coaches.get("items", [])
+    item = next((x for x in items if int(x.get("coach_index", -1)) == coach_index), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Coach preview not found")
+    rel = str(item.get("preview_path", ""))
+    path = os.path.abspath(os.path.join(pack["dance_dir"], rel.replace("/", os.sep)))
+    root = os.path.abspath(pack["dance_dir"])
+    if not path.startswith(root) or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Coach preview not found")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 @router.get("/dances/{dance_id}/pose-timeline")
