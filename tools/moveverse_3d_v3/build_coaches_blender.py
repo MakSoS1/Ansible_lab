@@ -128,7 +128,14 @@ def bone_name(arm, candidates):
 def add_armature_modifier(obj, arm):
     mod = obj.modifiers.new("Armature", "ARMATURE")
     mod.object = arm
+    # Garment vertices are copied in the same local coordinate space as the
+    # imported body. Parent them directly in armature-local space; preserving
+    # the body's world matrix here would apply the FBX 0.1 scale twice.
     obj.parent = arm
+    obj.matrix_parent_inverse = Matrix.Identity(4)
+    obj.location = (0.0, 0.0, 0.0)
+    obj.rotation_euler = (0.0, 0.0, 0.0)
+    obj.scale = (1.0, 1.0, 1.0)
 
 
 def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
@@ -208,7 +215,8 @@ def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
                 uv.data[li].uv = co
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
-    obj.matrix_world = body.matrix_world.copy()
+    # Keep the mesh in body/armature local coordinates. The imported MakeHuman
+    # armature carries the FBX unit conversion on the parent object.
 
     # Copy weights only from groups that each source vertex actually belongs to.
     # This avoids Blender emitting a warning for every missing vertex/group pair.
@@ -443,7 +451,7 @@ def create_hair(spec, arm, mn, mx, mats, physics):
     hc=Vector(((mn.x+mx.x)/2,(mn.y+mx.y)/2,mn.z+H*0.91))
     hr=max(W*0.135,H*0.052)
     objects=[]
-    cap=add_uvsphere("HairCap",hc+(Vector((0,0,H*.012))), (hr*1.0,hr*.93,hr*.82),mat,40,24)
+    cap=add_uvsphere("HairCap",hc+(Vector((0,D*.08,H*.028))), (hr*1.02,hr*.72,hr*.62),mat,40,24)
     parent_to_bone(cap,arm,["head"]); objects.append(cap)
     back_y=mx.y + D*.04
 
