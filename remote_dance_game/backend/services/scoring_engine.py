@@ -243,9 +243,20 @@ class ScoringEngine:
     def _select_player_frame(self, now_server_ms: int, ref_norm: Dict[str, Any], body_w: Dict[str, float]) -> Optional[Dict[str, Any]]:
         if not self.pose_buffer:
             return None
+
+        # The newest good inference is the most faithful representation of what
+        # the player is doing *now*. Older frames are only a recovery path when
+        # the latest MediaPipe result has poor visibility; never cherry-pick an
+        # older pose merely because it matches the choreography better.
+        latest = self.pose_buffer[-1]
+        latest_age = max(0, now_server_ms - int(latest.get("received_at_ms", now_server_ms)))
+        latest_tracking = float(latest.get("tracking_score", 0.0))
+        if latest_age <= int(config.PLAYER_FRAME_STALE_MS) and latest_tracking >= 0.35:
+            return latest
+
         recent_window = int(config.PLAYER_RECENT_WINDOW_MS)
         best = None
-        best_rank = -1.0
+        best_quality = -1.0
         for frame in reversed(self.pose_buffer):
             age = max(0, now_server_ms - int(frame.get("received_at_ms", now_server_ms)))
             if age > recent_window:
@@ -253,13 +264,11 @@ class ScoringEngine:
             tracking = float(frame.get("tracking_score", 0.0))
             if tracking < 0.25:
                 continue
-            pose_only, _ = compare_poses(ref_norm, frame, 0.0, body_w, include_timing=False)
-            recency_penalty = (age / max(float(recent_window), 1.0)) * 0.035
-            rank = pose_only + min(tracking, 1.0) * 0.025 - recency_penalty
-            if rank > best_rank:
-                best_rank = rank
+            quality = tracking - (age / max(float(recent_window), 1.0)) * 0.25
+            if quality > best_quality:
+                best_quality = quality
                 best = frame
-        return best or self.pose_buffer[-1]
+        return best or latest
 
     def _tracking_event(self, t_ms: int, age_ms: Optional[int], break_combo: bool = True) -> ScoreEvent:
         if break_combo:
