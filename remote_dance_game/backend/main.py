@@ -246,7 +246,7 @@ async def session_assign(session_id: str, payload: dict):
         coach_index = int(payload.get("coach_index", 0))
     except Exception:
         raise HTTPException(status_code=400, detail="coach_index must be an integer")
-    player = assign_coach(session, player_id, coach_index)
+    player = await asyncio.to_thread(assign_coach, session, player_id, coach_index)
     return {
         "status": "assigned",
         "player_id": player_id,
