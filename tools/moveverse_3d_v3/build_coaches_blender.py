@@ -212,16 +212,12 @@ def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
 
     # Copy all body vertex weights for the kept vertices so clothing follows
     # the exact same animation deformation as the body.
-    for sg in body.vertex_groups:
-        ng = obj.vertex_groups.new(name=sg.name)
-        vals = []
-        for ni, oi in enumerate(src_index):
-            try:
-                w = sg.weight(oi)
-            except RuntimeError:
-                continue
-            if w > 0.0:
-                ng.add([ni], w, "REPLACE")
+    group_names = {g.index: g.name for g in body.vertex_groups}
+    dst_groups = {idx: obj.vertex_groups.new(name=name) for idx, name in group_names.items()}
+    for ni, oi in enumerate(src_index):
+        for ge in src.vertices[oi].groups:
+            if ge.weight > 0.0 and ge.group in dst_groups:
+                dst_groups[ge.group].add([ni], ge.weight, "REPLACE")
     add_armature_modifier(obj, arm)
 
     if mat:
@@ -826,12 +822,15 @@ def look_at(obj, target):
 def render_views(outdir, spec, mn, mx):
     center,H=setup_stage(mn,mx)
     scene=bpy.context.scene
-    scene.render.engine="BLENDER_EEVEE_NEXT" if hasattr(scene,"eevee") or bpy.app.version >= (4,2,0) else "BLENDER_EEVEE"
+    scene.render.engine = "BLENDER_EEVEE_NEXT" if bpy.app.version >= (4, 2, 0) else "BLENDER_EEVEE"
     scene.render.resolution_x=640; scene.render.resolution_y=900; scene.render.resolution_percentage=100
     scene.render.image_settings.file_format="PNG"
     scene.render.film_transparent=False
     scene.render.image_settings.color_mode="RGBA"
-    scene.view_settings.look="AgX - Medium High Contrast" if "AgX - Medium High Contrast" in [i.name for i in bpy.types.ColorManagedViewSettings.bl_rna.properties['look'].enum_items] else scene.view_settings.look
+    try:
+        scene.view_settings.look = "AgX - Medium High Contrast"
+    except Exception:
+        pass
     data=bpy.data.cameras.new("PreviewCamera")
     cam=bpy.data.objects.new("PreviewCamera",data); bpy.context.collection.objects.link(cam)
     scene.camera=cam
