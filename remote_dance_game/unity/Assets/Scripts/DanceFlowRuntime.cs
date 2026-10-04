@@ -640,6 +640,17 @@ namespace DanceFlow.UnityClient
             return colors[Mathf.Abs(slot) % colors.Length];
         }
 
+        private static Color32 CoachColor(int coachIndex)
+        {
+            Color32[] colors = {
+                new Color32(108,255,85,255),
+                new Color32(188,103,255,255),
+                new Color32(255,204,66,255),
+                new Color32(70,229,255,255),
+            };
+            return colors[Mathf.Abs(coachIndex) % colors.Length];
+        }
+
         public void Initialize(DanceFlowApp value, DanceListItem selectedDance, GameSession currentSession, PlayerStatus[] detectedPlayers)
         {
             app = value;
@@ -980,18 +991,18 @@ namespace DanceFlow.UnityClient
                 bool active = i < source.Length;
                 PlayerHud hud = playerHuds[i];
                 hud.root.SetActive(active);
-                if (cueGraphics[i] != null) cueGraphics[i].transform.parent.gameObject.SetActive(active);
                 if (!active) continue;
 
                 PlayerStatus p = source[i];
                 hud.playerId = string.IsNullOrEmpty(p.player_id) ? "p" + i : p.player_id;
                 hud.slot = p.slot;
                 hud.coachIndex = p.coach_index;
-                Color32 color = SlotColor(hud.slot);
+                Color32 playerColor = SlotColor(hud.slot);
+                Color32 coachColor = CoachColor(hud.coachIndex);
                 hud.playerLabel.text = "P" + (hud.slot + 1) + "   COACH " + (hud.coachIndex + 1);
-                hud.playerLabel.color = color;
-                hud.grade.color = color;
-                if (hud.mirror != null) hud.mirror.SetPose(Array.Empty<Landmark>(), true, color);
+                hud.playerLabel.color = coachColor;
+                hud.grade.color = coachColor;
+                if (hud.mirror != null) hud.mirror.SetPose(Array.Empty<Landmark>(), true, playerColor);
             }
         }
 
@@ -1018,31 +1029,43 @@ namespace DanceFlow.UnityClient
         {
             if (playback == null || playback.coach_cues == null) return;
 
-            for (int slot = 0; slot < playerHuds.Length; slot++)
+            int coachCount = Mathf.Clamp(playback.coach_count > 0 ? playback.coach_count : playback.coach_cues.Length, 1, cueGraphics.Length);
+            for (int coach = 0; coach < cueGraphics.Length; coach++)
             {
-                PlayerHud hud = playerHuds[slot];
-                if (hud == null || !hud.root.activeSelf || cueGraphics[slot] == null) continue;
-                CoachCueTrack track = CueTrack(hud.coachIndex);
-                if (track == null || track.cues == null || track.cues.Length == 0) continue;
+                if (cueGraphics[coach] == null) continue;
+                bool active = coach < coachCount;
+                cueGraphics[coach].transform.parent.gameObject.SetActive(active);
+                if (!active) continue;
 
+                CoachCueTrack track = CueTrack(coach);
+                if (track == null || track.cues == null || track.cues.Length == 0)
+                {
+                    cueGraphics[coach].SetPose(Array.Empty<Landmark>(), true, CoachColor(coach));
+                    continue;
+                }
+
+                // Show the destination pose that is coming next.  The cue itself
+                // is sparse (~1 s+) and already selected from the real reference
+                // coach, so this behaves like the supplied Just Dance pictograms
+                // rather than a constantly changing pose monitor.
                 int idx = 0;
                 while (idx < track.cues.Length && track.cues[idx].t_ms <= mediaMs + 80) idx++;
                 idx = Mathf.Clamp(idx, 0, track.cues.Length - 1);
                 MovePreview cue = track.cues[idx];
 
-                if (lastCueIndex[slot] != idx)
+                if (lastCueIndex[coach] != idx)
                 {
-                    lastCueIndex[slot] = idx;
-                    cueGraphics[slot].SetPose(cue.landmarks ?? Array.Empty<Landmark>(), true, SlotColor(hud.slot));
+                    lastCueIndex[coach] = idx;
+                    cueGraphics[coach].SetPose(cue.landmarks ?? Array.Empty<Landmark>(), true, CoachColor(coach));
                 }
 
-                int previousT = idx > 0 ? track.cues[idx - 1].t_ms : Mathf.Max(0, cue.t_ms - 1400);
-                float span = Mathf.Max(500, cue.t_ms - previousT);
+                int previousT = idx > 0 ? track.cues[idx - 1].t_ms : Mathf.Max(0, cue.t_ms - 1450);
+                float span = Mathf.Max(650, cue.t_ms - previousT);
                 float remain = Mathf.Clamp01((cue.t_ms - mediaMs) / span);
-                if (cueProgress[slot] != null)
+                if (cueProgress[coach] != null)
                 {
-                    cueProgress[slot].color = SlotColor(hud.slot);
-                    cueProgress[slot].rectTransform.anchorMax = new Vector2(remain, 1);
+                    cueProgress[coach].color = CoachColor(coach);
+                    cueProgress[coach].rectTransform.anchorMax = new Vector2(remain, 1);
                 }
             }
         }
@@ -1125,9 +1148,10 @@ namespace DanceFlow.UnityClient
                 PlayerHud hud = FindHud(message);
                 if (hud == null) return;
 
-                Color32 color = SlotColor(hud.slot);
+                Color32 playerColor = SlotColor(hud.slot);
+                Color32 coachColor = CoachColor(hud.coachIndex);
                 if (message.player_pose != null && message.player_pose.Length >= 29)
-                    hud.mirror.SetPose(message.player_pose, true, color);
+                    hud.mirror.SetPose(message.player_pose, true, playerColor);
 
                 hud.score.text = message.total_score.ToString("N0");
                 hud.combo.text = "COMBO " + message.combo;
@@ -1135,7 +1159,7 @@ namespace DanceFlow.UnityClient
                 if (message.is_move_grade)
                 {
                     hud.grade.text = string.IsNullOrEmpty(message.grade) ? "" : message.grade.ToUpperInvariant();
-                    hud.grade.color = message.grade == "x" ? new Color32(255,92,116,255) : color;
+                    hud.grade.color = message.grade == "x" ? new Color32(255,92,116,255) : coachColor;
                     hud.gradeUntil = Time.unscaledTime + 0.62f;
                 }
             }
