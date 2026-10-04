@@ -1,0 +1,83 @@
+name: MoveVerse 3D Coach Pack
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/moveverse_3d/**'
+      - '.github/workflows/moveverse-coach-pack.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore generator source
+        run: |
+          base64 -d tools/moveverse_3d/build_moveverse_coaches.py.gz.b64 | gunzip > tools/moveverse_3d/build_moveverse_coaches.py
+          python -m py_compile tools/moveverse_3d/build_moveverse_coaches.py
+
+      - name: Install model-builder dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy scipy pillow trimesh scikit-image
+
+      - name: Generate all 50 coaches and LODs
+        env:
+          MOVEVERSE_OUTPUT_DIR: artifacts
+        run: python tools/moveverse_3d/build_moveverse_coaches.py
+
+      - name: Install Blender headless
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+          blender --version
+
+      - name: Install Blender MCP on the runner
+        continue-on-error: true
+        run: |
+          python -m pip install uv
+          uvx blender-mcp --help
+          uvx blender-mcp install-addon
+
+      - name: Validate every LOD0 model in Blender
+        run: |
+          blender --background --factory-startup --python tools/moveverse_3d/blender_validate.py -- artifacts/moveverse_coach_pack_50/models/lod0
+
+      - name: Check package contents
+        run: |
+          test "$(find artifacts/moveverse_coach_pack_50/models/lod0 -name '*.glb' | wc -l)" -eq 50
+          test "$(find artifacts/moveverse_coach_pack_50/comparisons -name '*.png' | wc -l)" -eq 50
+          test -f artifacts/moveverse_coach_pack_50/reports/blender_validation.json
+          ls -lh artifacts/moveverse_coach_pack_50.zip
+
+      - name: Upload complete coach pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: moveverse-coach-pack-50
+          path: artifacts/moveverse_coach_pack_50.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload QA preview and reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: moveverse-coach-pack-qa
+          path: |
+            artifacts/moveverse_coach_pack_50/previews/coach_pack_contact_sheet.jpg
+            artifacts/moveverse_coach_pack_50/comparisons/
+            artifacts/moveverse_coach_pack_50/reports/
+          if-no-files-found: error
+          retention-days: 30
