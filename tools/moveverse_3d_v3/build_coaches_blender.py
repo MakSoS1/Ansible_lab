@@ -826,7 +826,7 @@ def look_at(obj, target):
 def render_views(outdir, spec, mn, mx):
     center,H=setup_stage(mn,mx)
     scene=bpy.context.scene
-    scene.render.engine="BLENDER_EEVEE_NEXT" if hasattr(scene,"eevee") or bpy.app.version >= (4,2,0) else "BLENDER_EEVEE"
+    scene.render.engine="BLENDER_EEVEE_NEXT" if bpy.app.version >= (4,2,0) else "BLENDER_EEVEE"
     scene.render.resolution_x=640; scene.render.resolution_y=900; scene.render.resolution_percentage=100
     scene.render.image_settings.file_format="PNG"
     scene.render.film_transparent=False
