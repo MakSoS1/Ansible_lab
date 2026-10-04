@@ -51,7 +51,7 @@ jobs:
       - name: Install Blender
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy
           blender --version
 
       - name: Build unique outfits, hair, rigged garments and physics
