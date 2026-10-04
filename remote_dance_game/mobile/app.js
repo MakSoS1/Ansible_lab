@@ -352,13 +352,16 @@
     }
 
     function centerOf(lm) {
-        if (!lm || lm.length < 25) return {x:.5,y:.5,scale:.1};
+        if (!lm || lm.length < 25) return {x:.5,y:.5,scale:.1,signature:1};
         const hipX = (lm[23].x + lm[24].x) * .5;
         const hipY = (lm[23].y + lm[24].y) * .5;
         const shX = (lm[11].x + lm[12].x) * .5;
         const shY = (lm[11].y + lm[12].y) * .5;
-        const scale = Math.max(.05, Math.hypot(shX - hipX, shY - hipY));
-        return {x: hipX, y: (hipY + shY) * .5, scale};
+        const torso = Math.max(.05, Math.hypot(shX - hipX, shY - hipY));
+        const shoulderWidth = Math.hypot(lm[11].x - lm[12].x, lm[11].y - lm[12].y);
+        const hipWidth = Math.hypot(lm[23].x - lm[24].x, lm[23].y - lm[24].y);
+        const signature = (shoulderWidth + hipWidth * .7) / torso;
+        return {x: hipX, y: (hipY + shY) * .5, scale:torso, signature};
     }
 
     function associatePeople(poseLandmarks, worldLandmarks) {
@@ -376,9 +379,14 @@
         const activeTracks = [...personTracks.values()].filter(t => now - t.lastSeen < 850);
         const edges = [];
         activeTracks.forEach(track => detections.forEach((det, di) => {
-            const spatial = Math.hypot(track.x - det.center.x, track.y - det.center.y);
+            const dt = Math.min(.18, Math.max(0, now - track.lastSeen) / 1000);
+            const predictedX = track.x + (track.vx || 0) * dt;
+            const predictedY = track.y + (track.vy || 0) * dt;
+            const spatial = Math.hypot(predictedX - det.center.x, predictedY - det.center.y);
             const scaleDelta = Math.abs(track.scale - det.center.scale) / Math.max(track.scale, det.center.scale, .05);
-            edges.push({cost: spatial + .12 * scaleDelta, track, det, di});
+            const signatureDelta = Math.abs((track.signature || det.center.signature) - det.center.signature) /
+                Math.max(Math.abs(track.signature || 1), Math.abs(det.center.signature || 1), .25);
+            edges.push({cost: spatial + .10 * scaleDelta + .055 * signatureDelta, track, det, di});
         }));
         edges.sort((a,b) => a.cost - b.cost);
 
@@ -396,15 +404,21 @@
             if (usedDetections.has(di)) return;
             if (personTracks.size >= MAX_PEOPLE) return;
             const id = nextTrackId++;
-            const track = {id, x:det.center.x, y:det.center.y, scale:det.center.scale, lastSeen:now};
+            const track = {id, x:det.center.x, y:det.center.y, scale:det.center.scale, signature:det.center.signature, vx:0, vy:0, lastSeen:now};
             personTracks.set(id, track);
             assigned.push({track, det});
         });
 
         const output = assigned.map(({track, det}) => {
-            track.x = track.x * .70 + det.center.x * .30;
-            track.y = track.y * .70 + det.center.y * .30;
+            const dt = Math.max(.016, Math.min(.20, (now - track.lastSeen) / 1000));
+            const measuredVx = (det.center.x - track.x) / dt;
+            const measuredVy = (det.center.y - track.y) / dt;
+            track.vx = (track.vx || 0) * .72 + Math.max(-1.8, Math.min(1.8, measuredVx)) * .28;
+            track.vy = (track.vy || 0) * .72 + Math.max(-1.8, Math.min(1.8, measuredVy)) * .28;
+            track.x = track.x * .66 + det.center.x * .34;
+            track.y = track.y * .66 + det.center.y * .34;
             track.scale = track.scale * .74 + det.center.scale * .26;
+            track.signature = (track.signature || det.center.signature) * .82 + det.center.signature * .18;
             track.lastSeen = now;
             return {
                 player_id: `p${track.id}`,
