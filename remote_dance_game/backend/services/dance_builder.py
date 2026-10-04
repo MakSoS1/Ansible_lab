@@ -187,7 +187,7 @@ async def build_dance(
             # dance unplayable.
             print(f"Optional AI upscale skipped: {ai_exc}")
 
-        target_height = int(os.environ.get("DANCE_GAME_TARGET_HEIGHT", "2160") or 2160)
+        target_height = int(os.environ.get("DANCE_GAME_TARGET_HEIGHT", "1440") or 1440)
         master_meta = await asyncio.to_thread(
             create_game_master,
             master_source,
@@ -196,7 +196,7 @@ async def build_dance(
             clip_end,
             target_height,
             17,
-            "slow",
+            "fast",
         )
 
         duration_sec = max(0.0, float(pose_data.get("duration_ms", 0) or 0) / 1000.0)
