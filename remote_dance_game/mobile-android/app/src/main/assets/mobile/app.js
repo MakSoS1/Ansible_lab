@@ -26,6 +26,7 @@
     let lastPoseResult = null;
     let lastSendMs = 0;
     let lastInferenceCaptureMs = 0;
+    let estimatedLatencyMs = 0;
     const TARGET_SEND_INTERVAL_MS = 24;
     const MAX_WS_BUFFERED_BYTES = 120000;
     let reconnectAttempts = 0;
@@ -192,8 +193,9 @@
                 break;
             case 'pong':
                 const clientTs = msg.client_timestamp_ms || 0;
-                const latency = clientTs > 0 ? Math.max(0, Math.round((Date.now() - clientTs) / 2)) : 0;
-                latencyText.textContent = `${latency}ms`;
+                const latency = clientTs > 0 ? Math.max(0, (Date.now() - clientTs) / 2) : 0;
+                estimatedLatencyMs = estimatedLatencyMs > 0 ? estimatedLatencyMs * 0.78 + latency * 0.22 : latency;
+                latencyText.textContent = `${Math.round(estimatedLatencyMs)}ms`;
                 break;
             case 'error':
                 console.error('Server error:', msg.message);
@@ -388,6 +390,7 @@
                 landmarks: landmarks,
                 world_landmarks: worldLandmarks,
                 tracking_score: parseFloat(trackingScore.toFixed(3)),
+                estimated_latency_ms: Math.round(estimatedLatencyMs),
                 device_rotation: 0,
             };
 
