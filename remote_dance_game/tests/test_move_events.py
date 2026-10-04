@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from services.move_events import build_move_markers
+from services.move_events import build_move_markers, build_pictogram_markers
 
 
 def _pose(i: int):
@@ -43,3 +43,17 @@ def test_move_markers_reference_real_frames():
         idx = marker["frame_index"]
         assert 0 <= idx < len(frames)
         assert marker["t_ms"] == frames[idx]["t_ms"]
+
+
+def test_pictograms_are_sparser_than_scoring_markers():
+    frames = [{"t_ms": i * 33, "landmarks": _pose(i)} for i in range(240)]
+    timing = {"beat_ms": list(range(0, frames[-1]["t_ms"] + 1, 500))}
+    dense = build_move_markers(frames, timing)
+    cues = build_pictogram_markers(frames, timing)
+    assert cues
+    assert len(cues) < len(dense)
+    gaps = [cues[i + 1]["t_ms"] - cues[i]["t_ms"] for i in range(len(cues) - 1)]
+    if gaps:
+        assert min(gaps) >= 600
+        assert max(gaps) <= 2200
+    assert all(cue["kind"].startswith("pictogram") for cue in cues)
