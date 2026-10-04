@@ -17,15 +17,20 @@ using UnityEngine.Video;
 namespace DanceFlow.UnityClient
 {
     [Serializable] public class DanceTheme { public string name; public int[] primary; public int[] secondary; public int[] accent; public int[] deep; public string motif; }
-    [Serializable] public class DanceListItem { public string dance_id; public string title; public int duration_ms; public string difficulty; public string created_at; public bool has_video; public bool has_poster; public string preview_mode; public DanceTheme theme; }
-    [Serializable] public class DanceDetail { public string dance_id; public string title; public int version; public int duration_ms; public string skeleton_format; public string preview_mode; public string difficulty; public bool mirror_mode; public string created_at; public int num_frames; public int num_events; public bool has_poster; public DanceTheme theme; }
+    [Serializable] public class DanceListItem { public string dance_id; public string title; public int duration_ms; public string difficulty; public string created_at; public bool has_video; public bool has_poster; public string preview_mode; public DanceTheme theme; public int coach_count = 1; }
+    [Serializable] public class DanceDetail { public string dance_id; public string title; public int version; public int duration_ms; public string skeleton_format; public string preview_mode; public string difficulty; public bool mirror_mode; public string created_at; public int num_frames; public int num_events; public bool has_poster; public DanceTheme theme; public int coach_count = 1; }
     [Serializable] public class SessionCreateRequest { public string dance_id; }
     [Serializable] public class GameSession { public string session_id; public string dance_id; public string connect_url; public string qr_data; }
-    [Serializable] public class SessionStatus { public string status; public bool phone_connected; public bool calibrated; }
+    [Serializable] public class PlayerStatus { public string player_id; public int slot; public int coach_index; public bool ready; public float tracking_score; public bool active; }
+    [Serializable] public class SessionStatus { public string status; public bool phone_connected; public bool calibrated; public int coach_count = 1; public PlayerStatus[] players; }
+    [Serializable] public class SessionAssignRequest { public string player_id; public int coach_index; }
+    [Serializable] public class SessionAssignResponse { public string status; public string player_id; public int player_slot; public int coach_index; public PlayerStatus[] players; }
     [Serializable] public class Landmark { public float x; public float y; public float z; public float v; }
     [Serializable] public class PoseTimelineFrame { public int t_ms; public Landmark[] landmarks; }
     [Serializable] public class PoseTimeline { public string dance_id; public int fps; public int duration_ms; public string space; public PoseTimelineFrame[] frames; }
-    [Serializable] public class MovePreview { public int t_ms; public int move_index; public float motion; public Landmark[] landmarks; }
+    [Serializable] public class MovePreview { public int t_ms; public int move_index; public int cue_index; public float motion; public Landmark[] landmarks; }
+    [Serializable] public class CoachCueTrack { public int coach_index; public MovePreview[] cues; }
+    [Serializable] public class CoachInfo { public int coach_index; public string label; public string preview_path; public float coverage; public float avg_x; }
     [Serializable] public class PlaybackData
     {
         public string dance_id;
@@ -36,9 +41,12 @@ namespace DanceFlow.UnityClient
         public int[] strong_beat_ms;
         public MovePreview[] move_previews;
         public int move_count;
+        public int coach_count = 1;
+        public CoachCueTrack[] coach_cues;
+        public CoachInfo[] coaches;
     }
     [Serializable] public class GameResults { public int total_score; public int max_combo; public float accuracy_arms; public float accuracy_legs; public float accuracy_torso; }
-    [Serializable] public class SocketEnvelope { public string type; public string grade; public int timestamp_ms; public int score; public int total_score; public int combo; public float similarity; public string hold_state; public float timing_offset_ms; public bool tracking_lost; public int move_index; public int move_count; public bool is_move_grade; public GameResults results; }
+    [Serializable] public class SocketEnvelope { public string type; public string grade; public int timestamp_ms; public int score; public int total_score; public int combo; public float similarity; public string hold_state; public float timing_offset_ms; public bool tracking_lost; public int move_index; public int move_count; public bool is_move_grade; public string player_id; public int player_slot; public int coach_index; public Landmark[] player_pose; public GameResults results; }
     [Serializable] public class MediaClockMessage { public string action = "media_clock"; public int media_time_ms; }
     [Serializable] public class GameActionMessage { public string action; public int media_time_ms; }
 
@@ -125,6 +133,7 @@ namespace DanceFlow.UnityClient
 
         public string VideoUrl(string danceId) { return BaseUrl + "/video/" + danceId; }
         public string PosterUrl(string danceId) { return BaseUrl + "/api/dances/" + danceId + "/poster"; }
+        public string CoachPreviewUrl(string danceId, int coachIndex) { return BaseUrl + "/api/dances/" + danceId + "/coaches/" + coachIndex + "/preview"; }
         public string PoseTimelineUrl(string danceId, int fps) { return "/api/dances/" + danceId + "/pose-timeline?fps=" + fps; }
         public string GameSocketUrl(string sessionId)
         {
