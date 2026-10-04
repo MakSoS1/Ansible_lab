@@ -330,8 +330,9 @@ def _stylize_person(frame: np.ndarray, mask: np.ndarray, pose_frame: Dict[str, A
     tint = np.broadcast_to(tint, (h, w, 3)).copy()
     lum = (0.34 + 0.78 * levels)[..., None]
     stylized = tint * lum
-    # Beat adds a clean white flash to the coach rather than flashing the whole UI.
-    stylized = stylized * (1.0 - 0.20 * beat) + 255.0 * (0.20 * beat)
+    # Keep the dancer visually stable. Beat-reactive energy belongs behind the
+    # coach, never across the body, so fast gestures remain easy to read.
+    stylized = np.clip(stylized * (1.0 + 0.025 * beat), 0, 255)
 
     # White face + hands, Just-Dance-like visual anchors that make fast gestures readable.
     pts = _visible_landmarks(pose_frame, mirror_mode)
@@ -387,17 +388,14 @@ def _compose(frame: np.ndarray, mask: np.ndarray, pose_frame: Dict[str, Any], th
     _draw_stage_shadow(bg, pose_frame, mask, theme, mirror_mode)
     dancer, soft = _stylize_person(frame, mask, pose_frame, theme, beat, mirror_mode)
 
+    # A restrained halo is painted into the BACKGROUND first. The dancer is
+    # composited last and is never covered by ribbons, bloom or beat flashes.
     glow = cv2.GaussianBlur(soft, (0, 0), max(8, w * 0.012))
-    ring = np.clip(glow - soft * .62, 0, 1)[..., None]
+    ring = np.clip(glow - soft * .70, 0, 1)[..., None]
     glow_col = np.array(_bgr(theme.primary), np.float32)
-    out = np.clip(bg.astype(np.float32) + ring * glow_col * (0.58 + 0.34 * beat), 0, 255)
+    out = np.clip(bg.astype(np.float32) + ring * glow_col * (0.28 + 0.12 * beat), 0, 255)
     alpha = np.clip(soft[..., None] * 1.08, 0, 1)
     out = out * (1.0 - alpha) + dancer.astype(np.float32) * alpha
-
-    # Stage-wide strong-beat bloom.
-    if beat > .05:
-        bloom = cv2.GaussianBlur(out.astype(np.uint8), (0, 0), 8 + 16 * beat).astype(np.float32)
-        out = out * (1.0 - .08 * beat) + bloom * (.08 * beat)
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
