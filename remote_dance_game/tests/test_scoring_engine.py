@@ -69,34 +69,45 @@ def _feed_pair(engine: ScoringEngine, previous_idx: int, current_idx: int, recei
     })
 
 
+
+def _first_move(engine: ScoringEngine) -> tuple[int, int]:
+    assert engine.move_markers
+    t_ms = int(engine.move_markers[0]["t_ms"])
+    idx = max(1, min(18, round(t_ms / 33)))
+    return t_ms, idx
+
+
 def test_exact_phone_landmarks_can_reach_perfect() -> None:
     engine = ScoringEngine(_dance())
     engine.start()
-    _feed_pair(engine, 9, 10)
-    event = engine.score_tick(330, now_server_ms=10_020)
+    move_t, move_idx = _first_move(engine)
+    _feed_pair(engine, move_idx - 1, move_idx)
+    event = engine.score_tick(move_t, now_server_ms=10_020)
     assert event is not None
     assert event.tracking_lost is False
     assert event.grade == GradeEnum.perfect
     assert event.similarity >= 0.92
-    assert event.score > 300  # first combo bonus is applied, proving this is a scored event
+    assert event.is_move_grade is True
+    assert event.score > 300  # first move grade includes the combo bonus
 
 
 def test_wrong_amplitude_scores_lower_than_exact_pose() -> None:
     exact = ScoringEngine(_dance())
     exact.start()
-    _feed_pair(exact, 9, 10)
-    exact_event = exact.score_tick(330, now_server_ms=10_020)
+    move_t, move_idx = _first_move(exact)
+    _feed_pair(exact, move_idx - 1, move_idx)
+    exact_event = exact.score_tick(move_t, now_server_ms=10_020)
     assert exact_event is not None
 
     wrong = ScoringEngine(_dance())
     wrong.start()
-    wrong.add_pose_frame({"timestamp_ms": 1_000, "received_at_ms": 9_990, "landmarks": _pose_at(9)})
-    altered = _pose_at(10)
+    wrong.add_pose_frame({"timestamp_ms": 1_000, "received_at_ms": 9_990, "landmarks": _pose_at(move_idx - 1)})
+    altered = _pose_at(move_idx)
     # Collapse the intended arm amplitude toward the torso and put the wrist on the wrong side.
     altered[14]["x"], altered[14]["y"] = 0.58, 0.43
     altered[16]["x"], altered[16]["y"] = 0.54, 0.52
     wrong.add_pose_frame({"timestamp_ms": 1_033, "received_at_ms": 10_000, "landmarks": altered})
-    wrong_event = wrong.score_tick(330, now_server_ms=10_020)
+    wrong_event = wrong.score_tick(move_t, now_server_ms=10_020)
     assert wrong_event is not None
     assert wrong_event.similarity < exact_event.similarity - 0.05
     assert wrong_event.limb_scores is not None
@@ -106,14 +117,16 @@ def test_wrong_amplitude_scores_lower_than_exact_pose() -> None:
 def test_temporal_mismatch_is_penalized() -> None:
     exact = ScoringEngine(_dance())
     exact.start()
-    _feed_pair(exact, 9, 10)
-    exact_event = exact.score_tick(330, now_server_ms=10_020)
+    move_t, move_idx = _first_move(exact)
+    _feed_pair(exact, move_idx - 1, move_idx)
+    exact_event = exact.score_tick(move_t, now_server_ms=10_020)
     assert exact_event is not None
 
     late = ScoringEngine(_dance())
     late.start()
-    _feed_pair(late, 6, 7)
-    late_event = late.score_tick(330, now_server_ms=10_020)
+    late_idx = max(1, move_idx - 4)
+    _feed_pair(late, late_idx - 1, late_idx)
+    late_event = late.score_tick(move_t, now_server_ms=10_020)
     assert late_event is not None
     assert late_event.timing_offset_ms is not None
     assert late_event.timing_offset_ms >= 90
@@ -124,8 +137,9 @@ def test_temporal_mismatch_is_penalized() -> None:
 def test_stale_pose_awards_zero_points_and_breaks_combo() -> None:
     engine = ScoringEngine(_dance())
     engine.start()
-    _feed_pair(engine, 9, 10, received_at_ms=1_000)
-    event = engine.score_tick(330, now_server_ms=1_400)
+    move_t, move_idx = _first_move(engine)
+    _feed_pair(engine, move_idx - 1, move_idx, received_at_ms=1_000)
+    event = engine.score_tick(move_t, now_server_ms=1_400)
     assert event is not None
     assert event.tracking_lost is True
     assert event.grade == GradeEnum.x
