@@ -52,8 +52,13 @@ await assertSeparated(page, [
   ['.ref-song-panel', '.ref-score-panel', 12],
   ['.ref-score-panel', '.ref-next-moves', 10],
   ['.ref-next-moves', '.ref-timeline', 10],
-  ['.ref-grade', '.ref-next-moves', 8],
 ], 'gameplay layout');
+
+if (await page.locator('.ref-grade').count()) {
+  await assertSeparated(page, [
+    ['.ref-grade', '.ref-next-moves', 8],
+  ], 'transient grade layout');
+}
 
 const viewport = page.viewportSize();
 if (!viewport) throw new Error('No viewport');
