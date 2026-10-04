@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { apiGet, DanceDetail, ScoreEvent, videoUrl, wsUrl } from '../api'
+import { apiGet, DanceDetail, posterUrl, ScoreEvent, videoUrl, wsUrl } from '../api'
+import PoseGlyph from './PoseGlyph'
 
-const CONNECTIONS: Array<[number, number]> = [
-  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24],
-  [23, 25], [25, 27], [24, 26], [26, 28], [27, 29], [29, 31], [28, 30], [30, 32],
-]
+type MovePreview = {
+  t_ms: number
+  landmarks: Array<{x: number; y: number; z?: number; v?: number}>
+}
 
 type PlaybackInfo = {
   duration_ms: number
@@ -14,7 +15,16 @@ type PlaybackInfo = {
   beat_ms: number[]
   strong_beat_ms: number[]
   events: Array<{type: string; start_ms: number; end_ms: number}>
+  theme?: Record<string, any>
+  move_previews?: MovePreview[]
 }
+
+function fmt(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
+function gradeClass(g: string) { return g ? `grade-${g.toLowerCase()}` : '' }
 
 export default function Gameplay() {
   const { danceId, sessionId } = useParams<{ danceId: string; sessionId: string }>()
@@ -22,90 +32,37 @@ export default function Gameplay() {
   const [score, setScore] = useState(0)
   const [combo, setCombo] = useState(0)
   const [grade, setGrade] = useState('')
-  const [similarity, setSimilarity] = useState(0)
   const [timingOffset, setTimingOffset] = useState<number | null>(null)
   const [holdState, setHoldState] = useState<string | null>(null)
   const [trackingLost, setTrackingLost] = useState(false)
   const [phoneConnected, setPhoneConnected] = useState(true)
   const [progress, setProgress] = useState(0)
+  const [mediaMs, setMediaMs] = useState(0)
   const [gameOver, setGameOver] = useState(false)
   const [results, setResults] = useState<any>(null)
   const [ready, setReady] = useState(false)
   const [countdown, setCountdown] = useState<string | null>('READY')
   const [paused, setPaused] = useState(false)
   const [started, setStarted] = useState(false)
-  const [beatPulse, setBeatPulse] = useState(0)
   const [detail, setDetail] = useState<DanceDetail | null>(null)
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null)
-  const [limbScores, setLimbScores] = useState<Record<string, number>>({})
 
   const wsRef = useRef<WebSocket | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number | null>(null)
   const lastClockSentRef = useRef(0)
   const gradeTimeoutRef = useRef<any>(null)
-  const beatIndexRef = useRef(0)
-
-  const beats = useMemo(() => playback?.strong_beat_ms?.length ? playback.strong_beat_ms : playback?.beat_ms || [], [playback])
-
-  const drawCoachPose = useCallback((pose?: Array<{x: number; y: number; v?: number}>) => {
-    const canvas = canvasRef.current
-    const video = videoRef.current
-    if (!canvas || !video) return
-    const rect = video.getBoundingClientRect()
-    const dpr = window.devicePixelRatio || 1
-    const w = Math.max(1, Math.floor(rect.width * dpr))
-    const h = Math.max(1, Math.floor(rect.height * dpr))
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w
-      canvas.height = h
-    }
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.clearRect(0, 0, w, h)
-    if (!pose || pose.length < 33) return
-
-    ctx.save()
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.shadowBlur = 28 * dpr
-    ctx.shadowColor = 'rgba(0, 238, 255, .9)'
-    ctx.strokeStyle = 'rgba(117, 249, 255, .90)'
-    ctx.lineWidth = 8 * dpr
-    CONNECTIONS.forEach(([a, b]) => {
-      const pa = pose[a], pb = pose[b]
-      if (!pa || !pb || (pa.v ?? 1) < .25 || (pb.v ?? 1) < .25) return
-      ctx.beginPath()
-      ctx.moveTo(pa.x * w, pa.y * h)
-      ctx.lineTo(pb.x * w, pb.y * h)
-      ctx.stroke()
-    })
-    ctx.shadowBlur = 18 * dpr
-    ctx.fillStyle = 'rgba(255, 255, 255, .95)'
-    ;[11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].forEach(i => {
-      const p = pose[i]
-      if (!p || (p.v ?? 1) < .25) return
-      ctx.beginPath()
-      ctx.arc(p.x * w, p.y * h, 5 * dpr, 0, Math.PI * 2)
-      ctx.fill()
-    })
-    ctx.restore()
-  }, [])
 
   const handleScoreEvent = useCallback((event: ScoreEvent) => {
     setScore(prev => event.total_score ?? (prev + event.score))
     setCombo(event.combo)
     setGrade(event.grade)
-    setSimilarity(event.similarity)
     setTimingOffset(event.timing_offset_ms ?? null)
     setHoldState(event.hold_state || null)
     setTrackingLost(Boolean(event.tracking_lost))
-    setLimbScores(event.limb_scores || {})
-    drawCoachPose(event.coach_pose)
     if (gradeTimeoutRef.current) clearTimeout(gradeTimeoutRef.current)
-    gradeTimeoutRef.current = setTimeout(() => setGrade(''), 650)
-  }, [drawCoachPose])
+    gradeTimeoutRef.current = setTimeout(() => setGrade(''), 720)
+  }, [])
 
   useEffect(() => {
     if (!danceId) return
@@ -131,7 +88,11 @@ export default function Gameplay() {
       else if (msg.type === 'game_over') { setGameOver(true); setResults(msg.results) }
     }
     ws.onclose = () => setReady(false)
-    return () => { ws.close(); if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+    return () => {
+      ws.close()
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (gradeTimeoutRef.current) clearTimeout(gradeTimeoutRef.current)
+    }
   }, [sessionId, handleScoreEvent])
 
   const clockLoop = useCallback((now: number) => {
@@ -141,20 +102,15 @@ export default function Gameplay() {
       rafRef.current = requestAnimationFrame(clockLoop)
       return
     }
-    const mediaMs = Math.max(0, Math.round(video.currentTime * 1000))
-    setProgress(Math.min(100, mediaMs / Math.max(1, playback?.duration_ms || detail?.duration_ms || 1) * 100))
-
+    const current = Math.max(0, Math.round(video.currentTime * 1000))
+    setMediaMs(current)
+    setProgress(Math.min(100, current / Math.max(1, playback?.duration_ms || detail?.duration_ms || 1) * 100))
     if (now - lastClockSentRef.current >= 45) {
-      ws.send(JSON.stringify({ action: 'media_clock', media_time_ms: mediaMs }))
+      ws.send(JSON.stringify({ action: 'media_clock', media_time_ms: current }))
       lastClockSentRef.current = now
     }
-
-    while (beatIndexRef.current < beats.length && mediaMs >= beats[beatIndexRef.current]) {
-      if (mediaMs - beats[beatIndexRef.current] < 150) setBeatPulse(v => v + 1)
-      beatIndexRef.current += 1
-    }
     rafRef.current = requestAnimationFrame(clockLoop)
-  }, [beats, playback, detail])
+  }, [playback, detail])
 
   const startGame = async () => {
     if (!videoRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
@@ -163,14 +119,13 @@ export default function Gameplay() {
       await new Promise(resolve => setTimeout(resolve, 650))
     }
     setCountdown('GO!')
-    await new Promise(resolve => setTimeout(resolve, 350))
+    await new Promise(resolve => setTimeout(resolve, 340))
     setCountdown(null)
     videoRef.current.currentTime = 0
     videoRef.current.muted = false
     await videoRef.current.play()
     wsRef.current.send(JSON.stringify({ action: 'start', media_time_ms: 0 }))
     setStarted(true)
-    beatIndexRef.current = 0
     lastClockSentRef.current = 0
     rafRef.current = requestAnimationFrame(clockLoop)
   }
@@ -180,13 +135,9 @@ export default function Gameplay() {
     const ws = wsRef.current
     if (!video || !ws || ws.readyState !== WebSocket.OPEN) return
     if (video.paused) {
-      await video.play()
-      ws.send(JSON.stringify({ action: 'resume' }))
-      setPaused(false)
+      await video.play(); ws.send(JSON.stringify({ action: 'resume' })); setPaused(false)
     } else {
-      video.pause()
-      ws.send(JSON.stringify({ action: 'pause' }))
-      setPaused(true)
+      video.pause(); ws.send(JSON.stringify({ action: 'pause' })); setPaused(true)
     }
   }
 
@@ -195,97 +146,130 @@ export default function Gameplay() {
     wsRef.current?.send(JSON.stringify({ action: 'stop' }))
   }
 
-  const gradeClass = (g: string) => g ? `grade-${g}` : ''
-  const timingText = timingOffset == null ? '' : timingOffset < 45 ? 'ON BEAT' : timingOffset < 90 ? 'CLOSE' : `${timingOffset}ms`
+  const durationMs = playback?.duration_ms || detail?.duration_ms || 1
+  const timingText = timingOffset == null ? '' : Math.abs(timingOffset) < 45 ? 'ON BEAT' : Math.abs(timingOffset) < 90 ? 'CLOSE' : `${Math.abs(timingOffset)}ms`
+  const stars = Math.max(0, Math.min(5, Math.floor(score / 30000)))
+
+  const nextMoves = useMemo(() => {
+    const moves = playback?.move_previews || []
+    if (!moves.length) return [] as MovePreview[]
+    let idx = moves.findIndex(m => m.t_ms >= mediaMs + 260)
+    if (idx < 0) idx = Math.max(0, moves.length - 3)
+    return moves.slice(idx, idx + 3)
+  }, [playback?.move_previews, mediaMs])
+
+  const timelineMarkers = useMemo(() => {
+    const source = playback?.strong_beat_ms?.length ? playback.strong_beat_ms : playback?.beat_ms || []
+    if (!source.length) return [12, 31, 50, 69, 87]
+    const count = Math.min(7, source.length)
+    return Array.from({length: count}, (_, i) => {
+      const idx = Math.min(source.length - 1, Math.round(i * (source.length - 1) / Math.max(1, count - 1)))
+      return Math.max(3, Math.min(97, source[idx] / durationMs * 100))
+    })
+  }, [playback, durationMs])
 
   if (gameOver && results) {
     const hits = Object.values(results.grade_counts || {}).reduce((a: number, b: any) => a + Number(b || 0), 0) as number
     const quality = hits ? ((results.grade_counts?.perfect || 0) + .85 * (results.grade_counts?.super || 0) + .65 * (results.grade_counts?.good || 0) + .4 * (results.grade_counts?.ok || 0)) / hits : 0
-    const stars = Math.max(1, Math.min(5, Math.round(quality * 5)))
+    const resultStars = Math.max(1, Math.min(5, Math.round(quality * 5)))
     return (
-      <div className="min-h-screen dance-shell p-6 flex items-center justify-center overflow-auto">
-        <div className="glass-card max-w-3xl w-full rounded-[2rem] p-8 md:p-10 text-center">
-          <p className="dance-kicker">ROUTINE COMPLETE</p>
-          <div className="text-7xl md:text-8xl font-black mt-2 score-gradient">{Number(results.total_score || 0).toLocaleString()}</div>
-          <div className="text-4xl tracking-[.3em] mt-4">{'★'.repeat(stars)}<span className="text-white/15">{'★'.repeat(5-stars)}</span></div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
-            <Stat value={`${results.max_combo || 0}x`} label="Max combo" />
-            <Stat value={`${Math.round((results.accuracy_arms || 0) * 100)}%`} label="Arms" />
-            <Stat value={`${Math.round((results.accuracy_legs || 0) * 100)}%`} label="Legs" />
-            <Stat value={`${Math.round((results.accuracy_torso || 0) * 100)}%`} label="Torso" />
+      <main className="ref-results">
+        <div className="ref-results-card">
+          <div className="ref-brand compact">DANCE<span>FLOW</span></div>
+          <p>ROUTINE COMPLETE</p>
+          <h1>{Number(results.total_score || 0).toLocaleString()}</h1>
+          <div className="ref-results-stars">{'★'.repeat(resultStars)}<span>{'★'.repeat(5 - resultStars)}</span></div>
+          <div className="ref-result-grid">
+            <div><b>{results.max_combo || 0}x</b><span>MAX COMBO</span></div>
+            <div><b>{Math.round((results.accuracy_arms || 0) * 100)}%</b><span>ARMS</span></div>
+            <div><b>{Math.round((results.accuracy_torso || 0) * 100)}%</b><span>TORSO</span></div>
+            <div><b>{Math.round((results.accuracy_legs || 0) * 100)}%</b><span>LEGS</span></div>
           </div>
-          <div className="grid grid-cols-5 gap-2 mt-6">
-            {['perfect','super','good','ok','x'].map(g => <div key={g} className="rounded-2xl bg-white/5 p-3"><div className={`font-black uppercase ${gradeClass(g)}`}>{g}</div><div className="text-2xl font-black mt-1">{results.grade_counts?.[g] || 0}</div></div>)}
-          </div>
-          <div className="grid md:grid-cols-2 gap-3 mt-8">
-            <button className="dance-primary rounded-2xl py-4 font-black" onClick={() => navigate(`/connect/${danceId}`)}>Dance again</button>
-            <button className="rounded-2xl py-4 font-black bg-white/10 hover:bg-white/15" onClick={() => navigate('/')}>Library</button>
-          </div>
+          <div className="ref-results-actions"><button className="ref-primary" onClick={() => navigate(`/connect/${danceId}`)}>▶ Dance again</button><button className="ref-secondary" onClick={() => navigate('/')}>Library</button></div>
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <div className="game-stage">
-      <div key={beatPulse} className="beat-flash" />
-      <div className="stage-orb orb-one" /><div className="stage-orb orb-two" />
+    <main className="ref-gameplay">
       {danceId && (
         <video
           ref={videoRef}
           src={videoUrl(danceId)}
-          className="coach-video"
+          className="ref-game-video"
           style={{ transform: detail?.mirror_mode ? 'scaleX(-1)' : undefined }}
           playsInline
           preload="auto"
-          onEnded={() => wsRef.current?.send(JSON.stringify({ action: 'media_clock', media_time_ms: playback?.duration_ms || detail?.duration_ms || 0 }))}
+          onEnded={() => wsRef.current?.send(JSON.stringify({ action: 'media_clock', media_time_ms: durationMs }))}
         />
       )}
-      <canvas ref={canvasRef} className="coach-pose-overlay" />
-      <div className="video-vignette" />
+      <div className="ref-game-vignette" />
 
-      <div className="game-hud top-hud">
-        <div><div className="hud-label">SCORE</div><div className="hud-score">{score.toLocaleString()}</div></div>
-        <div className="hud-center"><div className="song-title">{detail?.title || 'Loading routine…'}</div><div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div></div>
-        <div className="text-right"><div className="hud-label">COMBO</div><div className={`hud-score ${combo > 2 ? 'combo-hot' : ''}`}>{combo}x</div></div>
-      </div>
+      <section className="ref-song-panel">
+        <div className="ref-song-cover">{danceId && detail?.has_poster ? <img src={posterUrl(danceId)} /> : <span>DF</span>}</div>
+        <div className="ref-song-copy">
+          <h1>{detail?.title || 'Loading routine…'}</h1>
+          <p>DANCEFLOW CREW <i>│</i> POP <i>│</i> PLAYABLE</p>
+          <div className="ref-song-progress"><b style={{width:`${progress}%`}} /><em /></div>
+        </div>
+        <div className="ref-song-time">{fmt(mediaMs)} / {fmt(durationMs)}</div>
+      </section>
 
-      <div className="limb-meter left-meter"><LimbMeter label="ARMS" value={limbScores.arms || 0} /><LimbMeter label="TORSO" value={limbScores.torso || 0} /><LimbMeter label="LEGS" value={limbScores.legs || 0} /></div>
+      <section className="ref-score-panel">
+        <div className="ref-score-copy"><span>♕ SCORE</span><strong>{score.toLocaleString()}</strong></div>
+        <div className="ref-stars" aria-label={`${stars} stars`}>
+          {[0,1,2,3,4].map(i => <b key={i} className={i < stars ? 'earned' : ''}>★</b>)}
+        </div>
+        <div className="ref-combo"><span>COMBO</span><strong>{combo}</strong></div>
+      </section>
 
-      {grade && !trackingLost && <div className="grade-burst"><div className={`grade-word ${gradeClass(grade)}`}>{grade === 'x' ? 'X' : grade}</div><div className="timing-chip">{timingText}</div></div>}
-      {trackingLost && <div className="tracking-warning"><div className="text-3xl font-black">STEP BACK INTO FRAME</div><div className="text-sm text-white/65 mt-1">No points are awarded while tracking is lost.</div></div>}
-      {!phoneConnected && <div className="phone-warning">Phone disconnected — reconnect the tracker to continue scoring</div>}
-      {holdState && ['entering','holding'].includes(holdState) && <div className="hold-burst">HOLD!</div>}
-      {holdState === 'yeah' && <div className="yeah-burst">YEAH!</div>}
+      <aside className="ref-next-moves">
+        {[0,1,2].map((i) => (
+          <div key={i} className={`ref-move-card ${i === 0 ? 'active' : ''}`}>
+            <PoseGlyph pose={nextMoves[i]?.landmarks} active={i === 0} variant={i} />
+          </div>
+        ))}
+        <span>NEXT<br/>MOVES</span>
+      </aside>
+
+      {grade && !trackingLost && (
+        <div className={`ref-grade ${gradeClass(grade)}`}>
+          <span>♕</span><strong>{grade === 'x' ? 'X' : grade.toUpperCase()}</strong><em>{timingText || 'ON BEAT'}</em>
+        </div>
+      )}
+      {holdState && ['entering','holding'].includes(holdState) && <div className="ref-hold">HOLD!</div>}
+      {holdState === 'yeah' && <div className="ref-hold">YEAH!</div>}
+
+      <section className="ref-timeline">
+        <div className="ref-wave ref-wave-left">{Array.from({length:13},(_,i)=><i key={i} style={{height:`${10 + ((i*13)%30)}px`}} />)}</div>
+        <div className="ref-timeline-track">
+          <div className="ref-timeline-fill" style={{width:`${progress}%`}} />
+          {timelineMarkers.map((p,i) => <i key={i} className="ref-timeline-marker" style={{left:`${p}%`}} />)}
+          <b className="ref-timeline-cursor" style={{left:`${progress}%`}} />
+        </div>
+        <div className="ref-wave ref-wave-right">{Array.from({length:13},(_,i)=><i key={i} style={{height:`${10 + (((12-i)*13)%30)}px`}} />)}</div>
+      </section>
+
+      {trackingLost && <div className="ref-tracking-warning"><b>STEP INTO FRAME</b><span>Tracking paused — no points are being awarded.</span></div>}
+      {!phoneConnected && <div className="ref-phone-warning">PHONE DISCONNECTED</div>}
 
       {countdown && (
-        <div className="start-overlay">
-          <div className="start-panel">
-            <div className="countdown-word">{countdown}</div>
+        <div className="ref-start-overlay">
+          <div className="ref-start-card">
+            <div className="ref-brand compact">DANCE<span>FLOW</span></div>
+            <strong className="ref-countdown">{countdown}</strong>
             {countdown === 'READY' && <>
-              <div className="text-white/55 mt-3">Phone tracking is ready. Audio starts on your click.</div>
-              <button disabled={!ready || !detail || !playback} onClick={startGame} className="dance-primary px-10 py-4 rounded-2xl font-black text-xl mt-7 disabled:opacity-30">START DANCE</button>
+              <p>Phone tracking ready. Keep your full body in frame.</p>
+              <button disabled={!ready || !detail || !playback} onClick={startGame} className="ref-primary">▶ START DANCE</button>
             </>}
           </div>
         </div>
       )}
 
       {started && !gameOver && (
-        <div className="game-controls">
-          <button onClick={togglePause}>{paused ? '▶ Resume' : 'Ⅱ Pause'}</button>
-          <button onClick={stopGame}>■ Stop</button>
-        </div>
+        <div className="ref-game-controls"><button onClick={togglePause}>{paused ? '▶' : 'Ⅱ'}</button><button onClick={stopGame}>■</button></div>
       )}
-
-      <div className="latency-strip"><span>{Math.round(similarity * 100)}% pose</span><span>•</span><span>{timingText || 'syncing'}</span></div>
-    </div>
+    </main>
   )
-}
-
-function Stat({value, label}: {value: string, label: string}) {
-  return <div className="rounded-2xl bg-white/5 p-4"><div className="text-3xl font-black">{value}</div><div className="text-xs text-white/45 uppercase tracking-widest mt-1">{label}</div></div>
-}
-
-function LimbMeter({label, value}: {label: string, value: number}) {
-  return <div className="limb-row"><span>{label}</span><div className="limb-track"><div className="limb-fill" style={{ width: `${Math.max(0, Math.min(100, value * 100))}%` }} /></div></div>
 }
