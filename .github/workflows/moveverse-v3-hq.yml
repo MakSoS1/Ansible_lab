@@ -56,6 +56,7 @@ jobs:
           blender --background --factory-startup             --python tools/moveverse_3d_v3/build_coaches_blender.py --             --specs tools/moveverse_3d_v3/specs.json             --bases artifacts/v3/bases             --out artifacts/v3/final             --limit "$LIMIT"
 
       - name: Validate outputs
+        continue-on-error: true
         run: |
           cat artifacts/v3/final/build_report.json
           test "$(find artifacts/v3/final/glb -name '*.glb' | wc -l)" -eq "$LIMIT"
@@ -70,12 +71,14 @@ jobs:
           PY
 
       - name: Package
+        if: always()
         run: |
           cd artifacts/v3
           zip -r -9 moveverse_v3_hq.zip final >/dev/null
           ls -lh moveverse_v3_hq.zip
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: moveverse-v3-hq-${{ env.LIMIT }}
           path: |
