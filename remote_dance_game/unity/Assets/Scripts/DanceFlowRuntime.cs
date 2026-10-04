@@ -320,12 +320,19 @@ namespace DanceFlow.UnityClient
         };
         private Landmark[] pose = Array.Empty<Landmark>();
         private bool primary;
+        private Color32 tint = new Color32(255, 64, 226, 255);
 
         public void SetPose(Landmark[] value, bool isPrimary)
         {
+            SetPose(value, isPrimary, isPrimary ? new Color32(255,64,226,255) : new Color32(142,96,255,235));
+        }
+
+        public void SetPose(Landmark[] value, bool isPrimary, Color32 tintColor)
+        {
             pose = value ?? Array.Empty<Landmark>();
             primary = isPrimary;
-            color = isPrimary ? new Color32(255,255,255,255) : new Color32(210,190,255,225);
+            tint = tintColor;
+            color = Color.white;
             SetVerticesDirty();
         }
 
@@ -334,19 +341,20 @@ namespace DanceFlow.UnityClient
             vh.Clear();
             if (pose == null || pose.Length < 29) return;
 
-            List<int> joints = new List<int> { 11,12,13,14,15,16,23,24,25,26,27,28 };
+            List<int> joints = new List<int> { 0,11,12,13,14,15,16,23,24,25,26,27,28 };
             float minX = 10f, minY = 10f, maxX = -10f, maxY = -10f;
             foreach (int idx in joints)
             {
+                if (idx >= pose.Length) continue;
                 Landmark lm = pose[idx];
-                if (lm == null || lm.v < 0.12f) continue;
+                if (lm == null || lm.v < 0.10f) continue;
                 minX = Mathf.Min(minX, lm.x); maxX = Mathf.Max(maxX, lm.x);
                 minY = Mathf.Min(minY, lm.y); maxY = Mathf.Max(maxY, lm.y);
             }
             if (maxX <= minX || maxY <= minY) return;
 
             Rect rect = rectTransform.rect;
-            float pad = Mathf.Min(rect.width, rect.height) * 0.14f;
+            float pad = Mathf.Min(rect.width, rect.height) * 0.13f;
             float scale = Mathf.Min((rect.width - pad * 2f) / Mathf.Max(maxX - minX, 0.001f),
                                     (rect.height - pad * 2f) / Mathf.Max(maxY - minY, 0.001f));
             Vector2 center = rect.center;
@@ -359,30 +367,41 @@ namespace DanceFlow.UnityClient
                 return center + new Vector2(x, y);
             }
 
-            float lineWidth = primary ? 9f : 7f;
-            Color32 lineColor = primary ? new Color32(255,255,255,255) : new Color32(218,201,255,235);
-            Color32 glowColor = primary ? new Color32(255,52,229,225) : new Color32(149,90,255,170);
+            float lineWidth = primary ? 8.5f : 7f;
+            Color32 outer = new Color32(tint.r, tint.g, tint.b, (byte)(primary ? 245 : 220));
+            Color32 glow = new Color32(tint.r, tint.g, tint.b, (byte)(primary ? 115 : 75));
+            Color32 inner = new Color32(255,255,255,(byte)(primary ? 255 : 235));
 
             int boneCount = Bones.GetLength(0);
             for (int i = 0; i < boneCount; i++)
             {
                 int a = Bones[i,0], b = Bones[i,1];
-                if (pose[a] == null || pose[b] == null || Mathf.Min(pose[a].v, pose[b].v) < 0.12f) continue;
-                AddLine(vh, Map(a), Map(b), lineWidth + 8f, glowColor);
-                AddLine(vh, Map(a), Map(b), lineWidth, lineColor);
+                if (pose[a] == null || pose[b] == null || Mathf.Min(pose[a].v, pose[b].v) < 0.10f) continue;
+                AddLine(vh, Map(a), Map(b), lineWidth + 12f, glow);
+                AddLine(vh, Map(a), Map(b), lineWidth + 4f, outer);
+                AddLine(vh, Map(a), Map(b), Mathf.Max(3f, lineWidth * .42f), inner);
             }
+
+            Vector2 head;
+            if (pose.Length > 0 && pose[0] != null && pose[0].v >= 0.10f)
+                head = Map(0);
+            else
+                head = (Map(11) + Map(12)) * .5f + Vector2.up * (Mathf.Abs(Map(11).x - Map(12).x) * .82f);
+            AddCircle(vh, head, primary ? 15f : 13f, outer, 14);
+            AddCircle(vh, head, primary ? 9f : 8f, inner, 14);
 
             foreach (int idx in new[] { 15,16,27,28 })
             {
-                if (pose[idx] == null || pose[idx].v < 0.12f) continue;
-                AddSquare(vh, Map(idx), primary ? 12f : 9f, new Color32(255,255,255,255));
+                if (pose[idx] == null || pose[idx].v < 0.10f) continue;
+                AddCircle(vh, Map(idx), primary ? 8f : 6.5f, outer, 10);
             }
         }
 
         private static void AddLine(VertexHelper vh, Vector2 a, Vector2 b, float width, Color32 color)
         {
-            Vector2 dir = (b - a).normalized;
-            if (dir.sqrMagnitude < 0.0001f) return;
+            Vector2 delta = b - a;
+            if (delta.sqrMagnitude < 0.0001f) return;
+            Vector2 dir = delta.normalized;
             Vector2 n = new Vector2(-dir.y, dir.x) * (width * 0.5f);
             int start = vh.currentVertCount;
             vh.AddVert(a - n, color, Vector2.zero);
@@ -393,15 +412,18 @@ namespace DanceFlow.UnityClient
             vh.AddTriangle(start, start + 2, start + 3);
         }
 
-        private static void AddSquare(VertexHelper vh, Vector2 center, float radius, Color32 color)
+        private static void AddCircle(VertexHelper vh, Vector2 center, float radius, Color32 color, int segments)
         {
-            int start = vh.currentVertCount;
-            vh.AddVert(center + new Vector2(-radius,-radius), color, Vector2.zero);
-            vh.AddVert(center + new Vector2(-radius, radius), color, Vector2.zero);
-            vh.AddVert(center + new Vector2( radius, radius), color, Vector2.zero);
-            vh.AddVert(center + new Vector2( radius,-radius), color, Vector2.zero);
-            vh.AddTriangle(start, start + 1, start + 2);
-            vh.AddTriangle(start, start + 2, start + 3);
+            int centerIndex = vh.currentVertCount;
+            vh.AddVert(center, color, new Vector2(.5f,.5f));
+            for (int i = 0; i <= segments; i++)
+            {
+                float a = Mathf.PI * 2f * i / segments;
+                Vector2 p = center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius;
+                vh.AddVert(p, color, Vector2.zero);
+            }
+            for (int i = 0; i < segments; i++)
+                vh.AddTriangle(centerIndex, centerIndex + i + 1, centerIndex + i + 2);
         }
     }
 
