@@ -55,7 +55,6 @@ jobs:
           blender --version
 
       - name: Build unique outfits, hair, rigged garments and physics
-        continue-on-error: true
         run: |
           mkdir -p artifacts/v3/final
           set -o pipefail
@@ -69,7 +68,6 @@ jobs:
             --limit "$LIMIT" 2>&1 | tee artifacts/v3/blender.log
 
       - name: Validate outputs
-        continue-on-error: true
         run: |
           cat artifacts/v3/final/build_report.json
           test "$(find artifacts/v3/final/glb -name '*.glb' | wc -l)" -eq "$LIMIT"
