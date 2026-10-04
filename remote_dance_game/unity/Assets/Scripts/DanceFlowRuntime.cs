@@ -683,6 +683,7 @@ namespace DanceFlow.UnityClient
                     new Vector2(x0,-650), new Vector2(x0 + cardWidth, 420));
                 RawImage art = RuntimeUi.Panel(card.transform, "Art", Color.white, Vector2.zero, Vector2.one,
                     new Vector2(18,105), new Vector2(-18,-18));
+                if (dance.has_poster) _ = RuntimeUi.SetTextureAsync(art, app.Api, app.Api.PosterUrl(dance.dance_id));
                 _ = RuntimeUi.SetTextureAsync(art, app.Api, app.Api.CoachPreviewUrl(dance.dance_id, i));
                 Text label = RuntimeUi.Label(card.transform, "Label", "COACH " + (i + 1), 38, TextAnchor.MiddleCenter, RuntimeUi.White,
                     new Vector2(0,0), new Vector2(1,0), new Vector2(15,18), new Vector2(-15,95));
