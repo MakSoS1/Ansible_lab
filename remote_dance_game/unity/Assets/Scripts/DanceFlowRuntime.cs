@@ -582,8 +582,14 @@ namespace DanceFlow.UnityClient
                     lastStatus = state;
                     if (state.phone_connected)
                     {
-                        if (state.calibrated) { ready = true; status.text = "✓ PHONE READY     PRESS A / ENTER TO DANCE"; break; }
-                        status.text = "✓ PHONE CONNECTED     CALIBRATING…";
+                        int activePlayers = state.players == null ? 0 : state.players.Count(p => p.active);
+                        if (state.calibrated)
+                        {
+                            ready = true;
+                            status.text = "✓ PHONE READY     " + Mathf.Max(1, activePlayers) + " PLAYER" + (activePlayers == 1 ? "" : "S") + " TRACKED     PRESS A / ENTER";
+                            break;
+                        }
+                        status.text = "✓ PHONE CONNECTED     " + Mathf.Max(1, activePlayers) + " PLAYER" + (activePlayers == 1 ? "" : "S") + "     CALIBRATING…";
                     }
                     await Task.Delay(550);
                 }
