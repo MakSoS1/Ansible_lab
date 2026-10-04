@@ -47,6 +47,7 @@ def save_dance_package(dance_id: str, data: Dict[str, Any]) -> str:
         "created_at": data.get("created_at", ""),
         "num_frames": data.get("num_frames", 0),
         "num_events": data.get("num_events", 0),
+        "coach_count": data.get("coach_count", 1),
         "source_type": data.get("source_type", "file"),
         "source_url": data.get("source_url", ""),
         "pose_coverage": data.get("pose_coverage", 0.0),
@@ -61,6 +62,7 @@ def save_dance_package(dance_id: str, data: Dict[str, Any]) -> str:
         ("weights", "weights.json"),
         ("theme", "theme.json"),
         ("render", "render.json"),
+        ("coaches", "coaches.json"),
     ):
         if key in data:
             with open(os.path.join(dance_dir, filename), "w", encoding="utf-8") as f:
@@ -84,7 +86,7 @@ def load_dance_package(dance_id: str, load_pose: bool = True) -> Optional[Dict[s
         return None
 
     result: Dict[str, Any] = {}
-    load_files = ["manifest.json", "timing.json", "events.json", "weights.json", "theme.json", "render.json", "preview.json"]
+    load_files = ["manifest.json", "timing.json", "events.json", "weights.json", "theme.json", "render.json", "coaches.json", "preview.json"]
     if load_pose:
         load_files.insert(1, "reference_pose.json")
 

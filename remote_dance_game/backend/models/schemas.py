@@ -42,6 +42,7 @@ class DanceListItem(BaseModel):
     has_poster: bool = False
     preview_mode: str = "local_video"
     theme: Dict[str, Any] = Field(default_factory=dict)
+    coach_count: int = 1
 
 
 class DanceDetailResponse(BaseModel):
@@ -60,6 +61,7 @@ class DanceDetailResponse(BaseModel):
     audio_path: Optional[str] = None
     has_poster: bool = False
     theme: Dict[str, Any] = Field(default_factory=dict)
+    coach_count: int = 1
 
 
 class Landmark(BaseModel):
@@ -78,6 +80,7 @@ class PoseFrame(BaseModel):
     world_landmarks: List[Landmark] = Field(default_factory=list)
     tracking_score: float = 0.0
     device_rotation: float = 0.0
+    estimated_latency_ms: int = 0
 
 
 class GradeEnum(str, Enum):
@@ -102,6 +105,13 @@ class ScoreEvent(BaseModel):
     tracking_lost: bool = False
     pose_age_ms: Optional[int] = None
     coach_pose: Optional[List[Dict[str, float]]] = None
+    move_index: int = -1
+    move_count: int = 0
+    is_move_grade: bool = False
+    player_id: str = "p0"
+    player_slot: int = 0
+    coach_index: int = 0
+    player_pose: Optional[List[Dict[str, float]]] = None
 
 
 class HoldEventResult(BaseModel):

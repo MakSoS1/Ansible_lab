@@ -142,6 +142,37 @@ def motion_similarity(ref_vel: Dict[str, List[float]],
     return sum(scores) / sum(weights)
 
 
+def endpoint_similarity(ref_lm: List[Dict], player_lm: List[Dict],
+                        ref_vis: List[float], player_vis: List[float]) -> float:
+    """Accuracy of wrists/ankles, where dance amplitude is most visible.
+
+    Limb directions alone can hide a badly shortened gesture.  Measuring the
+    four distal endpoints after torso normalization makes "almost the same
+    direction" distinct from actually reaching the reference pose.
+    """
+    scores = []
+    weights = []
+    for idx in (15, 16, 27, 28):
+        if idx >= len(ref_lm) or idx >= len(player_lm):
+            continue
+        vis = min(ref_vis[idx] if idx < len(ref_vis) else 0.0,
+                  player_vis[idx] if idx < len(player_vis) else 0.0)
+        if vis < 0.20:
+            continue
+        dist = float(np.linalg.norm(_lm_to_np(ref_lm, idx) - _lm_to_np(player_lm, idx)))
+        # Torso-normalized coordinates: 0.50 torso lengths is already a large
+        # miss for a wrist/ankle. The soft quadratic tail keeps small camera
+        # noise inexpensive while punishing visibly short/overshot gestures.
+        norm = min(dist / 0.50, 1.0)
+        sim = max(0.0, 1.0 - norm * norm)
+        weight = max(0.20, min(1.0, vis))
+        scores.append(sim * weight)
+        weights.append(weight)
+    if not weights or sum(weights) < 0.01:
+        return 0.5
+    return sum(scores) / sum(weights)
+
+
 def timing_similarity(time_offset_ms: float, window_ms: float = 120.0) -> float:
     sigma = window_ms / 2.0
     return float(np.exp(-(time_offset_ms ** 2) / (2 * sigma ** 2)))
@@ -212,6 +243,12 @@ def compare_poses(ref_norm: Dict[str, Any], player_norm: Dict[str, Any],
         pose_score = 0.7 * pose_score + 0.3 * weighted_part
     else:
         part_scores = compute_part_scores(ref_lm, play_lm, ref_vis, play_vis)
+
+    endpoint_sim = endpoint_similarity(ref_lm, play_lm, ref_vis, play_vis)
+    # Endpoint precision is deliberately meaningful for a dance game: the wrist
+    # or ankle reaching the intended amplitude should matter, not just the
+    # average direction of all eight limbs.
+    pose_score = 0.75 * pose_score + 0.25 * endpoint_sim
 
     if include_timing:
         total_weight = pose_weight + sw["timing"]
