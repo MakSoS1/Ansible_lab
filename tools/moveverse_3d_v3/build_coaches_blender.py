@@ -126,9 +126,10 @@ def bone_name(arm, candidates):
 
 
 def add_armature_modifier(obj, arm):
+    # Armature modifier alone is enough. Parenting the cloned garment as well
+    # would apply the FBX armature transform a second time and shrink/offset it.
     mod = obj.modifiers.new("Armature", "ARMATURE")
     mod.object = arm
-    obj.parent = arm
 
 
 def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
@@ -212,16 +213,12 @@ def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
 
     # Copy all body vertex weights for the kept vertices so clothing follows
     # the exact same animation deformation as the body.
-    for sg in body.vertex_groups:
-        ng = obj.vertex_groups.new(name=sg.name)
-        vals = []
-        for ni, oi in enumerate(src_index):
-            try:
-                w = sg.weight(oi)
-            except RuntimeError:
-                continue
-            if w > 0.0:
-                ng.add([ni], w, "REPLACE")
+    group_names = {g.index: g.name for g in body.vertex_groups}
+    dst_groups = {idx: obj.vertex_groups.new(name=name) for idx, name in group_names.items()}
+    for ni, oi in enumerate(src_index):
+        for ge in src.vertices[oi].groups:
+            if ge.weight > 0.0 and ge.group in dst_groups:
+                dst_groups[ge.group].add([ni], ge.weight, "REPLACE")
     add_armature_modifier(obj, arm)
 
     if mat:
@@ -446,9 +443,14 @@ def create_hair(spec, arm, mn, mx, mats, physics):
     mat2=mat_principled(f"HairAccent_{spec['id']:02d}",accent,metallic=0.05,rough=0.32)
     H=mx.z-mn.z; W=mx.x-mn.x; D=mx.y-mn.y
     hc=Vector(((mn.x+mx.x)/2,(mn.y+mx.y)/2,mn.z+H*0.91))
-    hr=max(W*0.135,H*0.052)
+    # Body width includes the A-pose arms; derive head scale from height
+    # so hair size stays anatomical instead of becoming a giant sphere.
+    hr=H*0.054
     objects=[]
-    cap=add_uvsphere("HairCap",hc+(Vector((0,0,H*.012))), (hr*1.0,hr*.93,hr*.82),mat,40,24)
+    # Scalp volume sits behind the facial plane instead of using a full
+    # sphere around the head (which would hide the MakeHuman face).
+    cap_center = hc + Vector((0, hr * 0.34, H * 0.015))
+    cap=add_uvsphere("HairCap",cap_center,(hr*1.03,hr*.60,hr*.90),mat,40,24)
     parent_to_bone(cap,arm,["head"]); objects.append(cap)
     back_y=mx.y + D*.04
 
@@ -826,12 +828,15 @@ def look_at(obj, target):
 def render_views(outdir, spec, mn, mx):
     center,H=setup_stage(mn,mx)
     scene=bpy.context.scene
-    scene.render.engine="BLENDER_EEVEE_NEXT" if hasattr(scene,"eevee") or bpy.app.version >= (4,2,0) else "BLENDER_EEVEE"
+    scene.render.engine = "BLENDER_EEVEE_NEXT" if bpy.app.version >= (4, 2, 0) else "BLENDER_EEVEE"
     scene.render.resolution_x=640; scene.render.resolution_y=900; scene.render.resolution_percentage=100
     scene.render.image_settings.file_format="PNG"
     scene.render.film_transparent=False
     scene.render.image_settings.color_mode="RGBA"
-    scene.view_settings.look="AgX - Medium High Contrast" if "AgX - Medium High Contrast" in [i.name for i in bpy.types.ColorManagedViewSettings.bl_rna.properties['look'].enum_items] else scene.view_settings.look
+    try:
+        scene.view_settings.look = "AgX - Medium High Contrast"
+    except Exception:
+        pass
     data=bpy.data.cameras.new("PreviewCamera")
     cam=bpy.data.objects.new("PreviewCamera",data); bpy.context.collection.objects.link(cam)
     scene.camera=cam

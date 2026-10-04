@@ -44,16 +44,17 @@ jobs:
           mkdir -p artifacts/v3/bases
           python tools/moveverse_3d_v3/generate_bases.py             --specs tools/moveverse_3d_v3/specs.json             --out artifacts/v3/bases             --limit "$LIMIT"
 
-      - name: Install Blender
+      - name: Install Blender + system NumPy for Blender Python
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy xvfb libegl1 libgl1-mesa-dri libglx-mesa0 mesa-utils
           blender --version
+          blender --background --factory-startup --python-expr "import numpy; print('BLENDER_NUMPY', numpy.__version__)"
 
       - name: Build unique outfits, hair, rigged garments and physics
         run: |
           mkdir -p artifacts/v3/final
-          blender --background --factory-startup             --python tools/moveverse_3d_v3/build_coaches_blender.py --             --specs tools/moveverse_3d_v3/specs.json             --bases artifacts/v3/bases             --out artifacts/v3/final             --limit "$LIMIT"
+          blender --background --factory-startup --python-exit-code 1             --python tools/moveverse_3d_v3/build_coaches_blender.py --             --specs tools/moveverse_3d_v3/specs.json             --bases artifacts/v3/bases             --out artifacts/v3/final             --limit "$LIMIT"
 
       - name: Validate outputs
         run: |
