@@ -1,0 +1,36 @@
+name: MoveVerse TRELLIS Pilot
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/moveverse-trellis-pilot.yml'
+      - 'assets/moveverse_trellis/**'
+      - 'tools/moveverse_trellis/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Gradio client
+        run: python -m pip install -U gradio_client
+      - name: Probe TRELLIS.2 API
+        run: |
+          python - <<'PY'
+          import os
+          from gradio_client import Client
+          token=os.environ.get("HF_TOKEN")
+          print("HF_TOKEN_PRESENT", bool(token))
+          c=Client("microsoft/TRELLIS.2", token=token, verbose=True)
+          print(c.view_api(all_endpoints=True))
+          PY
