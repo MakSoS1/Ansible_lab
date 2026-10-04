@@ -89,6 +89,14 @@ def reset_scene():
         pass
 
 
+def _apply_object_transform(obj, location=True, rotation=True, scale=True):
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.transform_apply(location=location, rotation=rotation, scale=scale)
+    obj.select_set(False)
+
+
 def import_fbx(path):
     bpy.ops.import_scene.fbx(filepath=str(path), automatic_bone_orientation=False)
     meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
@@ -97,8 +105,20 @@ def import_fbx(path):
         raise RuntimeError(f"FBX import missing mesh/armature: {path}")
     body = max(meshes, key=lambda o: len(o.data.vertices))
     arm = max(arms, key=lambda o: len(o.data.bones))
-    print("BODY", body.name, "verts", len(body.data.vertices))
-    print("ARM", arm.name, "bones", len(arm.data.bones))
+
+    # MakeHuman FBX arrives with a 0.1 armature scale / FBX axis transform.
+    # Normalize both the deform skeleton and all imported anatomy meshes into
+    # one meter-scale world coordinate system before creating clothes/hair.
+    for o in meshes:
+        mw = o.matrix_world.copy()
+        if o.parent is not None:
+            o.parent = None
+            o.matrix_world = mw
+        _apply_object_transform(o, location=True, rotation=True, scale=True)
+    _apply_object_transform(arm, location=True, rotation=True, scale=True)
+
+    print("BODY", body.name, "verts", len(body.data.vertices), "matrix", body.matrix_world)
+    print("ARM", arm.name, "bones", len(arm.data.bones), "matrix", arm.matrix_world)
     print("GROUPS", [g.name for g in body.vertex_groups][:80])
     return body, arm
 
@@ -128,14 +148,9 @@ def bone_name(arm, candidates):
 def add_armature_modifier(obj, arm):
     mod = obj.modifiers.new("Armature", "ARMATURE")
     mod.object = arm
-    # Garment vertices are copied in the same local coordinate space as the
-    # imported body. Parent them directly in armature-local space; preserving
-    # the body's world matrix here would apply the FBX 0.1 scale twice.
-    obj.parent = arm
-    obj.matrix_parent_inverse = Matrix.Identity(4)
-    obj.location = (0.0, 0.0, 0.0)
-    obj.rotation_euler = (0.0, 0.0, 0.0)
-    obj.scale = (1.0, 1.0, 1.0)
+    # The normalized character meshes all live in the same world/rest space.
+    # Do not parent skinned meshes to the armature object; the modifier is
+    # sufficient and avoids a second transform during FBX/glTF export.
 
 
 def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
@@ -215,8 +230,7 @@ def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
                 uv.data[li].uv = co
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
-    # Keep the mesh in body/armature local coordinates. The imported MakeHuman
-    # armature carries the FBX unit conversion on the parent object.
+    obj.matrix_world = body.matrix_world.copy()
 
     # Copy weights only from groups that each source vertex actually belongs to.
     # This avoids Blender emitting a warning for every missing vertex/group pair.
@@ -304,13 +318,17 @@ def add_torus(name, loc, major, minor, mat, rot=(0,0,0), major_segments=48, mino
 
 def parent_to_bone(obj, arm, candidates):
     b = bone_name(arm, candidates)
-    if not b:
+    if not b or obj.type != "MESH":
         return
-    mw = obj.matrix_world.copy()
-    obj.parent = arm
-    obj.parent_type = "BONE"
-    obj.parent_bone = b
-    obj.matrix_world = mw
+    # Bake the procedural object's placement into mesh coordinates, then bind
+    # it rigidly to one deform bone. This exports far more reliably than Blender
+    # bone-parenting and keeps scale/axis transforms identical to the body.
+    _apply_object_transform(obj, location=True, rotation=True, scale=True)
+    vg = obj.vertex_groups.get(b) or obj.vertex_groups.new(name=b)
+    if len(obj.data.vertices):
+        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+    mod = obj.modifiers.new("RigidBoneBind", "ARMATURE")
+    mod.object = arm
 
 
 def add_curve(name, points, radius, mat, resolution=2):
