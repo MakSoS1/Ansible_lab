@@ -225,6 +225,55 @@ async def get_playback(dance_id: str):
     }
 
 
+@router.get("/dances/{dance_id}/pose-timeline")
+async def get_pose_timeline(dance_id: str, fps: int = 20):
+    """Downsampled world-space choreography for Unity Humanoid retargeting.
+
+    Scoring still uses the full reference timeline server-side. Unity only needs
+    a presentation stream, so limiting this endpoint to 5..30 FPS keeps payloads
+    manageable even for multi-minute songs.
+    """
+    pack = load_dance_package(dance_id, load_pose=True)
+    if not pack:
+        raise HTTPException(status_code=404, detail="Dance not found")
+
+    fps = max(5, min(30, int(fps)))
+    reference = pack.get("reference_pose") or {}
+    source_frames = reference.get("frames") or []
+    target_step_ms = max(1, int(round(1000.0 / fps)))
+    frames = []
+    last_t = -target_step_ms
+
+    for frame in source_frames:
+        t_ms = int(frame.get("t_ms", 0) or 0)
+        if t_ms - last_t < target_step_ms:
+            continue
+        world = frame.get("world_landmarks") or []
+        normalized = frame.get("landmarks") or []
+        source = world if len(world) >= 29 else normalized
+        if len(source) < 29:
+            continue
+        landmarks = []
+        for idx in range(33):
+            lm = source[idx] if idx < len(source) else {}
+            landmarks.append({
+                "x": round(float(lm.get("x", 0.0)), 5),
+                "y": round(float(lm.get("y", 0.0)), 5),
+                "z": round(float(lm.get("z", 0.0)), 5),
+                "v": round(float(lm.get("v", 0.0)), 4),
+            })
+        frames.append({"t_ms": t_ms, "landmarks": landmarks})
+        last_t = t_ms
+
+    return {
+        "dance_id": dance_id,
+        "fps": fps,
+        "duration_ms": int(pack.get("duration_ms", 0) or 0),
+        "space": "world_or_normalized",
+        "frames": frames,
+    }
+
+
 @router.delete("/dances/{dance_id}")
 async def delete_dance(dance_id: str):
     d = await db.get_dance(dance_id)
