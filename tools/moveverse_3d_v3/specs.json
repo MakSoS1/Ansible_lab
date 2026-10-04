@@ -1,0 +1,661 @@
+{
+  "version": 3,
+  "target": "4K hero dance coach",
+  "characters": [
+    {
+      "id": 1,
+      "name": "Neon_Pulse",
+      "gender": "female",
+      "skin": "#D89A7F",
+      "body": {
+        "height": 0.58,
+        "weight": 0.42,
+        "muscle": 0.48
+      },
+      "hair": {
+        "style": "long_ponytail",
+        "color": "#E936B8",
+        "accent": "#6A36FF"
+      },
+      "outfit": {
+        "archetype": "crop_bomber_cargo",
+        "primary": "#10111B",
+        "secondary": "#F22FB7",
+        "accent": "#4D4CFF",
+        "material": "iridescent"
+      },
+      "extras": [
+        "sunglasses",
+        "fingerless_gloves",
+        "pink_straps",
+        "heart_chest"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Blue_Tech",
+      "gender": "male",
+      "skin": "#C98F72",
+      "body": {
+        "height": 0.64,
+        "weight": 0.45,
+        "muscle": 0.55
+      },
+      "hair": {
+        "style": "messy_short",
+        "color": "#101018"
+      },
+      "outfit": {
+        "archetype": "tech_jacket_cargo",
+        "primary": "#0C0E16",
+        "secondary": "#1C63FF",
+        "accent": "#E8ECF2",
+        "material": "techwear"
+      },
+      "extras": [
+        "blue_harness",
+        "utility_straps"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Gold_Flow",
+      "gender": "female",
+      "skin": "#8A4E35",
+      "body": {
+        "height": 0.55,
+        "weight": 0.5,
+        "muscle": 0.4
+      },
+      "hair": {
+        "style": "big_curls",
+        "color": "#2B1518"
+      },
+      "outfit": {
+        "archetype": "gold_fringe",
+        "primary": "#D99B2A",
+        "secondary": "#FFE2A3",
+        "accent": "#B87411",
+        "material": "metallic"
+      },
+      "extras": [
+        "hoop_earrings",
+        "fringe_tassels",
+        "gold_jewelry"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Red_Varsity",
+      "gender": "male",
+      "skin": "#C48265",
+      "body": {
+        "height": 0.61,
+        "weight": 0.47,
+        "muscle": 0.5
+      },
+      "hair": {
+        "style": "cap_short",
+        "color": "#3A241A"
+      },
+      "outfit": {
+        "archetype": "varsity_cargo",
+        "primary": "#C81725",
+        "secondary": "#111218",
+        "accent": "#F4F4F4",
+        "material": "satin"
+      },
+      "extras": [
+        "baseball_cap",
+        "headphones",
+        "varsity_stripes"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Holo_Aqua",
+      "gender": "female",
+      "skin": "#E8C2B4",
+      "body": {
+        "height": 0.5,
+        "weight": 0.38,
+        "muscle": 0.4
+      },
+      "hair": {
+        "style": "twin_buns",
+        "color": "#2D91FF",
+        "accent": "#62E8FF"
+      },
+      "outfit": {
+        "archetype": "holo_pop",
+        "primary": "#EAF5FF",
+        "secondary": "#60BFFF",
+        "accent": "#B5F5FF",
+        "material": "holographic"
+      },
+      "extras": [
+        "thigh_straps",
+        "iridescent_jacket",
+        "tall_boots"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Olive_Power",
+      "gender": "male",
+      "skin": "#69412F",
+      "body": {
+        "height": 0.67,
+        "weight": 0.58,
+        "muscle": 0.92
+      },
+      "hair": {
+        "style": "buzz",
+        "color": "#121010"
+      },
+      "outfit": {
+        "archetype": "tank_cargo",
+        "primary": "#101113",
+        "secondary": "#5E6941",
+        "accent": "#C4A479",
+        "material": "cotton"
+      },
+      "extras": [
+        "chains",
+        "gloves",
+        "cargo_pockets"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Yellow_Street",
+      "gender": "male",
+      "skin": "#B97755",
+      "body": {
+        "height": 0.59,
+        "weight": 0.44,
+        "muscle": 0.48
+      },
+      "hair": {
+        "style": "messy_short",
+        "color": "#55351C"
+      },
+      "outfit": {
+        "archetype": "yellow_jacket",
+        "primary": "#E8AA0F",
+        "secondary": "#101117",
+        "accent": "#F4CF34",
+        "material": "nylon"
+      },
+      "extras": [
+        "graphic_panels",
+        "black_straps"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Crimson_Glam",
+      "gender": "female",
+      "skin": "#D7A28F",
+      "body": {
+        "height": 0.58,
+        "weight": 0.43,
+        "muscle": 0.4
+      },
+      "hair": {
+        "style": "very_long",
+        "color": "#19101C",
+        "accent": "#643A86"
+      },
+      "outfit": {
+        "archetype": "red_glam_panels",
+        "primary": "#B81125",
+        "secondary": "#E73C4C",
+        "accent": "#FF8996",
+        "material": "satin"
+      },
+      "extras": [
+        "flowing_panels",
+        "arm_sleeve",
+        "laceup_boots"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Blue_Athlete",
+      "gender": "male",
+      "skin": "#E3B59A",
+      "body": {
+        "height": 0.67,
+        "weight": 0.49,
+        "muscle": 0.77
+      },
+      "hair": {
+        "style": "blond_short",
+        "color": "#E4C48C"
+      },
+      "outfit": {
+        "archetype": "sport_harness",
+        "primary": "#F2F3F4",
+        "secondary": "#2367D9",
+        "accent": "#0D2D76",
+        "material": "sport"
+      },
+      "extras": [
+        "blue_harness",
+        "gloves",
+        "strap_pants"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Purple_Street",
+      "gender": "female",
+      "skin": "#D89C85",
+      "body": {
+        "height": 0.54,
+        "weight": 0.43,
+        "muscle": 0.43
+      },
+      "hair": {
+        "style": "long_under_beanie",
+        "color": "#652B8D"
+      },
+      "outfit": {
+        "archetype": "purple_street",
+        "primary": "#101018",
+        "secondary": "#7424B5",
+        "accent": "#A95CF4",
+        "material": "techwear"
+      },
+      "extras": [
+        "beanie",
+        "offshoulder_jacket",
+        "purple_straps"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Tropic_Groove",
+      "gender": "male",
+      "skin": "#966348",
+      "body": {
+        "height": 0.58,
+        "weight": 0.5,
+        "muscle": 0.5
+      },
+      "hair": {
+        "style": "cap_short",
+        "color": "#252018"
+      },
+      "outfit": {
+        "archetype": "floral_shirt_shorts",
+        "primary": "#F0EEE5",
+        "secondary": "#1FA76B",
+        "accent": "#FF7E49",
+        "material": "cotton"
+      },
+      "extras": [
+        "sunglasses",
+        "open_shirt",
+        "floral_pattern",
+        "denim_shorts"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Purple_Shine",
+      "gender": "female",
+      "skin": "#6E402E",
+      "body": {
+        "height": 0.53,
+        "weight": 0.76,
+        "muscle": 0.45
+      },
+      "hair": {
+        "style": "big_curls",
+        "color": "#181016"
+      },
+      "outfit": {
+        "archetype": "purple_active",
+        "primary": "#7035C4",
+        "secondary": "#A56CF1",
+        "accent": "#1A1722",
+        "material": "sport"
+      },
+      "extras": [
+        "shiny_jacket",
+        "hoop_earrings"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Silver_Holo",
+      "gender": "female",
+      "skin": "#E3C3B5",
+      "body": {
+        "height": 0.54,
+        "weight": 0.4,
+        "muscle": 0.4
+      },
+      "hair": {
+        "style": "silver_pony",
+        "color": "#DDE4F2"
+      },
+      "outfit": {
+        "archetype": "holo_cutout",
+        "primary": "#E9F2FF",
+        "secondary": "#78C9FF",
+        "accent": "#A875FF",
+        "material": "holographic"
+      },
+      "extras": [
+        "cutouts",
+        "transparent_panels",
+        "strap_details"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Violet_Coat",
+      "gender": "male",
+      "skin": "#D3A58F",
+      "body": {
+        "height": 0.65,
+        "weight": 0.45,
+        "muscle": 0.5
+      },
+      "hair": {
+        "style": "silver_short",
+        "color": "#CCD0D8"
+      },
+      "outfit": {
+        "archetype": "long_tech_coat",
+        "primary": "#11121A",
+        "secondary": "#6522A6",
+        "accent": "#A54CFF",
+        "material": "leather"
+      },
+      "extras": [
+        "long_coat_tails",
+        "chains",
+        "purple_gloves"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Pink_Idol",
+      "gender": "female",
+      "skin": "#E6B7A5",
+      "body": {
+        "height": 0.49,
+        "weight": 0.37,
+        "muscle": 0.36
+      },
+      "hair": {
+        "style": "pink_twin_tail",
+        "color": "#F05CA8"
+      },
+      "outfit": {
+        "archetype": "idol_skirt",
+        "primary": "#F48ABF",
+        "secondary": "#FFF0F8",
+        "accent": "#C91C78",
+        "material": "satin"
+      },
+      "extras": [
+        "heart_clips",
+        "puffy_sleeves",
+        "mini_skirt",
+        "platform_boots"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Blue_Hoops",
+      "gender": "male",
+      "skin": "#65402F",
+      "body": {
+        "height": 0.69,
+        "weight": 0.54,
+        "muscle": 0.82
+      },
+      "hair": {
+        "style": "short",
+        "color": "#121010"
+      },
+      "outfit": {
+        "archetype": "basketball",
+        "primary": "#155BCD",
+        "secondary": "#FFFFFF",
+        "accent": "#0A2E7A",
+        "material": "sport"
+      },
+      "extras": [
+        "headband",
+        "wristbands",
+        "high_tops"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Camo_Rhythm",
+      "gender": "female",
+      "skin": "#A66B4B",
+      "body": {
+        "height": 0.56,
+        "weight": 0.46,
+        "muscle": 0.5
+      },
+      "hair": {
+        "style": "braided_dreads",
+        "color": "#251714",
+        "accent": "#A26A38"
+      },
+      "outfit": {
+        "archetype": "camo_cargo",
+        "primary": "#394A28",
+        "secondary": "#6E7E3F",
+        "accent": "#141814",
+        "material": "canvas"
+      },
+      "extras": [
+        "gloves",
+        "utility_straps",
+        "camo_panels"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Silver_Night",
+      "gender": "male",
+      "skin": "#D1A086",
+      "body": {
+        "height": 0.64,
+        "weight": 0.45,
+        "muscle": 0.52
+      },
+      "hair": {
+        "style": "black_short",
+        "color": "#101015"
+      },
+      "outfit": {
+        "archetype": "silver_jacket",
+        "primary": "#B8BEC9",
+        "secondary": "#111219",
+        "accent": "#747D8B",
+        "material": "metallic"
+      },
+      "extras": [
+        "sunglasses",
+        "chains",
+        "baggy_pants"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Goth_Red",
+      "gender": "female",
+      "skin": "#D9A28E",
+      "body": {
+        "height": 0.56,
+        "weight": 0.42,
+        "muscle": 0.44
+      },
+      "hair": {
+        "style": "long_dark_streaks",
+        "color": "#11101A",
+        "accent": "#3E73CC"
+      },
+      "outfit": {
+        "archetype": "goth_strappy",
+        "primary": "#111016",
+        "secondary": "#A70E24",
+        "accent": "#E02C48",
+        "material": "leather"
+      },
+      "extras": [
+        "thigh_straps",
+        "asym_skirt",
+        "tall_laceup_boots",
+        "arm_gloves"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Iridescent_Mesh",
+      "gender": "male",
+      "skin": "#C47D66",
+      "body": {
+        "height": 0.61,
+        "weight": 0.44,
+        "muscle": 0.54
+      },
+      "hair": {
+        "style": "pink_buzz",
+        "color": "#B33B64"
+      },
+      "outfit": {
+        "archetype": "mesh_holo_pants",
+        "primary": "#111116",
+        "secondary": "#BAC7EF",
+        "accent": "#8B5DFF",
+        "material": "holographic"
+      },
+      "extras": [
+        "mesh_top",
+        "wide_pants",
+        "chains"
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Denim_Rodeo",
+      "gender": "female",
+      "skin": "#E1B198",
+      "body": {
+        "height": 0.55,
+        "weight": 0.42,
+        "muscle": 0.4
+      },
+      "hair": {
+        "style": "long_blonde",
+        "color": "#E8D1A2"
+      },
+      "outfit": {
+        "archetype": "cowgirl_denim",
+        "primary": "#6B93C7",
+        "secondary": "#E5F1FF",
+        "accent": "#FFFFFF",
+        "material": "denim"
+      },
+      "extras": [
+        "cowboy_hat",
+        "fringe",
+        "shorts",
+        "tall_cowboy_boots"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Acid_Tech",
+      "gender": "male",
+      "skin": "#654331",
+      "body": {
+        "height": 0.63,
+        "weight": 0.47,
+        "muscle": 0.55
+      },
+      "hair": {
+        "style": "dreads",
+        "color": "#181315"
+      },
+      "outfit": {
+        "archetype": "acid_techwear",
+        "primary": "#121419",
+        "secondary": "#67D51C",
+        "accent": "#2BFF5C",
+        "material": "techwear"
+      },
+      "extras": [
+        "sunglasses",
+        "neon_straps",
+        "gloves"
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Orange_Flash",
+      "gender": "female",
+      "skin": "#D7A18B",
+      "body": {
+        "height": 0.53,
+        "weight": 0.4,
+        "muscle": 0.46
+      },
+      "hair": {
+        "style": "twin_buns_long",
+        "color": "#18131A"
+      },
+      "outfit": {
+        "archetype": "orange_cargo",
+        "primary": "#15151A",
+        "secondary": "#F57412",
+        "accent": "#FF9A3B",
+        "material": "techwear"
+      },
+      "extras": [
+        "arm_gloves",
+        "cargo_straps",
+        "belt"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Pastel_Skater",
+      "gender": "male",
+      "skin": "#D0A083",
+      "body": {
+        "height": 0.59,
+        "weight": 0.45,
+        "muscle": 0.45
+      },
+      "hair": {
+        "style": "cap_short",
+        "color": "#38271C"
+      },
+      "outfit": {
+        "archetype": "pastel_jacket",
+        "primary": "#C9D8F8",
+        "secondary": "#F38AC9",
+        "accent": "#FFFFFF",
+        "material": "nylon"
+      },
+      "extras": [
+        "baseball_cap",
+        "baggy_white_pants",
+        "pastel_panels"
+      ]
+    }
+  ]
+}
