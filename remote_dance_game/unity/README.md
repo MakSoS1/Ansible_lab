@@ -14,10 +14,11 @@ Use Unity 6.3 LTS. The project baseline is 6000.3.0f1; newer 6000.3 LTS patches 
 Backend URL defaults to http://127.0.0.1:8000. Override with DANCE_API_BASE.
 
 ## 3D coach migration
-Import a dancer, set its Rig to Humanoid and save a prefab at:
-Assets/Resources/Coaches/DefaultCoach.prefab
+Import a dancer, set its Rig to Humanoid and save either a per-song prefab at `Assets/Resources/Coaches/<dance_id>.prefab` or a fallback at `Assets/Resources/Coaches/DefaultCoach.prefab`.
 
-When that prefab exists, Unity automatically switches from source-video visuals to 3D coach mode. The source video stays hidden as the authoritative audio/timing clock. Unity loads the dance pose timeline from the backend and drives the Humanoid arms and legs. Without a prefab, video mode remains the safe fallback.
+For backgrounds use `Assets/Resources/Backgrounds/<dance_id>.*` or the fallback `DefaultBackground.*` (PNG/JPG imported as a Texture). Per-song assets win over defaults.
+
+When a coach prefab exists, Unity automatically switches from source-video visuals to 3D coach mode. The source video stays hidden as the authoritative audio/timing clock. Unity loads the dance pose timeline from the backend and drives the Humanoid arms and legs. Without a prefab, video mode remains the safe fallback.
 
 The 3D camera auto-frames the model so the full-body coach occupies a dance-stage scale rather than a portrait close-up.
 
