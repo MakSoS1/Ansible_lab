@@ -6,7 +6,7 @@ on:
       limit:
         description: Number of coaches to build
         required: false
-        default: '1'
+        default: '3'
   push:
     paths:
       - 'tools/moveverse_3d_v3/**'
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      LIMIT: ${{ github.event.inputs.limit || '1' }}
+      LIMIT: ${{ github.event.inputs.limit || '3' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -42,18 +42,30 @@ jobs:
       - name: Generate high-quality anatomical bases
         run: |
           mkdir -p artifacts/v3/bases
-          python tools/moveverse_3d_v3/generate_bases.py             --specs tools/moveverse_3d_v3/specs.json             --out artifacts/v3/bases             --limit "$LIMIT"
+          set -o pipefail
+          python tools/moveverse_3d_v3/generate_bases.py \
+            --specs tools/moveverse_3d_v3/specs.json \
+            --out artifacts/v3/bases \
+            --limit "$LIMIT" 2>&1 | tee artifacts/v3/makehuman.log
 
       - name: Install Blender
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy xvfb libegl1 libgl1-mesa-dri libglx-mesa0
           blender --version
 
       - name: Build unique outfits, hair, rigged garments and physics
         run: |
           mkdir -p artifacts/v3/final
-          blender --background --factory-startup             --python tools/moveverse_3d_v3/build_coaches_blender.py --             --specs tools/moveverse_3d_v3/specs.json             --bases artifacts/v3/bases             --out artifacts/v3/final             --limit "$LIMIT"
+          set -o pipefail
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export EGL_PLATFORM=surfaceless
+          xvfb-run -a blender --background --factory-startup \
+            --python tools/moveverse_3d_v3/build_coaches_blender.py -- \
+            --specs tools/moveverse_3d_v3/specs.json \
+            --bases artifacts/v3/bases \
+            --out artifacts/v3/final \
+            --limit "$LIMIT" 2>&1 | tee artifacts/v3/blender.log
 
       - name: Validate outputs
         run: |
@@ -70,16 +82,20 @@ jobs:
           PY
 
       - name: Package
+        if: always()
         run: |
           cd artifacts/v3
           zip -r -9 moveverse_v3_hq.zip final >/dev/null
           ls -lh moveverse_v3_hq.zip
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: moveverse-v3-hq-${{ env.LIMIT }}
           path: |
             artifacts/v3/moveverse_v3_hq.zip
+            artifacts/v3/makehuman.log
+            artifacts/v3/blender.log
             artifacts/v3/final/build_report.json
             artifacts/v3/final/previews/
           retention-days: 30

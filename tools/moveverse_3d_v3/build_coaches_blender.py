@@ -89,19 +89,55 @@ def reset_scene():
         pass
 
 
+def _apply_object_transform(obj, location=True, rotation=True, scale=True):
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.transform_apply(location=location, rotation=rotation, scale=scale)
+    obj.select_set(False)
+
+
 def import_fbx(path):
+    before=set(bpy.context.scene.objects)
     bpy.ops.import_scene.fbx(filepath=str(path), automatic_bone_orientation=False)
-    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
-    arms = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
+    imported=[o for o in bpy.context.scene.objects if o not in before]
+    meshes=[o for o in imported if o.type=="MESH"]
+    arms=[o for o in imported if o.type=="ARMATURE"]
     if not meshes or not arms:
         raise RuntimeError(f"FBX import missing mesh/armature: {path}")
-    body = max(meshes, key=lambda o: len(o.data.vertices))
-    arm = max(arms, key=lambda o: len(o.data.bones))
-    print("BODY", body.name, "verts", len(body.data.vertices))
-    print("ARM", arm.name, "bones", len(arm.data.bones))
-    print("GROUPS", [g.name for g in body.vertex_groups][:80])
-    return body, arm
+    body=max(meshes,key=lambda o:len(o.data.vertices))
+    arm=max(arms,key=lambda o:len(o.data.bones))
 
+    # makehuman-core FBX is Y-up and commonly arrives at ~10x Blender scale.
+    # Put every imported root below one normalization empty so meshes, rig,
+    # facial proxies and skin weights keep their relative transforms.
+    pts=[body.matrix_world @ Vector(c) for c in body.bound_box]
+    ext=Vector((max(p.x for p in pts)-min(p.x for p in pts),
+                max(p.y for p in pts)-min(p.y for p in pts),
+                max(p.z for p in pts)-min(p.z for p in pts)))
+    root=bpy.data.objects.new("MV_BaseNormalize",None)
+    bpy.context.collection.objects.link(root)
+    roots=[o for o in imported if o.parent is None]
+    for o in roots:
+        mw=o.matrix_world.copy()
+        o.parent=root
+        o.matrix_world=mw
+    # Rotate the dominant Y height axis onto Blender Z.
+    if ext.y > ext.z and ext.y > ext.x:
+        root.rotation_euler.x=math.radians(90.0)
+    # Normalize a MakeHuman adult to meter-scale without hard-coding exporter units.
+    raw_height=max(ext)
+    if raw_height > 3.2:
+        k=1.75/raw_height
+        root.scale=(k,k,k)
+    bpy.context.view_layer.update()
+
+    print("BODY",body.name,"verts",len(body.data.vertices),"raw_ext",tuple(round(v,4) for v in ext))
+    mn,mx=obj_bounds_world(body)
+    print("BODY_NORMALIZED_EXT",tuple(round(mx[i]-mn[i],4) for i in range(3)))
+    print("ARM",arm.name,"bones",len(arm.data.bones))
+    print("GROUPS",[g.name for g in body.vertex_groups][:80])
+    return body,arm
 
 def obj_bounds_world(obj):
     pts = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
@@ -128,7 +164,9 @@ def bone_name(arm, candidates):
 def add_armature_modifier(obj, arm):
     mod = obj.modifiers.new("Armature", "ARMATURE")
     mod.object = arm
-    obj.parent = arm
+    # The normalized character meshes all live in the same world/rest space.
+    # Do not parent skinned meshes to the armature object; the modifier is
+    # sufficient and avoids a second transform during FBX/glTF export.
 
 
 def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
@@ -210,18 +248,13 @@ def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
     bpy.context.collection.objects.link(obj)
     obj.matrix_world = body.matrix_world.copy()
 
-    # Copy all body vertex weights for the kept vertices so clothing follows
-    # the exact same animation deformation as the body.
-    for sg in body.vertex_groups:
-        ng = obj.vertex_groups.new(name=sg.name)
-        vals = []
-        for ni, oi in enumerate(src_index):
-            try:
-                w = sg.weight(oi)
-            except RuntimeError:
-                continue
-            if w > 0.0:
-                ng.add([ni], w, "REPLACE")
+    # Copy weights only from groups that each source vertex actually belongs to.
+    # This avoids Blender emitting a warning for every missing vertex/group pair.
+    dst_groups = {sg.index: obj.vertex_groups.new(name=sg.name) for sg in body.vertex_groups}
+    for ni, oi in enumerate(src_index):
+        for ge in src.vertices[oi].groups:
+            if ge.weight > 0.0 and ge.group in dst_groups:
+                dst_groups[ge.group].add([ni], ge.weight, "REPLACE")
     add_armature_modifier(obj, arm)
 
     if mat:
@@ -301,13 +334,17 @@ def add_torus(name, loc, major, minor, mat, rot=(0,0,0), major_segments=48, mino
 
 def parent_to_bone(obj, arm, candidates):
     b = bone_name(arm, candidates)
-    if not b:
+    if not b or obj.type != "MESH":
         return
-    mw = obj.matrix_world.copy()
-    obj.parent = arm
-    obj.parent_type = "BONE"
-    obj.parent_bone = b
-    obj.matrix_world = mw
+    # Bake the procedural object's placement into mesh coordinates, then bind
+    # it rigidly to one deform bone. This exports far more reliably than Blender
+    # bone-parenting and keeps scale/axis transforms identical to the body.
+    _apply_object_transform(obj, location=True, rotation=True, scale=True)
+    vg = obj.vertex_groups.get(b) or obj.vertex_groups.new(name=b)
+    if len(obj.data.vertices):
+        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+    mod = obj.modifiers.new("RigidBoneBind", "ARMATURE")
+    mod.object = arm
 
 
 def add_curve(name, points, radius, mat, resolution=2):
@@ -448,7 +485,7 @@ def create_hair(spec, arm, mn, mx, mats, physics):
     hc=Vector(((mn.x+mx.x)/2,(mn.y+mx.y)/2,mn.z+H*0.91))
     hr=max(W*0.135,H*0.052)
     objects=[]
-    cap=add_uvsphere("HairCap",hc+(Vector((0,0,H*.012))), (hr*1.0,hr*.93,hr*.82),mat,40,24)
+    cap=add_uvsphere("HairCap",hc+(Vector((0,D*.08,H*.028))), (hr*1.02,hr*.72,hr*.62),mat,40,24)
     parent_to_bone(cap,arm,["head"]); objects.append(cap)
     back_y=mx.y + D*.04
 
@@ -826,7 +863,7 @@ def look_at(obj, target):
 def render_views(outdir, spec, mn, mx):
     center,H=setup_stage(mn,mx)
     scene=bpy.context.scene
-    scene.render.engine="BLENDER_EEVEE_NEXT" if hasattr(scene,"eevee") or bpy.app.version >= (4,2,0) else "BLENDER_EEVEE"
+    scene.render.engine="BLENDER_EEVEE_NEXT" if bpy.app.version >= (4,2,0) else "BLENDER_EEVEE"
     scene.render.resolution_x=640; scene.render.resolution_y=900; scene.render.resolution_percentage=100
     scene.render.image_settings.file_format="PNG"
     scene.render.film_transparent=False
