@@ -9,8 +9,8 @@ export default function Showcase() {
     return () => window.clearInterval(id)
   }, [])
 
-  const stage = ms < 5200 ? 0 : ms < 9000 ? 1 : ms < 17200 ? 2 : ms < 20800 ? 3 : 4
-  const gameMs = Math.max(0, ms - 20800)
+  const stage = ms < 5200 ? 0 : ms < 9000 ? 1 : ms < 17200 ? 2 : ms < 20800 ? 3 : ms < 24500 ? 4 : 5
+  const gameMs = Math.max(0, ms - 24500)
   const score = 28450 + Math.floor(gameMs * 4.0)
   const moveNo = Math.floor(gameMs / 520)
   const combo = Math.min(64, 7 + moveNo)
@@ -70,6 +70,21 @@ export default function Showcase() {
       <img className="ref-connect-bg" src="/showcase/poster.jpg"/><div className="ref-connect-wash"/>
       <header className="ref-connect-header"><div className="ref-brand compact">DANCE<span>FLOW</span></div></header>
       <div className="ref-connect-grid"><section className="ref-connect-copy"><p>ONE QUICK STEP</p><h1>Point your phone<br/>at the room.</h1><span>Keep your full body visible. The phone only sends pose points.</span><div className="ref-connect-statuses"><div className="ready"><b>✓</b><span>Phone connected</span></div><div className="ready"><b>✓</b><span>Full body visible</span></div></div><div className="ref-primary ref-connect-play">START DANCE →</div></section><section className="ref-phone-stage"><div className="ref-phone-frame"><div className="ref-phone-notch"/><div className="demo-qr">▦</div><strong>READY</strong><span>Night Move</span></div></section></div>
+    </main>
+  }
+
+  if (stage === 4) {
+    return <main className="showcase-coach-select">
+      <div className="showcase-coach-bg"><video src="/showcase/game.webm" autoPlay muted loop playsInline/></div>
+      <div className="showcase-coach-wash"/>
+      <header><div className="ref-brand compact">DANCE<span>FLOW</span></div><span>PLAYER 1</span></header>
+      <h1>SELECT YOUR COACH</h1>
+      <p>Choose the dancer you want to follow.</p>
+      <section>
+        <article className="active"><video src="/showcase/game.webm" autoPlay muted loop playsInline/><b>COACH 1</b><em>✓</em></article>
+        <article><video src="/showcase/game.webm" autoPlay muted loop playsInline/><b>COACH 2</b></article>
+      </section>
+      <footer>◀  ▶  CHOOSE &nbsp;&nbsp;&nbsp;&nbsp; A / ENTER  CONFIRM</footer>
     </main>
   }
 
