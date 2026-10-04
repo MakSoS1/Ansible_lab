@@ -47,7 +47,7 @@ export default function Showcase() {
       <div className="ref-library-backdrop"><video src="/showcase/game.webm" className="ref-library-preview" autoPlay muted loop playsInline/><div className="ref-library-blur"/><div className="ref-library-vignette"/></div>
       <header className="ref-topbar">
         <div className="ref-brand">DANCE<span>FLOW</span><small>PLAY · MOVE · TOGETHER</small></div>
-        <nav className="ref-tabs"><button className="active">Songs</button><button>Playlists</button><button>Challenges</button><button>Party</button></nav>
+        <div className="ref-tab-shell"><span className="ref-bumper">L1</span><nav className="ref-tabs"><button className="active">Songs</button><button>Playlists</button><button>Challenges</button><button>Party</button></nav><span className="ref-bumper">R1</span></div>
         <div className="ref-profile"><div className="ref-avatar">D</div><div className="ref-profile-copy"><strong>Player</strong><span>Lv. 12</span><i><b /></i></div><div className="ref-points">★ <strong>1,260</strong></div><div className="ref-settings">⚙</div></div>
       </header>
       <aside className="ref-slogan"><span>FEEL</span><span>THE BEAT</span><span>ANYWHERE</span><b/></aside>
