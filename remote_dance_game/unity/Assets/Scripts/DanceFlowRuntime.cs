@@ -46,7 +46,7 @@ namespace DanceFlow.UnityClient
         public CoachInfo[] coaches;
     }
     [Serializable] public class GameResults { public int total_score; public int max_combo; public float accuracy_arms; public float accuracy_legs; public float accuracy_torso; }
-    [Serializable] public class SocketEnvelope { public string type; public string grade; public int timestamp_ms; public int score; public int total_score; public int combo; public float similarity; public string hold_state; public float timing_offset_ms; public bool tracking_lost; public int move_index; public int move_count; public bool is_move_grade; public string player_id; public int player_slot; public int coach_index; public Landmark[] player_pose; public GameResults results; }
+    [Serializable] public class SocketEnvelope { public string type; public string grade; public int timestamp_ms; public int score; public int total_score; public int combo; public float similarity; public string hold_state; public float timing_offset_ms; public bool tracking_lost; public int move_index; public int move_count; public bool is_move_grade; public string player_id; public int player_slot; public int coach_index; public Landmark[] player_pose; public PlayerStatus[] players; public int coach_count; public GameResults results; }
     [Serializable] public class MediaClockMessage { public string action = "media_clock"; public int media_time_ms; }
     [Serializable] public class GameActionMessage { public string action; public int media_time_ms; }
 
@@ -1129,6 +1129,10 @@ namespace DanceFlow.UnityClient
                     hud.grade.color = message.grade == "x" ? new Color32(255,92,116,255) : color;
                     hud.gradeUntil = Time.unscaledTime + 0.62f;
                 }
+            }
+            else if (message.type == "players_changed")
+            {
+                if (message.players != null && message.players.Length > 0) ApplyPlayers(message.players);
             }
             else if (message.type == "phone_disconnected")
             {
