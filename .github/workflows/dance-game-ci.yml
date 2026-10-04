@@ -171,3 +171,18 @@ jobs:
           name: dance-game-showcase-video
           path: remote_dance_game/artifacts/final/dance-game-showcase.mp4
           if-no-files-found: error
+
+
+  unity-project:
+    name: Unity project contract
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: remote_dance_game
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate Unity project and backend bridge
+        run: python -m pytest -q tests/unity_project_smoke.py
