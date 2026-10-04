@@ -126,9 +126,10 @@ def bone_name(arm, candidates):
 
 
 def add_armature_modifier(obj, arm):
+    # Armature modifier alone is enough. Parenting the cloned garment as well
+    # would apply the FBX armature transform a second time and shrink/offset it.
     mod = obj.modifiers.new("Armature", "ARMATURE")
     mod.object = arm
-    obj.parent = arm
 
 
 def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
@@ -442,9 +443,14 @@ def create_hair(spec, arm, mn, mx, mats, physics):
     mat2=mat_principled(f"HairAccent_{spec['id']:02d}",accent,metallic=0.05,rough=0.32)
     H=mx.z-mn.z; W=mx.x-mn.x; D=mx.y-mn.y
     hc=Vector(((mn.x+mx.x)/2,(mn.y+mx.y)/2,mn.z+H*0.91))
-    hr=max(W*0.135,H*0.052)
+    # Body width includes the A-pose arms; derive head scale from height
+    # so hair size stays anatomical instead of becoming a giant sphere.
+    hr=H*0.054
     objects=[]
-    cap=add_uvsphere("HairCap",hc+(Vector((0,0,H*.012))), (hr*1.0,hr*.93,hr*.82),mat,40,24)
+    # Scalp volume sits behind the facial plane instead of using a full
+    # sphere around the head (which would hide the MakeHuman face).
+    cap_center = hc + Vector((0, hr * 0.34, H * 0.015))
+    cap=add_uvsphere("HairCap",cap_center,(hr*1.03,hr*.60,hr*.90),mat,40,24)
     parent_to_bone(cap,arm,["head"]); objects.append(cap)
     back_y=mx.y + D*.04
 
