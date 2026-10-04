@@ -1,6 +1,8 @@
 import asyncio
 import os
 import uuid
+
+import cv2
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
@@ -14,6 +16,86 @@ from services.source_resolver import resolve_source
 from services.timing import extract_timing
 from services.video_processor import create_game_master, create_preview_video, extract_audio, extract_poster_frame, normalize_video, optional_ai_upscale, probe_video
 from services.weights import generate_weights
+
+
+def _write_coach_previews(video_path: str, tracks: list, assets_dir: str, mirror_mode: bool) -> list:
+    """Save a clear thumbnail for each detected reference dancer."""
+    previews = []
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return previews
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 720)
+    for coach_index, track in enumerate(tracks):
+        frames = track.get("frames", [])
+        best = None
+        best_score = -1.0
+        for frame in frames:
+            lm = frame.get("landmarks") or []
+            if len(lm) < 29:
+                continue
+            visible = [float(lm[i].get("v", 0.0)) for i in (11,12,13,14,15,16,23,24,25,26,27,28)]
+            score = sum(visible) / max(len(visible), 1)
+            if score > best_score:
+                best_score = score
+                best = frame
+        if best is None or best_score < 0.20:
+            continue
+
+        t_ms = int(best.get("t_ms", 0))
+        cap.set(cv2.CAP_PROP_POS_MSEC, t_ms)
+        ok, image = cap.read()
+        if not ok or image is None:
+            continue
+
+        lm = best.get("landmarks") or []
+        xs, ys = [], []
+        for i in (0,11,12,13,14,15,16,23,24,25,26,27,28,31,32):
+            if i >= len(lm) or float(lm[i].get("v", 0.0)) < 0.18:
+                continue
+            x = float(lm[i].get("x", 0.5))
+            if mirror_mode:
+                x = 1.0 - x
+            xs.append(x)
+            ys.append(float(lm[i].get("y", 0.5)))
+        if not xs or not ys:
+            continue
+
+        x0, x1 = min(xs), max(xs)
+        y0, y1 = min(ys), max(ys)
+        span_x = max(0.12, x1 - x0)
+        span_y = max(0.24, y1 - y0)
+        pad_x = span_x * 0.32
+        pad_y = span_y * 0.15
+        x0, x1 = max(0.0, x0 - pad_x), min(1.0, x1 + pad_x)
+        y0, y1 = max(0.0, y0 - pad_y), min(1.0, y1 + pad_y)
+
+        px0, px1 = int(x0 * width), int(x1 * width)
+        py0, py1 = int(y0 * height), int(y1 * height)
+        if px1 - px0 < 32 or py1 - py0 < 64:
+            continue
+        crop = image[py0:py1, px0:px1]
+        if crop.size == 0:
+            continue
+
+        target_h = 720
+        scale = target_h / max(crop.shape[0], 1)
+        target_w = max(300, int(crop.shape[1] * scale))
+        crop = cv2.resize(crop, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+        preview_name = f"coach_{coach_index}.jpg"
+        preview_path = os.path.join(assets_dir, preview_name)
+        cv2.imwrite(preview_path, crop, [int(cv2.IMWRITE_JPEG_QUALITY), 94])
+        previews.append({
+            "coach_index": coach_index,
+            "label": f"Coach {coach_index + 1}",
+            "preview_path": f"assets/{preview_name}",
+            "coverage": float(track.get("coverage", 0.0)),
+            "avg_x": float(track.get("avg_x", 0.5)),
+        })
+
+    cap.release()
+    return previews
 
 
 async def build_dance(
@@ -124,7 +206,40 @@ async def build_dance(
             proxy_path,
             progress_cb=pose_progress,
             mirror_mode=mirror_mode,
+            max_poses=4,
         )
+
+        # Process every stable reference person independently.  The legacy
+        # reference_pose.frames field remains the default coach for older clients.
+        raw_tracks = pose_data.get("tracks") or []
+        processed_tracks = []
+        if raw_tracks:
+            for track in raw_tracks:
+                track_data = {
+                    "fps": pose_data.get("fps", 30),
+                    "total_frames": pose_data.get("total_frames", 0),
+                    "duration_ms": pose_data.get("duration_ms", 0),
+                    "frames": track.get("frames", []),
+                }
+                track_data = await asyncio.to_thread(process_choreography, track_data)
+                processed = dict(track)
+                processed["frames"] = track_data["frames"]
+                processed_tracks.append(processed)
+            primary_role = max(0, min(int(pose_data.get("primary_role_index", 0)), len(processed_tracks) - 1))
+            pose_data["frames"] = processed_tracks[primary_role]["frames"]
+            pose_data["tracks"] = processed_tracks
+            pose_data["coach_count"] = len(processed_tracks)
+        else:
+            pose_data = await asyncio.to_thread(process_choreography, pose_data)
+            pose_data["tracks"] = [{
+                "role_index": 0,
+                "track_id": 0,
+                "frames": pose_data.get("frames", []),
+                "coverage": 1.0,
+                "avg_visibility": 1.0,
+                "avg_x": 0.5,
+            }]
+            pose_data["coach_count"] = 1
 
         valid_frames = sum(
             1 for frame in pose_data.get("frames", [])
@@ -140,7 +255,6 @@ async def build_dance(
 
         progress(65, "processing_choreography")
         await update_job(65, "processing_choreography")
-        pose_data = await asyncio.to_thread(process_choreography, pose_data)
 
         progress(72, "extracting_timing")
         await update_job(72, "extracting_timing")
@@ -164,6 +278,30 @@ async def build_dance(
         progress(81, "detecting_events")
         await update_job(81, "detecting_events")
         events_list = await asyncio.to_thread(detect_hold_events, pose_data["frames"])
+
+        coach_tracks = []
+        for coach_index, track in enumerate(pose_data.get("tracks", [])):
+            frames = track.get("frames", [])
+            track_weights = await asyncio.to_thread(generate_weights, frames)
+            track_events = await asyncio.to_thread(detect_hold_events, frames)
+            coach_tracks.append({
+                "coach_index": coach_index,
+                "source_track_id": int(track.get("track_id", coach_index)),
+                "coverage": float(track.get("coverage", 0.0)),
+                "avg_visibility": float(track.get("avg_visibility", 0.0)),
+                "avg_x": float(track.get("avg_x", 0.5)),
+                "frames": frames,
+                "weights": track_weights,
+                "events": track_events,
+            })
+
+        coach_previews = await asyncio.to_thread(
+            _write_coach_previews,
+            proxy_path,
+            coach_tracks,
+            assets_dir,
+            mirror_mode,
+        )
 
         progress(84, "building_4k_game_master")
         await update_job(84, "building_4k_game_master")
@@ -224,7 +362,7 @@ async def build_dance(
         await update_job(99, "packaging")
         pack_data = {
             "title": title,
-            "version": 4,
+            "version": 5,
             "duration_ms": pose_data["duration_ms"],
             "preview_mode": "video_first_hq",
             "difficulty": difficulty,
@@ -235,7 +373,17 @@ async def build_dance(
             "pose_coverage": round(pose_coverage, 4),
             "num_frames": pose_data["total_frames"],
             "num_events": len(events_list),
-            "reference_pose": {"fps": pose_data["fps"], "frames": pose_data["frames"]},
+            "coach_count": max(1, len(coach_tracks)),
+            "reference_pose": {
+                "fps": pose_data["fps"],
+                "frames": pose_data["frames"],
+                "primary_role_index": int(pose_data.get("primary_role_index", 0)),
+                "tracks": coach_tracks,
+            },
+            "coaches": {
+                "coach_count": max(1, len(coach_tracks)),
+                "items": coach_previews,
+            },
             "timing": timing_data,
             "events": {"events": events_list},
             "weights": weights_data,
@@ -260,7 +408,7 @@ async def build_dance(
         await db.insert_dance({
             "dance_id": dance_id,
             "title": title,
-            "version": 4,
+            "version": 5,
             "duration_ms": pose_data["duration_ms"],
             "preview_mode": "video_first_hq",
             "difficulty": difficulty,
@@ -268,6 +416,7 @@ async def build_dance(
             "created_at": now,
             "num_frames": pose_data["total_frames"],
             "num_events": len(events_list),
+            "coach_count": max(1, len(coach_tracks)),
             "video_path": game_video_path,
             "audio_path": audio_path,
             "dance_dir": dance_dir,
