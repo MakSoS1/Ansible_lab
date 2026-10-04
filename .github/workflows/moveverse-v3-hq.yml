@@ -6,7 +6,7 @@ on:
       limit:
         description: Number of coaches to build
         required: false
-        default: '1'
+        default: '3'
   push:
     paths:
       - 'tools/moveverse_3d_v3/**'
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      LIMIT: ${{ github.event.inputs.limit || '1' }}
+      LIMIT: ${{ github.event.inputs.limit || '3' }}
 
     steps:
       - uses: actions/checkout@v4
