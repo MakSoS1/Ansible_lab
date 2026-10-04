@@ -11,6 +11,7 @@ import database as db
 from config import EXPORTS_DIR, INPUT_DIR
 from models.schemas import DanceCreateRequest, DanceDetailResponse, DanceListItem, JobStatusResponse
 from services.packager import delete_dance_package, export_dance_pack, import_dance_pack, load_dance_package
+from services.move_events import build_move_markers
 
 router = APIRouter(prefix="/api", tags=["dances"])
 
@@ -189,18 +190,19 @@ async def get_playback(dance_id: str):
     timing = pack.get("timing", {})
     events = pack.get("events", {}).get("events", [])
     pose_frames = (pack.get("reference_pose") or {}).get("frames", [])
+    move_markers = build_move_markers(pose_frames, timing)
     preview_indices = {0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32}
     move_previews = []
-    last_preview_ms = -10_000
-    for frame in pose_frames:
-        t_ms = int(frame.get("t_ms", 0) or 0)
-        if t_ms - last_preview_ms < 850:
+    for marker in move_markers[:720]:
+        idx = int(marker.get("frame_index", 0))
+        if idx < 0 or idx >= len(pose_frames):
             continue
+        frame = pose_frames[idx]
         source = frame.get("landmarks", []) or []
         compact = []
-        for idx in range(33):
-            if idx in preview_indices and idx < len(source):
-                lm = source[idx] or {}
+        for joint_idx in range(33):
+            if joint_idx in preview_indices and joint_idx < len(source):
+                lm = source[joint_idx] or {}
                 compact.append({
                     "x": round(float(lm.get("x", 0.0)), 4),
                     "y": round(float(lm.get("y", 0.0)), 4),
@@ -208,10 +210,13 @@ async def get_playback(dance_id: str):
                 })
             else:
                 compact.append({"x": 0.0, "y": 0.0, "v": 0.0})
-        move_previews.append({"t_ms": t_ms, "landmarks": compact})
-        last_preview_ms = t_ms
-        if len(move_previews) >= 480:
-            break
+        move_previews.append({
+            "t_ms": int(marker.get("t_ms", 0)),
+            "move_index": int(marker.get("move_index", len(move_previews))),
+            "motion": float(marker.get("motion", 0.0)),
+            "landmarks": compact,
+        })
+
     return {
         "dance_id": dance_id,
         "duration_ms": int(pack.get("duration_ms", 0) or 0),
@@ -222,6 +227,7 @@ async def get_playback(dance_id: str):
         "events": events[:200],
         "theme": pack.get("theme", {}),
         "move_previews": move_previews,
+        "move_count": len(move_previews),
     }
 
 
