@@ -594,9 +594,11 @@ namespace DanceFlow.UnityClient
         private void TryStart()
         {
             if (!ready || session == null) return;
-            PlayerStatus[] players = lastStatus != null && lastStatus.players != null && lastStatus.players.Length > 0
-                ? lastStatus.players
-                : new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, ready = true, active = true } };
+            PlayerStatus[] players = lastStatus != null && lastStatus.players != null
+                ? lastStatus.players.Where(p => p.active).OrderBy(p => p.slot).ToArray()
+                : Array.Empty<PlayerStatus>();
+            if (players.Length == 0)
+                players = new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, ready = true, active = true } };
             int coachCount = lastStatus != null ? Mathf.Max(1, lastStatus.coach_count) : Mathf.Max(1, dance.coach_count);
             if (coachCount > 1 || players.Length > 1) app.ShowCoachSelect(session, players);
             else app.ShowGameplay(session);
