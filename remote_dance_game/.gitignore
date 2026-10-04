@@ -1,0 +1,36 @@
+# Runtime/generated data
+data/
+input/
+exports/
+*.dancepack
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+*.m4v
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Frontend / Electron
+node_modules/
+dist/
+*.log
+
+# Android
+.gradle/
+build/
+**/build/
+local.properties
+*.apk
+*.aab
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
