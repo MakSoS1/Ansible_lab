@@ -198,6 +198,8 @@ class ScoringEngine:
         norm = self._decorate_features(norm, self._previous_player_norm, dt)
         norm["capture_ms"] = capture_ms
         norm["received_at_ms"] = int(pose_frame.get("received_at_ms") or int(time.time() * 1000))
+        norm["media_capture_ms"] = int(pose_frame.get("media_capture_ms") or -1)
+        norm["network_latency_ms"] = int(pose_frame.get("network_latency_ms") or 0)
         self.pose_buffer.append(norm)
         self._previous_player_norm = norm
         self._previous_player_capture_ms = capture_ms
@@ -240,35 +242,33 @@ class ScoringEngine:
             due = True
         return next_idx, marker, due
 
-    def _select_player_frame(self, now_server_ms: int, ref_norm: Dict[str, Any], body_w: Dict[str, float]) -> Optional[Dict[str, Any]]:
+    def _select_player_frame(self, now_server_ms: int, target_media_ms: int) -> Optional[Dict[str, Any]]:
         if not self.pose_buffer:
             return None
 
-        # The newest good inference is the most faithful representation of what
-        # the player is doing *now*. Older frames are only a recovery path when
-        # the latest MediaPipe result has poor visibility; never cherry-pick an
-        # older pose merely because it matches the choreography better.
-        latest = self.pose_buffer[-1]
-        latest_age = max(0, now_server_ms - int(latest.get("received_at_ms", now_server_ms)))
-        latest_tracking = float(latest.get("tracking_score", 0.0))
-        if latest_age <= int(config.PLAYER_FRAME_STALE_MS) and latest_tracking >= 0.35:
-            return latest
-
         recent_window = int(config.PLAYER_RECENT_WINDOW_MS)
-        best = None
-        best_quality = -1.0
+        candidates: List[Tuple[float, Dict[str, Any]]] = []
         for frame in reversed(self.pose_buffer):
             age = max(0, now_server_ms - int(frame.get("received_at_ms", now_server_ms)))
-            if age > recent_window:
+            if age > max(recent_window, int(config.PLAYER_FRAME_STALE_MS)):
                 break
             tracking = float(frame.get("tracking_score", 0.0))
             if tracking < 0.25:
                 continue
-            quality = tracking - (age / max(float(recent_window), 1.0)) * 0.25
-            if quality > best_quality:
-                best_quality = quality
-                best = frame
-        return best or latest
+            media_capture_ms = int(frame.get("media_capture_ms", -1))
+            if media_capture_ms >= 0:
+                temporal_error = abs(media_capture_ms - target_media_ms)
+                # Visibility only breaks close temporal ties; pose similarity is
+                # deliberately NOT part of selection.
+                rank = -float(temporal_error) + min(tracking, 1.0) * 18.0
+            else:
+                rank = -float(age) + min(tracking, 1.0) * 18.0
+            candidates.append((rank, frame))
+
+        if candidates:
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            return candidates[0][1]
+        return self.pose_buffer[-1]
 
     def _tracking_event(self, t_ms: int, age_ms: Optional[int], break_combo: bool = True) -> ScoreEvent:
         if break_combo:
@@ -322,7 +322,7 @@ class ScoringEngine:
             return event
 
         ref_idx, ref_norm, time_offset = match
-        player_frame = self._select_player_frame(now_server_ms, ref_norm, body_w)
+        player_frame = self._select_player_frame(now_server_ms, target_t_ms)
         if player_frame is None:
             return None
         age_ms = max(0, now_server_ms - int(player_frame.get("received_at_ms", now_server_ms)))
