@@ -759,84 +759,281 @@ namespace DanceFlow.UnityClient
 
     public sealed class GameplayScreen : MonoBehaviour
     {
-        private DanceFlowApp app; private DanceListItem dance; private GameSession session; private GameSocketClient socket; private VideoPlayer video;
-        private RenderTexture videoTexture; private RawImage videoSurface; private Text scoreText; private Text comboText; private Text gradeText; private Text progressText; private RawImage progressFill;
-        private bool started; private bool paused; private float lastClockSend; private float gradeUntil;
-        private PlaybackData playback;
-        private PosePreviewGraphic[] nextMoveGraphics = new PosePreviewGraphic[3];
-        private int nextMoveStart = -1;
+        private sealed class PlayerHud
+        {
+            public GameObject root;
+            public PosePreviewGraphic mirror;
+            public Text playerLabel;
+            public Text grade;
+            public Text score;
+            public Text combo;
+            public string playerId;
+            public int slot;
+            public int coachIndex;
+            public float gradeUntil;
+        }
 
-        public void Initialize(DanceFlowApp value, DanceListItem selected, GameSession currentSession) { app = value; dance = selected; session = currentSession; BuildUi(); app.Input.Cancel += Exit; app.Input.Submit += TogglePause; _ = StartGameAsync(); }
+        private DanceFlowApp app;
+        private DanceListItem dance;
+        private GameSession session;
+        private GameSocketClient socket;
+        private VideoPlayer video;
+        private RenderTexture videoTexture;
+        private RawImage videoSurface;
+        private Text progressText;
+        private RawImage progressFill;
+        private Text countdownText;
+        private Text systemText;
+        private bool started;
+        private bool paused;
+        private float lastClockSend;
+        private PlaybackData playback;
+        private SessionStatus sessionStatus;
+
+        private readonly PlayerHud[] playerHuds = new PlayerHud[4];
+        private readonly PosePreviewGraphic[] cueGraphics = new PosePreviewGraphic[4];
+        private readonly RawImage[] cueProgress = new RawImage[4];
+        private readonly int[] lastCueIndex = { -1, -1, -1, -1 };
+
+        private static Color32 SlotColor(int slot)
+        {
+            Color32[] colors = {
+                new Color32(108,255,85,255),
+                new Color32(188,103,255,255),
+                new Color32(255,204,66,255),
+                new Color32(70,229,255,255),
+            };
+            return colors[Mathf.Abs(slot) % colors.Length];
+        }
+
+        public void Initialize(DanceFlowApp value, DanceListItem selected, GameSession currentSession)
+        {
+            app = value;
+            dance = selected;
+            session = currentSession;
+            BuildUi();
+            app.Input.Cancel += Exit;
+            app.Input.Submit += TogglePause;
+            _ = StartGameAsync();
+        }
 
         private void BuildUi()
         {
             Canvas canvas = RuntimeUi.CreateCanvas(transform, "Gameplay", 0);
             videoSurface = RuntimeUi.Panel(canvas.transform, "Video", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            int rw = Screen.width >= 3000 ? 3840 : 1920; int rh = Screen.width >= 3000 ? 2160 : 1080;
+            int rw = Screen.width >= 3000 ? 3840 : 1920;
+            int rh = Screen.width >= 3000 ? 2160 : 1080;
             videoTexture = new RenderTexture(rw, rh, 0, RenderTextureFormat.ARGB32);
-            video = gameObject.AddComponent<VideoPlayer>(); video.playOnAwake = false; video.url = app.Api.VideoUrl(dance.dance_id);
-            video.renderMode = VideoRenderMode.RenderTexture; video.targetTexture = videoTexture; video.audioOutputMode = VideoAudioOutputMode.Direct;
-            video.skipOnDrop = false; videoSurface.texture = videoTexture; video.loopPointReached += OnVideoFinished;
-            RuntimeUi.Panel(canvas.transform, "Vignette", new Color(0.025f, 0.015f, 0.07f, 0.14f), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            video = gameObject.AddComponent<VideoPlayer>();
+            video.playOnAwake = false;
+            video.url = app.Api.VideoUrl(dance.dance_id);
+            video.renderMode = VideoRenderMode.RenderTexture;
+            video.targetTexture = videoTexture;
+            video.audioOutputMode = VideoAudioOutputMode.Direct;
+            video.skipOnDrop = false;
+            videoSurface.texture = videoTexture;
+            video.loopPointReached += OnVideoFinished;
 
-            RawImage song = RuntimeUi.Panel(canvas.transform, "SongPanel", new Color(0.03f,0.02f,0.11f,0.82f), new Vector2(0,1), new Vector2(0,1), new Vector2(55,-230), new Vector2(1320,-45));
-            RawImage cover = RuntimeUi.Panel(song.transform, "Cover", Color.white, new Vector2(0,0), new Vector2(0,1), new Vector2(16,16), new Vector2(220,-16));
+            RuntimeUi.Panel(canvas.transform, "Vignette", new Color(0.02f,0.01f,0.06f,0.10f), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+            // Song information stays edge-bound. The middle of the TV is reserved
+            // for the dancers, matching the supplied Just Dance reference.
+            RawImage song = RuntimeUi.Panel(canvas.transform, "SongPanel", new Color(0.025f,0.015f,0.09f,0.76f),
+                new Vector2(0,1), new Vector2(0,1), new Vector2(45,-205), new Vector2(1220,-42));
+            RawImage cover = RuntimeUi.Panel(song.transform, "Cover", Color.white, new Vector2(0,0), new Vector2(0,1),
+                new Vector2(12,12), new Vector2(172,-12));
             if (dance.has_poster) _ = RuntimeUi.SetTextureAsync(cover, app.Api, app.Api.PosterUrl(dance.dance_id));
-            RuntimeUi.Label(song.transform, "Title", dance.title, 58, TextAnchor.MiddleLeft, RuntimeUi.White, new Vector2(0,0.52f), new Vector2(1,1), new Vector2(255,0), new Vector2(-30,-5));
-            progressText = RuntimeUi.Label(song.transform, "Time", "0:00", 30, TextAnchor.MiddleRight, new Color(.9f,.9f,.98f), new Vector2(.70f,0), new Vector2(1,0.48f), new Vector2(0,10), new Vector2(-30,0));
-            RawImage bar = RuntimeUi.Panel(song.transform, "ProgressBar", new Color(1,1,1,.20f), new Vector2(0,0), new Vector2(1,0), new Vector2(255,35), new Vector2(-160,55));
+            RuntimeUi.Label(song.transform, "Title", dance.title, 48, TextAnchor.MiddleLeft, RuntimeUi.White,
+                new Vector2(0,0.46f), new Vector2(1,1), new Vector2(200,0), new Vector2(-25,-4));
+            progressText = RuntimeUi.Label(song.transform, "Time", "0:00", 27, TextAnchor.MiddleRight, new Color(.9f,.9f,.98f),
+                new Vector2(.72f,0), new Vector2(1,.45f), new Vector2(0,6), new Vector2(-25,0));
+            RawImage bar = RuntimeUi.Panel(song.transform, "ProgressBar", new Color(1,1,1,.18f), new Vector2(0,0), new Vector2(1,0),
+                new Vector2(200,27), new Vector2(-145,43));
             progressFill = RuntimeUi.Panel(bar.transform, "Fill", RuntimeUi.Pink, Vector2.zero, new Vector2(0,1), Vector2.zero, Vector2.zero);
 
-            RawImage score = RuntimeUi.Panel(canvas.transform, "ScorePanel", new Color(0.03f,0.02f,0.11f,0.72f), new Vector2(1,1), new Vector2(1,1), new Vector2(-1190,-280), new Vector2(-55,-45));
-            RuntimeUi.Label(score.transform, "Label", "♕  SCORE", 34, TextAnchor.UpperLeft, RuntimeUi.White, new Vector2(0,0.58f), new Vector2(0.5f,1), new Vector2(30,0), new Vector2(0,-18));
-            scoreText = RuntimeUi.Label(score.transform, "Score", "0", 82, TextAnchor.MiddleLeft, RuntimeUi.White, new Vector2(0,0.15f), new Vector2(0.58f,0.74f), new Vector2(30,0), new Vector2(0,0));
-            comboText = RuntimeUi.Label(score.transform, "Combo", "COMBO  0", 52, TextAnchor.MiddleCenter, RuntimeUi.White, new Vector2(0.58f,0.10f), new Vector2(1,0.62f), Vector2.zero, new Vector2(-20,0));
-            RuntimeUi.Label(score.transform, "Stars", "★ ★ ★ ★ ★", 54, TextAnchor.UpperRight, RuntimeUi.Gold, new Vector2(0.50f,0.56f), new Vector2(1,1), Vector2.zero, new Vector2(-22,-12));
+            BuildPlayerCards(canvas);
+            BuildCueStrip(canvas);
 
-            for (int i = 0; i < 3; i++)
-            {
-                RawImage moveCard = RuntimeUi.Panel(canvas.transform, "NextMove" + i, new Color(0.12f,0.05f,0.24f,0.78f),
-                    new Vector2(1,0.5f), new Vector2(1,0.5f), new Vector2(-345, 170 - i * 295), new Vector2(-95, 420 - i * 295));
-                RectTransform glyphRect = RuntimeUi.Rect(moveCard.transform, "PoseGlyph", Vector2.zero, Vector2.one, new Vector2(18,18), new Vector2(-18,-18));
-                PosePreviewGraphic glyph = glyphRect.gameObject.AddComponent<PosePreviewGraphic>();
-                glyph.raycastTarget = false;
-                nextMoveGraphics[i] = glyph;
-            }
-            RuntimeUi.Label(canvas.transform, "NextMovesLabel", "NEXT\nMOVES", 26, TextAnchor.MiddleCenter, new Color(.9f,.9f,1,.78f), new Vector2(1,.5f), new Vector2(1,.5f), new Vector2(-350,-720), new Vector2(-90,-620));
+            // Thin song timeline; it stops before the bottom-right pictograms.
+            RawImage timeline = RuntimeUi.Panel(canvas.transform, "Timeline", new Color(0.025f,0.015f,0.08f,0.52f),
+                new Vector2(.07f,0), new Vector2(.74f,0), new Vector2(0,34), new Vector2(0,105));
+            RuntimeUi.Panel(timeline.transform, "Line", new Color(.85f,.95f,1,.68f),
+                new Vector2(.03f,.5f), new Vector2(.97f,.5f), new Vector2(0,-2), new Vector2(0,2));
 
-            gradeText = RuntimeUi.Label(canvas.transform, "Grade", "", 104, TextAnchor.MiddleCenter, RuntimeUi.Cyan, new Vector2(.69f,.47f), new Vector2(.88f,.66f), Vector2.zero, Vector2.zero);
-            RawImage timeline = RuntimeUi.Panel(canvas.transform, "Timeline", new Color(0.04f,0.02f,0.12f,0.72f), new Vector2(.08f,0), new Vector2(.92f,0), new Vector2(0,45), new Vector2(0,155));
-            RuntimeUi.Panel(timeline.transform, "Line", new Color(.78f,.93f,1,.72f), new Vector2(.05f,.5f), new Vector2(.95f,.5f), new Vector2(0,-3), new Vector2(0,3));
-            CoachStage3D coach3D = gameObject.AddComponent<CoachStage3D>(); coach3D.Initialize(canvas, app.Api, dance.dance_id, video, videoSurface);
-            _ = LoadPlaybackAsync();
+            countdownText = RuntimeUi.Label(canvas.transform, "Countdown", "", 168, TextAnchor.MiddleCenter, RuntimeUi.White,
+                new Vector2(.35f,.38f), new Vector2(.65f,.67f), Vector2.zero, Vector2.zero);
+            systemText = RuntimeUi.Label(canvas.transform, "System", "", 34, TextAnchor.MiddleCenter, RuntimeUi.Pink,
+                new Vector2(.30f,1), new Vector2(.70f,1), new Vector2(0,-315), new Vector2(0,-255));
+
+            CoachStage3D coach3D = gameObject.AddComponent<CoachStage3D>();
+            coach3D.Initialize(canvas, app.Api, dance.dance_id, video, videoSurface);
         }
 
-        private async Task LoadPlaybackAsync()
+        private void BuildPlayerCards(Canvas canvas)
+        {
+            const float cardWidth = 570f;
+            const float gap = 22f;
+            const float startX = 1400f;
+
+            for (int i = 0; i < playerHuds.Length; i++)
+            {
+                float x0 = startX + i * (cardWidth + gap);
+                RawImage panel = RuntimeUi.Panel(canvas.transform, "PlayerHud" + i, new Color(0.025f,0.018f,0.09f,.78f),
+                    new Vector2(0,1), new Vector2(0,1), new Vector2(x0,-205), new Vector2(x0 + cardWidth,-45));
+                panel.gameObject.SetActive(false);
+
+                RectTransform mirrorRect = RuntimeUi.Rect(panel.transform, "LiveMirror", Vector2.zero, Vector2.zero,
+                    new Vector2(12,12), new Vector2(155,148));
+                PosePreviewGraphic mirror = mirrorRect.gameObject.AddComponent<PosePreviewGraphic>();
+                mirror.raycastTarget = false;
+
+                Text playerLabel = RuntimeUi.Label(panel.transform, "Player", "P" + (i + 1), 24, TextAnchor.UpperLeft,
+                    RuntimeUi.White, Vector2.zero, Vector2.one, new Vector2(172,-2), new Vector2(-12,-12));
+                Text grade = RuntimeUi.Label(panel.transform, "Grade", "", 45, TextAnchor.MiddleLeft,
+                    RuntimeUi.Cyan, Vector2.zero, Vector2.one, new Vector2(172,45), new Vector2(-12,-46));
+                Text score = RuntimeUi.Label(panel.transform, "Score", "0", 31, TextAnchor.LowerLeft,
+                    RuntimeUi.White, Vector2.zero, Vector2.one, new Vector2(172,10), new Vector2(-190,-10));
+                Text combo = RuntimeUi.Label(panel.transform, "Combo", "COMBO 0", 23, TextAnchor.LowerRight,
+                    new Color(.93f,.90f,1,1), Vector2.zero, Vector2.one, new Vector2(325,10), new Vector2(-14,-10));
+
+                playerHuds[i] = new PlayerHud {
+                    root = panel.gameObject,
+                    mirror = mirror,
+                    playerLabel = playerLabel,
+                    grade = grade,
+                    score = score,
+                    combo = combo,
+                    slot = i,
+                    coachIndex = 0,
+                    playerId = "p" + i,
+                };
+            }
+        }
+
+        private void BuildCueStrip(Canvas canvas)
+        {
+            // Just Dance-style pictograms: one readable upcoming pose per active
+            // coach/player, small and bottom-right. No three-card stack.
+            for (int i = 0; i < cueGraphics.Length; i++)
+            {
+                float right = -55f - i * 185f;
+                RawImage cueRoot = RuntimeUi.Panel(canvas.transform, "Cue" + i, new Color(0.01f,0.01f,0.03f,.18f),
+                    new Vector2(1,0), new Vector2(1,0), new Vector2(right - 165,55), new Vector2(right,260));
+                cueRoot.gameObject.SetActive(false);
+
+                RectTransform glyphRect = RuntimeUi.Rect(cueRoot.transform, "Glyph", Vector2.zero, Vector2.one,
+                    new Vector2(8,22), new Vector2(-8,-14));
+                PosePreviewGraphic glyph = glyphRect.gameObject.AddComponent<PosePreviewGraphic>();
+                glyph.raycastTarget = false;
+                cueGraphics[i] = glyph;
+
+                RawImage baseLine = RuntimeUi.Panel(cueRoot.transform, "BaseLine", new Color(1,1,1,.22f),
+                    new Vector2(.08f,0), new Vector2(.92f,0), new Vector2(0,8), new Vector2(0,14));
+                RawImage fill = RuntimeUi.Panel(baseLine.transform, "CueProgress", Color.white,
+                    Vector2.zero, new Vector2(1,1), Vector2.zero, Vector2.zero);
+                cueProgress[i] = fill;
+            }
+        }
+
+        private async Task LoadStateAsync()
         {
             try
             {
-                playback = await app.Api.GetAsync<PlaybackData>("/api/dances/" + dance.dance_id + "/playback");
-                UpdateNextMoves(0);
+                sessionStatus = await app.Api.GetAsync<SessionStatus>("/api/session/" + session.session_id + "/status");
+                ApplyPlayers(sessionStatus != null ? sessionStatus.players : null);
             }
             catch (Exception e)
             {
-                Debug.LogWarning("Next Moves unavailable: " + e.Message);
+                Debug.LogWarning("Session state unavailable: " + e.Message);
+                ApplyPlayers(null);
+            }
+
+            try
+            {
+                playback = await app.Api.GetAsync<PlaybackData>("/api/dances/" + dance.dance_id + "/playback");
+                UpdateCueStrip(0);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Pictograms unavailable: " + e.Message);
             }
         }
 
-        private void UpdateNextMoves(int mediaMs)
+        private void ApplyPlayers(PlayerStatus[] players)
         {
-            if (playback == null || playback.move_previews == null || playback.move_previews.Length == 0) return;
-            int start = 0;
-            while (start < playback.move_previews.Length && playback.move_previews[start].t_ms < mediaMs + 120) start++;
-            start = Mathf.Clamp(start, 0, playback.move_previews.Length - 1);
-            if (start == nextMoveStart) return;
-            nextMoveStart = start;
-            for (int i = 0; i < nextMoveGraphics.Length; i++)
+            PlayerStatus[] source = players != null && players.Length > 0
+                ? players.OrderBy(p => p.slot).Take(4).ToArray()
+                : new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, active = true, ready = true } };
+
+            for (int i = 0; i < playerHuds.Length; i++)
             {
-                int idx = start + i;
-                Landmark[] pose = idx < playback.move_previews.Length ? playback.move_previews[idx].landmarks : Array.Empty<Landmark>();
-                if (nextMoveGraphics[i] != null) nextMoveGraphics[i].SetPose(pose, i == 0);
+                bool active = i < source.Length;
+                PlayerHud hud = playerHuds[i];
+                hud.root.SetActive(active);
+                if (cueGraphics[i] != null) cueGraphics[i].transform.parent.gameObject.SetActive(active);
+                if (!active) continue;
+
+                PlayerStatus p = source[i];
+                hud.playerId = string.IsNullOrEmpty(p.player_id) ? "p" + i : p.player_id;
+                hud.slot = p.slot;
+                hud.coachIndex = p.coach_index;
+                Color32 color = SlotColor(hud.slot);
+                hud.playerLabel.text = "P" + (hud.slot + 1) + "   COACH " + (hud.coachIndex + 1);
+                hud.playerLabel.color = color;
+                hud.grade.color = color;
+                if (hud.mirror != null) hud.mirror.SetPose(Array.Empty<Landmark>(), true, color);
+            }
+        }
+
+        private PlayerHud FindHud(SocketEnvelope message)
+        {
+            if (!string.IsNullOrEmpty(message.player_id))
+            {
+                foreach (PlayerHud hud in playerHuds)
+                    if (hud != null && hud.root.activeSelf && hud.playerId == message.player_id) return hud;
+            }
+            int slot = Mathf.Clamp(message.player_slot, 0, playerHuds.Length - 1);
+            return playerHuds[slot];
+        }
+
+        private CoachCueTrack CueTrack(int coachIndex)
+        {
+            if (playback == null || playback.coach_cues == null) return null;
+            foreach (CoachCueTrack track in playback.coach_cues)
+                if (track != null && track.coach_index == coachIndex) return track;
+            return playback.coach_cues.Length > 0 ? playback.coach_cues[0] : null;
+        }
+
+        private void UpdateCueStrip(int mediaMs)
+        {
+            if (playback == null || playback.coach_cues == null) return;
+
+            for (int slot = 0; slot < playerHuds.Length; slot++)
+            {
+                PlayerHud hud = playerHuds[slot];
+                if (hud == null || !hud.root.activeSelf || cueGraphics[slot] == null) continue;
+                CoachCueTrack track = CueTrack(hud.coachIndex);
+                if (track == null || track.cues == null || track.cues.Length == 0) continue;
+
+                int idx = 0;
+                while (idx < track.cues.Length && track.cues[idx].t_ms <= mediaMs + 80) idx++;
+                idx = Mathf.Clamp(idx, 0, track.cues.Length - 1);
+                MovePreview cue = track.cues[idx];
+
+                if (lastCueIndex[slot] != idx)
+                {
+                    lastCueIndex[slot] = idx;
+                    cueGraphics[slot].SetPose(cue.landmarks ?? Array.Empty<Landmark>(), true, SlotColor(hud.slot));
+                }
+
+                int previousT = idx > 0 ? track.cues[idx - 1].t_ms : Mathf.Max(0, cue.t_ms - 1400);
+                float span = Mathf.Max(500, cue.t_ms - previousT);
+                float remain = Mathf.Clamp01((cue.t_ms - mediaMs) / span);
+                if (cueProgress[slot] != null)
+                {
+                    cueProgress[slot].color = SlotColor(hud.slot);
+                    cueProgress[slot].rectTransform.anchorMax = new Vector2(remain, 1);
+                }
             }
         }
 
@@ -844,11 +1041,12 @@ namespace DanceFlow.UnityClient
         {
             try
             {
+                await LoadStateAsync();
                 socket = new GameSocketClient();
                 await socket.ConnectAsync(app.Api.GameSocketUrl(session.session_id));
 
-                gradeText.text = "LOADING";
-                gradeText.color = RuntimeUi.White;
+                countdownText.text = "LOADING";
+                countdownText.color = RuntimeUi.White;
                 video.Prepare();
                 float deadline = Time.realtimeSinceStartup + 20f;
                 while (!video.isPrepared && Time.realtimeSinceStartup < deadline) await Task.Delay(40);
@@ -861,60 +1059,124 @@ namespace DanceFlow.UnityClient
                 await socket.SendAsync(new GameActionMessage { action = "start", media_time_ms = 0 });
                 started = true;
             }
-            catch (Exception e) { gradeText.text = "CONNECTION ERROR\n" + e.Message; }
+            catch (Exception e)
+            {
+                countdownText.text = "CONNECTION ERROR";
+                systemText.text = e.Message;
+            }
         }
 
         private async Task ShowCountdownAsync()
         {
             string[] values = { "3", "2", "1", "GO!" };
-            foreach (string value in values) { gradeText.text = value; gradeText.color = value == "GO!" ? RuntimeUi.Gold : RuntimeUi.White; await Task.Delay(value == "GO!" ? 350 : 650); }
-            gradeText.text = "";
+            foreach (string value in values)
+            {
+                countdownText.text = value;
+                countdownText.color = value == "GO!" ? RuntimeUi.Gold : RuntimeUi.White;
+                await Task.Delay(value == "GO!" ? 320 : 610);
+            }
+            countdownText.text = "";
         }
 
         private void Update()
         {
             if (socket != null) socket.Drain(HandleMessage);
+
+            float now = Time.unscaledTime;
+            foreach (PlayerHud hud in playerHuds)
+            {
+                if (hud != null && hud.root.activeSelf && hud.gradeUntil > 0 && now > hud.gradeUntil)
+                {
+                    hud.grade.text = "";
+                    hud.gradeUntil = 0;
+                }
+            }
+
             if (!started || video == null || !video.isPlaying) return;
-            int currentMs = Mathf.Max(0, (int)(video.time * 1000.0)); int duration = Mathf.Max(dance.duration_ms, 1); float p = Mathf.Clamp01(currentMs / (float)duration);
+
+            int currentMs = Mathf.Max(0, (int)(video.time * 1000.0));
+            int duration = Mathf.Max(dance.duration_ms, 1);
+            float p = Mathf.Clamp01(currentMs / (float)duration);
             if (progressFill != null) progressFill.rectTransform.anchorMax = new Vector2(p, 1);
             progressText.text = currentMs / 60000 + ":" + (currentMs / 1000 % 60).ToString("00");
-            UpdateNextMoves(currentMs);
-            if (Time.unscaledTime - lastClockSend > 0.04f) { lastClockSend = Time.unscaledTime; _ = socket.SendAsync(new MediaClockMessage { media_time_ms = currentMs }); }
-            if (gradeUntil > 0 && Time.unscaledTime > gradeUntil) { gradeText.text = ""; gradeUntil = 0; }
+            UpdateCueStrip(currentMs);
+
+            if (Time.unscaledTime - lastClockSend > 0.04f)
+            {
+                lastClockSend = Time.unscaledTime;
+                _ = socket.SendAsync(new MediaClockMessage { media_time_ms = currentMs });
+            }
         }
 
         private void HandleMessage(SocketEnvelope message)
         {
             if (message.type == "score_event")
             {
-                scoreText.text = message.total_score.ToString("N0");
-                comboText.text = "COMBO  " + message.combo;
+                PlayerHud hud = FindHud(message);
+                if (hud == null) return;
+
+                Color32 color = SlotColor(hud.slot);
+                if (message.player_pose != null && message.player_pose.Length >= 29)
+                    hud.mirror.SetPose(message.player_pose, true, color);
+
+                hud.score.text = message.total_score.ToString("N0");
+                hud.combo.text = "COMBO " + message.combo;
+
                 if (message.is_move_grade)
                 {
-                    gradeText.text = string.IsNullOrEmpty(message.grade) ? "" : message.grade.ToUpperInvariant();
-                    gradeText.color = message.grade == "perfect" ? RuntimeUi.Cyan :
-                                      message.grade == "super" ? RuntimeUi.Pink :
-                                      message.grade == "good" ? RuntimeUi.Gold : RuntimeUi.White;
-                    gradeUntil = Time.unscaledTime + 0.52f;
+                    hud.grade.text = string.IsNullOrEmpty(message.grade) ? "" : message.grade.ToUpperInvariant();
+                    hud.grade.color = message.grade == "x" ? new Color32(255,92,116,255) : color;
+                    hud.gradeUntil = Time.unscaledTime + 0.62f;
                 }
             }
-            else if (message.type == "phone_disconnected") { gradeText.text = "PHONE DISCONNECTED"; gradeText.color = RuntimeUi.Pink; }
-            else if (message.type == "game_over") { started = false; gradeText.text = "ROUTINE COMPLETE"; gradeText.color = RuntimeUi.Gold; }
+            else if (message.type == "phone_disconnected")
+            {
+                systemText.text = "PHONE DISCONNECTED";
+                systemText.color = RuntimeUi.Pink;
+            }
+            else if (message.type == "game_over")
+            {
+                started = false;
+                systemText.text = "ROUTINE COMPLETE";
+                systemText.color = RuntimeUi.Gold;
+            }
         }
 
         private void TogglePause()
         {
-            if (!started || video == null) return; paused = !paused;
-            if (paused) { video.Pause(); _ = socket.SendAsync(new GameActionMessage { action = "pause" }); }
-            else { video.Play(); _ = socket.SendAsync(new GameActionMessage { action = "resume" }); }
+            if (!started || video == null) return;
+            paused = !paused;
+            if (paused)
+            {
+                video.Pause();
+                systemText.text = "PAUSED";
+                _ = socket.SendAsync(new GameActionMessage { action = "pause" });
+            }
+            else
+            {
+                systemText.text = "";
+                video.Play();
+                _ = socket.SendAsync(new GameActionMessage { action = "resume" });
+            }
         }
 
-        private void OnVideoFinished(VideoPlayer source) { if (socket != null) _ = socket.SendAsync(new MediaClockMessage { media_time_ms = dance.duration_ms }); }
+        private void OnVideoFinished(VideoPlayer source)
+        {
+            if (socket != null) _ = socket.SendAsync(new MediaClockMessage { media_time_ms = dance.duration_ms });
+        }
+
         private void Exit() { app.ShowLibrary(); }
+
         private void OnDestroy()
         {
-            if (app != null) { app.Input.Cancel -= Exit; app.Input.Submit -= TogglePause; }
-            if (socket != null) socket.Dispose(); if (video != null) video.Stop(); if (videoTexture != null) videoTexture.Release();
+            if (app != null)
+            {
+                app.Input.Cancel -= Exit;
+                app.Input.Submit -= TogglePause;
+            }
+            if (socket != null) socket.Dispose();
+            if (video != null) video.Stop();
+            if (videoTexture != null) videoTexture.Release();
         }
     }
 
