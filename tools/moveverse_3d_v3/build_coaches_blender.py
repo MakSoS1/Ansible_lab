@@ -98,30 +98,46 @@ def _apply_object_transform(obj, location=True, rotation=True, scale=True):
 
 
 def import_fbx(path):
+    before=set(bpy.context.scene.objects)
     bpy.ops.import_scene.fbx(filepath=str(path), automatic_bone_orientation=False)
-    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
-    arms = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
+    imported=[o for o in bpy.context.scene.objects if o not in before]
+    meshes=[o for o in imported if o.type=="MESH"]
+    arms=[o for o in imported if o.type=="ARMATURE"]
     if not meshes or not arms:
         raise RuntimeError(f"FBX import missing mesh/armature: {path}")
-    body = max(meshes, key=lambda o: len(o.data.vertices))
-    arm = max(arms, key=lambda o: len(o.data.bones))
+    body=max(meshes,key=lambda o:len(o.data.vertices))
+    arm=max(arms,key=lambda o:len(o.data.bones))
 
-    # MakeHuman FBX arrives with a 0.1 armature scale / FBX axis transform.
-    # Normalize both the deform skeleton and all imported anatomy meshes into
-    # one meter-scale world coordinate system before creating clothes/hair.
-    for o in meshes:
-        mw = o.matrix_world.copy()
-        if o.parent is not None:
-            o.parent = None
-            o.matrix_world = mw
-        _apply_object_transform(o, location=True, rotation=True, scale=True)
-    _apply_object_transform(arm, location=True, rotation=True, scale=True)
+    # makehuman-core FBX is Y-up and commonly arrives at ~10x Blender scale.
+    # Put every imported root below one normalization empty so meshes, rig,
+    # facial proxies and skin weights keep their relative transforms.
+    pts=[body.matrix_world @ Vector(c) for c in body.bound_box]
+    ext=Vector((max(p.x for p in pts)-min(p.x for p in pts),
+                max(p.y for p in pts)-min(p.y for p in pts),
+                max(p.z for p in pts)-min(p.z for p in pts)))
+    root=bpy.data.objects.new("MV_BaseNormalize",None)
+    bpy.context.collection.objects.link(root)
+    roots=[o for o in imported if o.parent is None]
+    for o in roots:
+        mw=o.matrix_world.copy()
+        o.parent=root
+        o.matrix_world=mw
+    # Rotate the dominant Y height axis onto Blender Z.
+    if ext.y > ext.z and ext.y > ext.x:
+        root.rotation_euler.x=math.radians(90.0)
+    # Normalize a MakeHuman adult to meter-scale without hard-coding exporter units.
+    raw_height=max(ext)
+    if raw_height > 3.2:
+        k=1.75/raw_height
+        root.scale=(k,k,k)
+    bpy.context.view_layer.update()
 
-    print("BODY", body.name, "verts", len(body.data.vertices), "matrix", body.matrix_world)
-    print("ARM", arm.name, "bones", len(arm.data.bones), "matrix", arm.matrix_world)
-    print("GROUPS", [g.name for g in body.vertex_groups][:80])
-    return body, arm
-
+    print("BODY",body.name,"verts",len(body.data.vertices),"raw_ext",tuple(round(v,4) for v in ext))
+    mn,mx=obj_bounds_world(body)
+    print("BODY_NORMALIZED_EXT",tuple(round(mx[i]-mn[i],4) for i in range(3)))
+    print("ARM",arm.name,"bones",len(arm.data.bones))
+    print("GROUPS",[g.name for g in body.vertex_groups][:80])
+    return body,arm
 
 def obj_bounds_world(obj):
     pts = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
