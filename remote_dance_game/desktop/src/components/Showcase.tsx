@@ -12,9 +12,10 @@ export default function Showcase() {
   const stage = ms < 5200 ? 0 : ms < 9000 ? 1 : ms < 17200 ? 2 : ms < 20800 ? 3 : 4
   const gameMs = Math.max(0, ms - 20800)
   const score = 28450 + Math.floor(gameMs * 4.0)
-  const combo = Math.min(38, 7 + Math.floor(gameMs / 520))
+  const moveNo = Math.floor(gameMs / 520)
+  const combo = Math.min(64, 7 + moveNo)
   const progress = Math.min(100, 34 + gameMs / 155)
-  const grade = ['PERFECT','SUPER','PERFECT','GOOD'][Math.floor(gameMs / 1250) % 4]
+  const grade = ['PERFECT','SUPER','GOOD','PERFECT','SUPER','OK'][moveNo % 6]
 
   if (stage === 0) {
     const progress = Math.min(100, Math.floor(Math.max(0, ms - 1500) / 33))
@@ -77,8 +78,8 @@ export default function Showcase() {
     <div className="ref-game-vignette"/>
     <section className="ref-song-panel"><div className="ref-song-cover"><img src="/showcase/poster.jpg"/></div><div className="ref-song-copy"><h1>Night Move</h1><p>DANCEFLOW CREW <i>│</i> POP <i>│</i> 2026</p><div className="ref-song-progress"><b style={{width:`${progress}%`}}/><em/></div></div><div className="ref-song-time">1:28 / 3:12</div></section>
     <section className="ref-score-panel"><div className="ref-score-copy"><span>♕ SCORE</span><strong>{score.toLocaleString()}</strong></div><div className="ref-stars">{[0,1,2,3,4].map(i=><b key={i} className={i<4?'earned':''}>★</b>)}</div><div className="ref-combo"><span>COMBO</span><strong>{combo}</strong></div></section>
-    <aside className="ref-next-moves">{[0,1,2].map(i=><div key={i} className={`ref-move-card ${i===0?'active':''}`}><PoseGlyph active={i===0} variant={i}/></div>)}<span>NEXT<br/>MOVES</span></aside>
-    <div className={`ref-grade ${gradeClass(grade)}`}><span>♕</span><strong>{grade}</strong><em>ON BEAT</em></div>
+    <aside className="ref-next-moves">{[0,1,2].map(i=><div key={i} className={`ref-move-card ${i===0?'active':''}`}><PoseGlyph active={i===0} variant={moveNo+i}/></div>)}<span>NEXT<br/>MOVES</span></aside>
+    <div key={moveNo} className={`ref-grade ${gradeClass(grade)}`}><span>♕</span><strong>{grade}</strong><em>MOVE {moveNo+1}</em></div>
     <section className="ref-timeline"><div className="ref-wave">{Array.from({length:13},(_,i)=><i key={i} style={{height:`${10+((i*13)%30)}px`}}/>)}</div><div className="ref-timeline-track"><div className="ref-timeline-fill" style={{width:`${progress}%`}}/>{[12,30,49,68,87].map((p,i)=><i key={i} className="ref-timeline-marker" style={{left:`${p}%`}}/>)}<b className="ref-timeline-cursor" style={{left:`${progress}%`}}/></div><div className="ref-wave">{Array.from({length:13},(_,i)=><i key={i} style={{height:`${10+(((12-i)*13)%30)}px`}}/>)}</div></section>
   </main>
 }
