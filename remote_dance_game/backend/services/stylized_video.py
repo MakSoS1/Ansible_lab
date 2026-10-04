@@ -272,40 +272,54 @@ def _background(width: int, height: int, t: float, beat: float, theme: Theme, se
     accent = _bgr(theme.accent)
     phase = t * 32.0
 
+    # Keep the centre of the stage visually calm. Decorative motion lives at
+    # the edges or on the floor, so no abstract line ever competes with the coach.
     if theme.motif in {"rings", "stars"}:
-        center = (int(sw * (0.5 + 0.07 * math.sin(t * 0.23))), int(sh * 0.52))
-        for k in range(5):
-            radius = int((0.16 + k * 0.13 + (t * 0.035) % 0.13) * max(sw, sh))
-            col = primary if k % 2 == 0 else secondary
-            cv2.circle(bg, center, radius, col, max(1, 1 + int(beat * 2)), cv2.LINE_AA)
+        for side, center_x in enumerate((-0.06, 1.06)):
+            center = (int(sw * center_x), int(sh * (0.46 + 0.03 * math.sin(t * 0.2 + side))))
+            for k in range(4):
+                radius = int((0.18 + k * 0.12 + (t * 0.018) % 0.06) * max(sw, sh))
+                col = primary if (k + side) % 2 == 0 else secondary
+                cv2.circle(bg, center, radius, col, 1, cv2.LINE_AA)
     elif theme.motif == "grid":
-        horizon = int(sh * 0.57)
+        horizon = int(sh * 0.66)
         for i in range(-8, 9):
-            x = int(sw / 2 + i * sw * 0.085)
+            x = int(sw / 2 + i * sw * 0.09)
             cv2.line(bg, (sw // 2, horizon), (x, sh), primary if i % 2 else secondary, 1, cv2.LINE_AA)
-        offset = int((phase * 0.9) % 22)
-        for y in range(horizon + offset, sh, 22):
+        offset = int((phase * 0.45) % 24)
+        for y in range(horizon + offset, sh, 24):
             cv2.line(bg, (0, y), (sw, y), accent, 1, cv2.LINE_AA)
     elif theme.motif == "sunset":
-        center = (int(sw * 0.5), int(sh * 0.47))
-        cv2.circle(bg, center, int(sh * (0.19 + 0.025 * beat)), accent, -1, cv2.LINE_AA)
-        for y in range(center[1] - int(sh * 0.18), center[1] + int(sh * 0.18), 8):
-            cv2.line(bg, (center[0] - int(sw * 0.18), y), (center[0] + int(sw * 0.18), y), _bgr(theme.deep), 2)
-    else:  # ribbons
-        for k in range(4):
-            pts = []
-            for x in range(-20, sw + 20, 12):
-                y = int(sh * (0.26 + k * 0.16) + math.sin(x * 0.025 + t * (0.8 + k * 0.08) + k) * sh * 0.07)
-                pts.append((x, y))
-            cv2.polylines(bg, [np.array(pts, np.int32)], False, primary if k % 2 == 0 else secondary, 2 + int(beat * 2), cv2.LINE_AA)
+        center = (int(sw * 0.50), int(sh * 0.43))
+        cv2.circle(bg, center, int(sh * (0.18 + 0.012 * beat)), accent, -1, cv2.LINE_AA)
+        # Low skyline silhouettes add theme without crossing the dancer.
+        for side in (0, 1):
+            x0 = 0 if side == 0 else int(sw * 0.78)
+            x1 = int(sw * 0.22) if side == 0 else sw
+            for x in range(x0, x1, max(7, sw // 38)):
+                height = int(sh * (0.06 + 0.12 * rng.random()))
+                cv2.rectangle(bg, (x, int(sh * 0.66) - height), (x + max(4, sw // 55), int(sh * 0.66)), _bgr(theme.deep), -1)
+    else:  # former ribbons: edge light towers, never lines across the coach
+        for side in (0, 1):
+            base_x = int(sw * (0.08 if side == 0 else 0.92))
+            direction = 1 if side == 0 else -1
+            for k in range(4):
+                x = base_x + direction * int(k * sw * 0.045)
+                top_x = x + direction * int(sw * (0.055 + 0.012 * math.sin(t * 0.35 + k)))
+                col = primary if k % 2 == 0 else secondary
+                cv2.line(bg, (x, sh), (top_x, int(sh * 0.18)), col, 2, cv2.LINE_AA)
 
-    # Fixed particles move deterministically with time rather than flickering.
-    for i in range(34):
+    # Sparse particles are limited to the stage edges and lower floor.
+    for i in range(24):
         bx, by = rng.random(), rng.random()
-        speed = 0.018 + rng.random() * 0.042
-        x = int(((bx + t * speed) % 1.08 - 0.04) * sw)
-        y = int(((by + math.sin(t * 0.3 + i) * 0.02) % 1.0) * sh)
-        r = 1 + int(rng.random() * 3 + beat * 1.5)
+        speed = 0.010 + rng.random() * 0.025
+        xn_particle = (bx + t * speed) % 1.0
+        yn_particle = (by + math.sin(t * 0.22 + i) * 0.015) % 1.0
+        if 0.23 < xn_particle < 0.77 and yn_particle < 0.72:
+            continue
+        x = int(xn_particle * sw)
+        y = int(yn_particle * sh)
+        r = 1 + int(rng.random() * 2 + beat * 0.7)
         cv2.circle(bg, (x, y), r, accent if i % 3 == 0 else primary, -1, cv2.LINE_AA)
 
     bg = cv2.GaussianBlur(bg, (0, 0), 0.6)
