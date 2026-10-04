@@ -982,9 +982,11 @@ namespace DanceFlow.UnityClient
 
         private void ApplyPlayers(PlayerStatus[] players)
         {
-            PlayerStatus[] source = players != null && players.Length > 0
-                ? players.OrderBy(p => p.slot).Take(4).ToArray()
-                : new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, active = true, ready = true } };
+            PlayerStatus[] source = players != null
+                ? players.Where(p => p != null && p.active).OrderBy(p => p.slot).Take(4).ToArray()
+                : Array.Empty<PlayerStatus>();
+            if (source.Length == 0)
+                source = new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, active = true, ready = true } };
 
             for (int i = 0; i < playerHuds.Length; i++)
             {
