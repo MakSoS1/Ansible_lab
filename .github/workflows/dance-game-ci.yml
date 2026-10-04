@@ -1,5 +1,9 @@
 name: Dance game CI
 
+concurrency:
+  group: dance-game-ci-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     paths:
