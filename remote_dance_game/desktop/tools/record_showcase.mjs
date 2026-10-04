@@ -46,8 +46,14 @@ await assertSeparated(page, [
   ['.ref-song-card.active', '.ref-selected-copy', 8],
 ], 'menu layout');
 
-// Gameplay stage: every persistent control belongs on an edge.
+// Multi-coach stage: cards must remain clearly separated and centered.
 await page.waitForTimeout(11200);
+await assertSeparated(page, [
+  ['.showcase-coach-select article:nth-child(1)', '.showcase-coach-select article:nth-child(2)', 18],
+], 'coach selection layout');
+
+// Gameplay begins after coach selection. Every persistent control belongs on an edge.
+await page.waitForTimeout(4000);
 await assertSeparated(page, [
   ['.ref-song-panel', '.showcase-player-huds', 12],
   ['.showcase-cues', '.ref-timeline', 10],
@@ -69,7 +75,7 @@ for (const selector of ['.ref-song-panel','.showcase-player-huds','.showcase-cue
 }
 
 // Finish a ~30s walkthrough after validation.
-await page.waitForTimeout(8300);
+await page.waitForTimeout(7600);
 const video = page.video();
 await page.close();
 await context.close();
