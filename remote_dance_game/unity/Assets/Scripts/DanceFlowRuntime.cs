@@ -551,9 +551,11 @@ namespace DanceFlow.UnityClient
         public void Initialize(Canvas canvas, DanceApiClient client, string id, VideoPlayer videoClock, RawImage videoImage)
         {
             api = client; danceId = id; clock = videoClock; sourceVideo = videoImage;
-            GameObject prefab = Resources.Load<GameObject>("Coaches/DefaultCoach"); if (prefab == null) return; active3D = true;
+            GameObject prefab = Resources.Load<GameObject>("Coaches/" + id) ?? Resources.Load<GameObject>("Coaches/DefaultCoach"); if (prefab == null) return; active3D = true;
             RawImage stageBackground = RuntimeUi.Panel(canvas.transform, "3DBackground", RuntimeUi.Deep, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            stageBackground.transform.SetSiblingIndex(Mathf.Max(1, sourceVideo.transform.GetSiblingIndex() + 1)); _ = RuntimeUi.SetTextureAsync(stageBackground, api, api.PosterUrl(danceId));
+            stageBackground.transform.SetSiblingIndex(Mathf.Max(1, sourceVideo.transform.GetSiblingIndex() + 1));
+            Texture manualBackground = Resources.Load<Texture>("Backgrounds/" + id) ?? Resources.Load<Texture>("Backgrounds/DefaultBackground");
+            if (manualBackground != null) stageBackground.texture = manualBackground; else _ = RuntimeUi.SetTextureAsync(stageBackground, api, api.PosterUrl(danceId));
             RawImage coachSurface = RuntimeUi.Panel(canvas.transform, "3DCoach", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             coachSurface.transform.SetSiblingIndex(stageBackground.transform.GetSiblingIndex() + 1); sourceVideo.color = new Color(1, 1, 1, 0.001f);
             int rw = Screen.width >= 3000 ? 3840 : 1920; int rh = Screen.width >= 3000 ? 2160 : 1080;
