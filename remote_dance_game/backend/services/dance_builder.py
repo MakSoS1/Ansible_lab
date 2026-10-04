@@ -11,9 +11,8 @@ from services.events import detect_hold_events
 from services.packager import save_dance_package
 from services.pose_extractor import extract_poses_from_video
 from services.source_resolver import resolve_source
-from services.stylized_video import render_game_video
 from services.timing import extract_timing
-from services.video_processor import create_preview_video, extract_audio, normalize_video, probe_video
+from services.video_processor import create_game_master, create_preview_video, extract_audio, extract_poster_frame, normalize_video, optional_ai_upscale, probe_video
 from services.weights import generate_weights
 
 
@@ -166,54 +165,68 @@ async def build_dance(
         await update_job(81, "detecting_events")
         events_list = await asyncio.to_thread(detect_hold_events, pose_data["frames"])
 
-        progress(84, "rendering_game_video")
-        await update_job(84, "rendering_game_video")
-        game_video_path = os.path.join(assets_dir, "game_video.mp4")
+        progress(84, "building_4k_game_master")
+        await update_job(84, "building_4k_game_master")
+        game_video_path = os.path.join(assets_dir, "game_master.mp4")
         poster_path = os.path.join(assets_dir, "poster.jpg")
-        render_meta: Dict[str, Any]
 
-        def render_progress(pct: int, stage: str):
-            progress(84 + int(max(0, min(100, pct)) * 0.14), stage)
-
+        # The production visual is intentionally video-first for now. We preserve
+        # the uploaded choreography exactly and only improve presentation quality:
+        # high quality Lanczos scaling, conservative sharpening and a high-bitrate
+        # H.264 master suitable for Unity playback on a 4K TV.
+        master_source = file_path
+        ai_source = os.path.join(assets_dir, "ai_upscaled_source.mp4")
+        ai_upscale_used = False
         try:
-            render_meta = await asyncio.to_thread(
-                render_game_video,
-                proxy_path,
-                game_video_path,
-                pose_data,
-                timing_data,
-                audio_path,
-                title,
-                poster_path,
-                mirror_mode,
-                1920,
-                1080,
-                30,
-                render_progress,
-            )
-        except Exception as render_exc:
-            # Never turn a successfully extracted choreography into an unusable dance.
-            # Source preview remains perfectly scoreable; the error is recorded in metadata.
-            print(f"Stylized render failed, using source preview: {render_exc}")
-            game_video_path = fallback_preview
+            maybe_ai = await asyncio.to_thread(optional_ai_upscale, file_path, ai_source)
+            if maybe_ai:
+                master_source = maybe_ai
+                ai_upscale_used = True
+        except Exception as ai_exc:
+            # AI SR is explicitly optional; a missing model/tool must never make a
+            # dance unplayable.
+            print(f"Optional AI upscale skipped: {ai_exc}")
+
+        target_height = int(os.environ.get("DANCE_GAME_TARGET_HEIGHT", "2160") or 2160)
+        master_meta = await asyncio.to_thread(
+            create_game_master,
+            master_source,
+            game_video_path,
+            clip_start,
+            clip_end,
+            target_height,
+            17,
+            "slow",
+        )
+
+        duration_sec = max(0.0, float(pose_data.get("duration_ms", 0) or 0) / 1000.0)
+        poster_at = min(max(duration_sec * 0.22, 2.0), max(2.0, duration_sec - 0.25))
+        try:
+            await asyncio.to_thread(extract_poster_frame, game_video_path, poster_path, poster_at, 1920, 1080)
+        except Exception:
             poster_path = ""
-            render_meta = {
-                "theme": {
-                    "name": "Source Stage", "primary": [88, 234, 255],
-                    "secondary": [255, 70, 188], "accent": [255, 235, 100],
-                    "deep": [7, 7, 20], "motif": "rings",
-                },
-                "segmentation_backend": "source_fallback",
-                "render_error": str(render_exc),
-            }
+
+        render_meta: Dict[str, Any] = {
+            "theme": {
+                "name": "Video First",
+                "primary": [88, 234, 255],
+                "secondary": [255, 70, 188],
+                "accent": [255, 235, 100],
+                "deep": [7, 7, 20],
+                "motif": "source",
+            },
+            "segmentation_backend": "disabled_video_first",
+            "ai_upscale_used": ai_upscale_used,
+            "master": master_meta,
+        }
 
         progress(99, "packaging")
         await update_job(99, "packaging")
         pack_data = {
             "title": title,
-            "version": 3,
+            "version": 4,
             "duration_ms": pose_data["duration_ms"],
-            "preview_mode": "stylized_game_video",
+            "preview_mode": "video_first_hq",
             "difficulty": difficulty,
             "mirror_mode": mirror_mode,
             "created_at": now,
@@ -228,9 +241,10 @@ async def build_dance(
             "weights": weights_data,
             "theme": render_meta.get("theme", {}),
             "render": {
-                "segmentation_backend": render_meta.get("segmentation_backend", "unknown"),
-                "segmentation_usage": render_meta.get("segmentation_usage", {}),
-                "render_error": render_meta.get("render_error", ""),
+                "segmentation_backend": render_meta.get("segmentation_backend", "disabled_video_first"),
+                "ai_upscale_used": bool(render_meta.get("ai_upscale_used", False)),
+                "master": render_meta.get("master", {}),
+                "render_error": "",
             },
             "preview": {
                 "video_path": game_video_path,
@@ -246,9 +260,9 @@ async def build_dance(
         await db.insert_dance({
             "dance_id": dance_id,
             "title": title,
-            "version": 3,
+            "version": 4,
             "duration_ms": pose_data["duration_ms"],
-            "preview_mode": "stylized_game_video",
+            "preview_mode": "video_first_hq",
             "difficulty": difficulty,
             "mirror_mode": mirror_mode,
             "created_at": now,
