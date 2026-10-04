@@ -268,23 +268,43 @@ def extract_poses_from_video(
             t_ms = int(len(frames) / video_fps * 1000)
             frames.append(_blank_frame(t_ms))
 
-    viable = []
+    candidates = []
     for track_id, frames in track_frames.items():
         stat = track_stats.get(track_id, {})
         coverage = float(stat.get("visible_frames", 0)) / max(frame_idx, 1)
         avg_vis = float(stat.get("visibility_sum", 0.0)) / max(int(stat.get("x_count", 0)), 1)
         avg_x = float(stat.get("x_sum", 0.0)) / max(int(stat.get("x_count", 0)), 1)
         avg_scale = float(stat.get("scale_sum", 0.0)) / max(int(stat.get("x_count", 0)), 1)
-        if coverage >= 0.12:
-            viable.append({
+        quality = coverage * (0.55 + min(avg_vis, 1.0) * 0.45) * (0.55 + min(avg_scale * 3.2, 1.0) * 0.45)
+        if coverage >= 0.10:
+            candidates.append({
                 "track_id": track_id,
                 "frames": frames,
                 "coverage": round(coverage, 4),
                 "avg_visibility": round(avg_vis, 4),
                 "avg_x": round(avg_x, 4),
                 "avg_scale": round(avg_scale, 4),
+                "quality": round(quality, 5),
             })
 
+    # Do not turn a brief background person into a selectable coach.  Keep
+    # tracks that are substantial relative to the strongest stage performer.
+    viable = []
+    if candidates:
+        best_quality = max(float(tr["quality"]) for tr in candidates)
+        best_scale = max(float(tr["avg_scale"]) for tr in candidates)
+        for tr in candidates:
+            if float(tr["coverage"]) < 0.20:
+                continue
+            if float(tr["avg_visibility"]) < 0.28:
+                continue
+            if float(tr["avg_scale"]) < max(0.045, best_scale * 0.45):
+                continue
+            if float(tr["quality"]) < best_quality * 0.32:
+                continue
+            viable.append(tr)
+
+    viable = sorted(viable, key=lambda tr: float(tr["quality"]), reverse=True)[:max_poses]
     # Stable role ordering: left-to-right in the mirrored scoring space.
     viable.sort(key=lambda tr: (tr["avg_x"], -tr["coverage"]))
     for role_index, tr in enumerate(viable):
