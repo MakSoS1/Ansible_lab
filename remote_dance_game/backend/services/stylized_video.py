@@ -297,8 +297,8 @@ def _background(width: int, height: int, t: float, beat: float, theme: Theme, se
             x0 = 0 if side == 0 else int(sw * 0.78)
             x1 = int(sw * 0.22) if side == 0 else sw
             for x in range(x0, x1, max(7, sw // 38)):
-                height = int(sh * (0.06 + 0.12 * rng.random()))
-                cv2.rectangle(bg, (x, int(sh * 0.66) - height), (x + max(4, sw // 55), int(sh * 0.66)), _bgr(theme.deep), -1)
+                building_h = int(sh * (0.06 + 0.12 * rng.random()))
+                cv2.rectangle(bg, (x, int(sh * 0.66) - building_h), (x + max(4, sw // 55), int(sh * 0.66)), _bgr(theme.deep), -1)
     else:  # former ribbons: edge light towers, never lines across the coach
         for side in (0, 1):
             base_x = int(sw * (0.08 if side == 0 else 0.92))
