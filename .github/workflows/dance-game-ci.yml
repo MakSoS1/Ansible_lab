@@ -67,6 +67,11 @@ jobs:
         run: npm ci
       - name: Type-check
         run: npx tsc --noEmit
+      - name: Check phone tracker JavaScript
+        shell: bash
+        run: |
+          node --check ../mobile/app.js
+          node --check ../mobile-android/app/src/main/assets/mobile/app.js
       - name: Build Vite desktop UI
         run: npm run build
 
