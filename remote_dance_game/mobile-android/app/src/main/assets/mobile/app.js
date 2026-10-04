@@ -26,8 +26,8 @@
     let lastPoseResult = null;
     let lastSendMs = 0;
     let lastInferenceCaptureMs = 0;
-    const TARGET_SEND_INTERVAL_MS = 33;
-    const MAX_WS_BUFFERED_BYTES = 250000;
+    const TARGET_SEND_INTERVAL_MS = 24;
+    const MAX_WS_BUFFERED_BYTES = 120000;
     let reconnectAttempts = 0;
     const MAX_RECONNECT = 10;
     let gradeTimeout = null;
@@ -177,7 +177,9 @@
                 startBtn.textContent = 'Finished';
                 break;
             case 'score_feedback':
-                showGrade(msg.grade, msg.score, msg.combo);
+                if (msg.is_move_grade !== false) {
+                    showGrade(msg.grade, msg.score, msg.combo);
+                }
                 if (msg.hold_state === 'entering' || msg.hold_state === 'holding') {
                     showHold();
                 }
@@ -325,8 +327,8 @@
                         smoothLandmarks: true,
                         enableSegmentation: false,
                         smoothSegmentation: false,
-                        minDetectionConfidence: 0.5,
-                        minTrackingConfidence: 0.5,
+                        minDetectionConfidence: 0.58,
+                        minTrackingConfidence: 0.60,
                     });
                     candidate.onResults(onPoseResults);
 
@@ -451,6 +453,7 @@
                     facingMode: 'user',
                     width: { ideal: 1280 },
                     height: { ideal: 720 },
+                    frameRate: { ideal: 60, min: 30 },
                 },
                 audio: false,
             });
@@ -477,17 +480,30 @@
     }
 
     let frameCount = 0;
-    async function processFrame() {
+    async function processFrame(now, metadata) {
         if (pose && videoEl.readyState >= 2) {
             try {
                 lastInferenceCaptureMs = Date.now();
                 await pose.send({ image: videoEl });
             } catch (e) {
-                // skip frame on error
+                // Skip only this camera frame. Keeping inference serial avoids
+                // a growing latency queue on slower phones.
             }
         }
         frameCount++;
-        requestAnimationFrame(processFrame);
+        if (typeof videoEl.requestVideoFrameCallback === 'function') {
+            videoEl.requestVideoFrameCallback(processFrame);
+        } else {
+            requestAnimationFrame(processFrame);
+        }
+    }
+
+    function startFrameLoop() {
+        if (typeof videoEl.requestVideoFrameCallback === 'function') {
+            videoEl.requestVideoFrameCallback(processFrame);
+        } else {
+            requestAnimationFrame(processFrame);
+        }
     }
 
     startBtn.addEventListener('click', () => {
@@ -526,7 +542,7 @@
         connect();
         startBtn.textContent = 'Calibrating...';
 
-        processFrame();
+        startFrameLoop();
 
         setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
