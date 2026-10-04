@@ -453,6 +453,7 @@ namespace DanceFlow.UnityClient
         }
         public void ShowLibrary() { NewScreen<LibraryScreen>("LibraryScreen").Initialize(this); }
         public void ShowConnect(DanceListItem dance) { SelectedDance = dance; NewScreen<ConnectScreen>("ConnectScreen").Initialize(this, dance); }
+        public void ShowCoachSelect(GameSession session, PlayerStatus[] players) { CurrentSession = session; NewScreen<CoachSelectScreen>("CoachSelectScreen").Initialize(this, SelectedDance, session, players); }
         public void ShowGameplay(GameSession session) { CurrentSession = session; NewScreen<GameplayScreen>("GameplayScreen").Initialize(this, SelectedDance, session); }
     }
 
@@ -547,7 +548,7 @@ namespace DanceFlow.UnityClient
 
     public sealed class ConnectScreen : MonoBehaviour
     {
-        private DanceFlowApp app; private DanceListItem dance; private GameSession session; private Text status; private RawImage qr; private bool ready; private int generation;
+        private DanceFlowApp app; private DanceListItem dance; private GameSession session; private Text status; private RawImage qr; private bool ready; private int generation; private SessionStatus lastStatus;
         public void Initialize(DanceFlowApp value, DanceListItem selected) { app = value; dance = selected; BuildUi(); app.Input.Cancel += Back; app.Input.Submit += TryStart; _ = SetupAsync(++generation); }
 
         private void BuildUi()
@@ -577,6 +578,7 @@ namespace DanceFlow.UnityClient
                 while (token == generation && !ready)
                 {
                     SessionStatus state = await app.Api.GetAsync<SessionStatus>("/api/session/" + session.session_id + "/status");
+                    lastStatus = state;
                     if (state.phone_connected)
                     {
                         if (state.calibrated) { ready = true; status.text = "✓ PHONE READY     PRESS A / ENTER TO DANCE"; break; }
@@ -588,7 +590,16 @@ namespace DanceFlow.UnityClient
             catch (Exception e) { if (status != null) status.text = "SESSION ERROR: " + e.Message; }
         }
 
-        private void TryStart() { if (ready && session != null) app.ShowGameplay(session); }
+        private void TryStart()
+        {
+            if (!ready || session == null) return;
+            PlayerStatus[] players = lastStatus != null && lastStatus.players != null && lastStatus.players.Length > 0
+                ? lastStatus.players
+                : new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, ready = true, active = true } };
+            int coachCount = lastStatus != null ? Mathf.Max(1, lastStatus.coach_count) : Mathf.Max(1, dance.coach_count);
+            if (coachCount > 1 || players.Length > 1) app.ShowCoachSelect(session, players);
+            else app.ShowGameplay(session);
+        }
         private void Back() { app.ShowLibrary(); }
         private void OnDestroy() { generation++; if (app != null) { app.Input.Cancel -= Back; app.Input.Submit -= TryStart; } }
     }
