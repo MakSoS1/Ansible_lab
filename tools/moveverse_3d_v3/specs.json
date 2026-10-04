@@ -15,47 +15,47 @@
       "hair": {
         "style": "long_ponytail",
         "color": "#E936B8",
-        "accent": "#6A36FF"
+        "accent": "#7A3BFF"
       },
       "outfit": {
         "archetype": "crop_bomber_cargo",
-        "primary": "#10111B",
-        "secondary": "#F22FB7",
-        "accent": "#4D4CFF",
+        "primary": "#F22FB7",
+        "secondary": "#F3F4F8",
+        "accent": "#11121A",
         "material": "iridescent"
       },
       "extras": [
         "sunglasses",
-        "fingerless_gloves",
-        "pink_straps",
-        "heart_chest"
-      ]
+        "pink_straps"
+      ],
+      "reference_notes": "Roster #1: pink-magenta long ponytail; black cropped top; short pink/black jacket; white baggy cargo pants with pink straps; pink-black-white sneakers; black wrist/hand accessories."
     },
     {
       "id": 2,
-      "name": "Blue_Tech",
+      "name": "Red_Varsity",
       "gender": "male",
-      "skin": "#C98F72",
+      "skin": "#C48265",
       "body": {
-        "height": 0.64,
-        "weight": 0.45,
-        "muscle": 0.55
+        "height": 0.61,
+        "weight": 0.47,
+        "muscle": 0.5
       },
       "hair": {
-        "style": "messy_short",
-        "color": "#101018"
+        "style": "cap_short",
+        "color": "#211A17"
       },
       "outfit": {
-        "archetype": "tech_jacket_cargo",
-        "primary": "#0C0E16",
-        "secondary": "#1C63FF",
-        "accent": "#E8ECF2",
-        "material": "techwear"
+        "archetype": "varsity_cargo",
+        "primary": "#D7242F",
+        "secondary": "#111218",
+        "accent": "#F4F4F4",
+        "material": "satin"
       },
       "extras": [
-        "blue_harness",
-        "utility_straps"
-      ]
+        "baseball_cap",
+        "chains"
+      ],
+      "reference_notes": "Roster #2: black cap; red-black varsity jacket with white sleeve stripes over white shirt; loose black pants; red/white/black sneakers; silver chain necklace."
     },
     {
       "id": 3,
@@ -69,7 +69,8 @@
       },
       "hair": {
         "style": "big_curls",
-        "color": "#2B1518"
+        "color": "#241417",
+        "accent": "#5A3320"
       },
       "outfit": {
         "archetype": "gold_fringe",
@@ -80,9 +81,9 @@
       },
       "extras": [
         "hoop_earrings",
-        "fringe_tassels",
         "gold_jewelry"
-      ]
+      ],
+      "reference_notes": "Roster #3: dark skin; very large dark curly hair; metallic gold asymmetric crop/bra top; dense gold fringe/tassel pants; gold jewelry; metallic gold footwear."
     },
     {
       "id": 4,
