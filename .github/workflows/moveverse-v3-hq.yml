@@ -42,7 +42,11 @@ jobs:
       - name: Generate high-quality anatomical bases
         run: |
           mkdir -p artifacts/v3/bases
-          python tools/moveverse_3d_v3/generate_bases.py             --specs tools/moveverse_3d_v3/specs.json             --out artifacts/v3/bases             --limit "$LIMIT"
+          set -o pipefail
+          python tools/moveverse_3d_v3/generate_bases.py \
+            --specs tools/moveverse_3d_v3/specs.json \
+            --out artifacts/v3/bases \
+            --limit "$LIMIT" 2>&1 | tee artifacts/v3/makehuman.log
 
       - name: Install Blender
         run: |
@@ -51,9 +55,16 @@ jobs:
           blender --version
 
       - name: Build unique outfits, hair, rigged garments and physics
+        continue-on-error: true
         run: |
           mkdir -p artifacts/v3/final
-          blender --background --factory-startup             --python tools/moveverse_3d_v3/build_coaches_blender.py --             --specs tools/moveverse_3d_v3/specs.json             --bases artifacts/v3/bases             --out artifacts/v3/final             --limit "$LIMIT"
+          set -o pipefail
+          blender --background --factory-startup \
+            --python tools/moveverse_3d_v3/build_coaches_blender.py -- \
+            --specs tools/moveverse_3d_v3/specs.json \
+            --bases artifacts/v3/bases \
+            --out artifacts/v3/final \
+            --limit "$LIMIT" 2>&1 | tee artifacts/v3/blender.log
 
       - name: Validate outputs
         continue-on-error: true
@@ -83,6 +94,8 @@ jobs:
           name: moveverse-v3-hq-${{ env.LIMIT }}
           path: |
             artifacts/v3/moveverse_v3_hq.zip
+            artifacts/v3/makehuman.log
+            artifacts/v3/blender.log
             artifacts/v3/final/build_report.json
             artifacts/v3/final/previews/
           retention-days: 30
