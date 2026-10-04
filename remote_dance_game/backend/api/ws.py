@@ -80,6 +80,9 @@ async def _broadcast_score(session: Dict[str, Any], score_event):
                 "similarity": score_event.similarity,
                 "hold_state": score_event.hold_state,
                 "tracking_lost": score_event.tracking_lost,
+                "is_move_grade": score_event.is_move_grade,
+                "move_index": score_event.move_index,
+                "move_count": score_event.move_count,
             })
         except Exception:
             pass
