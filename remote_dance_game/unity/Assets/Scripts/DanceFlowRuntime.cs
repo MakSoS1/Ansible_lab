@@ -524,7 +524,8 @@ namespace DanceFlow.UnityClient
             }
             DanceListItem dance = dances[selected]; selectedTitle.text = dance.title;
             int minutes = dance.duration_ms / 60000; int seconds = dance.duration_ms / 1000 % 60;
-            selectedMeta.text = dance.difficulty.ToUpperInvariant() + "     " + minutes + ":" + seconds.ToString("00") + "     SOLO";
+            selectedMeta.text = dance.difficulty.ToUpperInvariant() + "     " + minutes + ":" + seconds.ToString("00") +
+                "     1–4 PLAYERS" + (dance.coach_count > 1 ? "     " + dance.coach_count + " COACHES" : "");
             _ = UpdateBackdropAsync(dance);
         }
 
