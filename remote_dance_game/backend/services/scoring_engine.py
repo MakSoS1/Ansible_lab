@@ -261,8 +261,9 @@ class ScoringEngine:
                 best = frame
         return best or self.pose_buffer[-1]
 
-    def _tracking_event(self, t_ms: int, age_ms: Optional[int]) -> ScoreEvent:
-        self.combo = 0
+    def _tracking_event(self, t_ms: int, age_ms: Optional[int], break_combo: bool = True) -> ScoreEvent:
+        if break_combo:
+            self.combo = 0
         return ScoreEvent(
             timestamp_ms=t_ms,
             grade=GradeEnum.x,
@@ -285,7 +286,7 @@ class ScoringEngine:
         target_t_ms = int(marker["t_ms"]) if marker and is_move_grade else t_ms
 
         if not self.pose_buffer:
-            event = self._tracking_event(target_t_ms, None)
+            event = self._tracking_event(target_t_ms, None, break_combo=bool(is_move_grade))
             event.move_index = move_index
             event.move_count = len(self.move_markers)
             event.is_move_grade = bool(is_move_grade)
@@ -317,7 +318,7 @@ class ScoringEngine:
             return None
         age_ms = max(0, now_server_ms - int(player_frame.get("received_at_ms", now_server_ms)))
         if age_ms > int(config.PLAYER_FRAME_STALE_MS) or float(player_frame.get("tracking_score", 0.0)) < 0.25:
-            event = self._tracking_event(target_t_ms, age_ms)
+            event = self._tracking_event(target_t_ms, age_ms, break_combo=bool(is_move_grade))
             event.move_index = move_index
             event.move_count = len(self.move_markers)
             event.is_move_grade = bool(is_move_grade)
