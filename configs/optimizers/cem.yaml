@@ -1,0 +1,5 @@
+name: risk-aware-cem
+population: 256
+iterations: 30
+elite_fraction: 0.12
+risk_beta: 0.35

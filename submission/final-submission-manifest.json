@@ -1,0 +1,354 @@
+{
+  "status": "verified",
+  "git_sha": "9ad40738134d1fc0beb1df62214d09bc9ea8d114",
+  "github_run_id": "33925326455",
+  "model_z_archive_sha256": "4af3b60f8c053b858d52882bc514f2cdf434573c3919574e532e620d06c45aaa",
+  "schedule_sha256": "c5ff3221ac66dea460bbd638a589dc5c7f2dedeb1536b9f86b10fb2e3e030af3",
+  "winner": {
+    "name": "mappo",
+    "vector": [
+      1.0387468576431276,
+      1.1587468576431275,
+      1.1265902757644655,
+      1.195671033859253,
+      1.1813079357147218,
+      1.192067337036133,
+      1.1979576826095581,
+      1.1963081359863281,
+      1.1823181152343751,
+      1.175367045402527,
+      1.1912185192108156,
+      1.1928513526916504,
+      1.1914015769958497,
+      1.197067666053772,
+      1.1829411506652834,
+      1.1925323486328125,
+      1.1516258239746096,
+      1.1428006172180176
+    ],
+    "opm_npv_mrub": 12475.954558553085,
+    "max_wlpr": 62.550392150878906,
+    "status": "success",
+    "schedule_sha256": "c5ff3221ac66dea460bbd638a589dc5c7f2dedeb1536b9f86b10fb2e3e030af3",
+    "robustness_npvs_mrub": [
+      12467.880873670989,
+      12456.92585500174
+    ],
+    "opm_calls": 3,
+    "robustness_floor_mrub": 12456.92585500174,
+    "robustness_mean_mrub": 12462.403364336365
+  },
+  "clean_npv_mrub": 12475.954558553085,
+  "clean_npv_rub": 12475954558.553085,
+  "clean_max_wlpr": 62.550392150878906,
+  "verification": {
+    "passed": true,
+    "failures": [],
+    "winner": {
+      "name": "mappo",
+      "vector": [
+        1.0387468576431276,
+        1.1587468576431275,
+        1.1265902757644655,
+        1.195671033859253,
+        1.1813079357147218,
+        1.192067337036133,
+        1.1979576826095581,
+        1.1963081359863281,
+        1.1823181152343751,
+        1.175367045402527,
+        1.1912185192108156,
+        1.1928513526916504,
+        1.1914015769958497,
+        1.197067666053772,
+        1.1829411506652834,
+        1.1925323486328125,
+        1.1516258239746096,
+        1.1428006172180176
+      ],
+      "opm_npv_mrub": 12475.954558553085,
+      "max_wlpr": 62.550392150878906,
+      "status": "success",
+      "schedule_sha256": "c5ff3221ac66dea460bbd638a589dc5c7f2dedeb1536b9f86b10fb2e3e030af3",
+      "robustness_npvs_mrub": [
+        12467.880873670989,
+        12456.92585500174
+      ],
+      "opm_calls": 3,
+      "robustness_floor_mrub": 12456.92585500174,
+      "robustness_mean_mrub": 12462.403364336365
+    },
+    "clean_status": "success",
+    "clean_schedule_sha256": "c5ff3221ac66dea460bbd638a589dc5c7f2dedeb1536b9f86b10fb2e3e030af3",
+    "clean_npv_mrub": 12475.954558553085,
+    "clean_max_wlpr": 62.550392150878906,
+    "npv_abs_error_mrub": 0.0,
+    "surrogate_holdout_passed": false,
+    "surrogate_holdout_failures": [
+      "NPV_TOP3_RECALL_LT_090"
+    ],
+    "tournament_authorization": {
+      "passed": true,
+      "failures": [],
+      "surrogate_holdout_passed": false,
+      "surrogate_holdout_failures": [
+        "NPV_TOP3_RECALL_LT_090"
+      ],
+      "audited_top_k_recall": 0.6666666666666666,
+      "criteria": {
+        "min_dynamic_r2": 0.95,
+        "max_dynamic_nrmse": 0.05,
+        "min_spearman": 0.95,
+        "min_pairwise_accuracy": 0.95,
+        "max_simple_regret_mrub": 1e-09
+      },
+      "observed": {
+        "min_dynamic_r2": 0.9512247034582642,
+        "max_dynamic_nrmse": 0.027523284453274358,
+        "spearman": 0.9911764705882352,
+        "pairwise_accuracy": 0.975,
+        "simple_regret_mrub": 0.0,
+        "top_k_recall": 0.6666666666666666
+      }
+    }
+  },
+  "surrogate_holdout": {
+    "passed": false,
+    "failures": [
+      "NPV_TOP3_RECALL_LT_090"
+    ],
+    "dynamic": {
+      "aggregate_channel_r2": {
+        "FOPT": 0.9904149798457211,
+        "FWPT": 0.9937661490876678,
+        "FWIT": 0.9979918124223556,
+        "FOPR": 0.9512247034582642,
+        "FWPR": 0.9858501607263976,
+        "FWIR": 0.9936863376310743,
+        "FLPR": 0.9851781272542138,
+        "FPR": 0.9865036807368921
+      },
+      "aggregate_channel_nrmse": {
+        "FOPT": 0.023065493734361894,
+        "FWPT": 0.010798446485614146,
+        "FWIT": 0.0073643033062233115,
+        "FOPR": 0.027523284453274358,
+        "FWPR": 0.02195112694327559,
+        "FWIR": 0.01902796321895145,
+        "FLPR": 0.024535056590270193,
+        "FPR": 0.025736662577401953
+      },
+      "mean_aggregate_channel_r2": 0.9855769938953233,
+      "min_aggregate_channel_r2": 0.9512247034582642,
+      "mean_aggregate_channel_nrmse": 0.02000029216367161,
+      "max_aggregate_channel_nrmse": 0.027523284453274358,
+      "p10_scenario_channel_r2": 0.8046193620746503,
+      "worst_scenario_channel": {
+        "scenario_id": 29,
+        "channel": "FOPT",
+        "r2": -16.173408503542756
+      },
+      "evaluated_scenarios": [
+        2,
+        8,
+        14,
+        16,
+        20,
+        21,
+        28,
+        29,
+        31,
+        37,
+        40,
+        41,
+        47,
+        49,
+        52,
+        63
+      ]
+    },
+    "npv": {
+      "spearman": 0.9911764705882352,
+      "pairwise_accuracy": 0.975,
+      "top_k_recall": 0.6666666666666666,
+      "simple_regret": 0.0,
+      "mae": 19.854902036333897,
+      "max_abs_error": 68.94899540281949
+    }
+  },
+  "tournament_authorization": {
+    "passed": true,
+    "failures": [],
+    "surrogate_holdout_passed": false,
+    "surrogate_holdout_failures": [
+      "NPV_TOP3_RECALL_LT_090"
+    ],
+    "audited_top_k_recall": 0.6666666666666666,
+    "criteria": {
+      "min_dynamic_r2": 0.95,
+      "max_dynamic_nrmse": 0.05,
+      "min_spearman": 0.95,
+      "min_pairwise_accuracy": 0.95,
+      "max_simple_regret_mrub": 1e-09
+    },
+    "observed": {
+      "min_dynamic_r2": 0.9512247034582642,
+      "max_dynamic_nrmse": 0.027523284453274358,
+      "spearman": 0.9911764705882352,
+      "pairwise_accuracy": 0.975,
+      "simple_regret_mrub": 0.0,
+      "top_k_recall": 0.6666666666666666
+    }
+  },
+  "reference_parity": {
+    "passed": true,
+    "failures": [],
+    "calculated_npv_mrub": 11891.994046426242,
+    "reference_npv_mrub": 11869.58637373553,
+    "npv_relative_error": 0.0018878225394858019,
+    "mean_physical_relative_error": 0.0006911483476740828,
+    "max_annual_physical_relative_error": 0.006437237209886797,
+    "mean_active_well_month_relative_error": 0.0,
+    "annual": [
+      {
+        "year": 2007,
+        "oil_relative_error": 0.001915200155203936,
+        "liquid_relative_error": 0.0017420750655157086,
+        "injection_relative_error": 0.0011700725923946215,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2008,
+        "oil_relative_error": 0.0010957121781286674,
+        "liquid_relative_error": 0.0011869309113651599,
+        "injection_relative_error": 5.7950638255034164e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2009,
+        "oil_relative_error": 0.0008821995379368231,
+        "liquid_relative_error": 0.0009342828585166075,
+        "injection_relative_error": 0.00013790115331267647,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2010,
+        "oil_relative_error": 0.00024274201158331005,
+        "liquid_relative_error": 9.93270552899036e-05,
+        "injection_relative_error": 5.0755986903587096e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2011,
+        "oil_relative_error": 0.0007839388298467847,
+        "liquid_relative_error": 0.000688669443596114,
+        "injection_relative_error": 0.0007812801730708644,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2012,
+        "oil_relative_error": 0.0005815236730126564,
+        "liquid_relative_error": 0.0006758278767615983,
+        "injection_relative_error": 0.00011607992411368821,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2013,
+        "oil_relative_error": 4.433429186021429e-05,
+        "liquid_relative_error": 0.00024269927106497762,
+        "injection_relative_error": 6.714152534523731e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2014,
+        "oil_relative_error": 0.00037431868957017717,
+        "liquid_relative_error": 4.022411580512915e-05,
+        "injection_relative_error": 3.613414626766366e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2015,
+        "oil_relative_error": 0.000300695479248123,
+        "liquid_relative_error": 9.864997526879825e-05,
+        "injection_relative_error": 3.3759505725130345e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2016,
+        "oil_relative_error": 0.00028191471209453067,
+        "liquid_relative_error": 0.0003341351101539362,
+        "injection_relative_error": 5.46801790169373e-06,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2017,
+        "oil_relative_error": 0.001653751433142403,
+        "liquid_relative_error": 0.0007674127232402547,
+        "injection_relative_error": 6.795046300815769e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2018,
+        "oil_relative_error": 0.0018072238426940581,
+        "liquid_relative_error": 0.0002727488735466632,
+        "injection_relative_error": 5.811151005285211e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2019,
+        "oil_relative_error": 0.000999981003682527,
+        "liquid_relative_error": 0.00012340021978213278,
+        "injection_relative_error": 0.00012074568887778725,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2020,
+        "oil_relative_error": 0.00022362504079731727,
+        "liquid_relative_error": 0.0004749561808640775,
+        "injection_relative_error": 1.546873480390256e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2021,
+        "oil_relative_error": 0.0007066178056224003,
+        "liquid_relative_error": 0.00032349446669685083,
+        "injection_relative_error": 0.00012568123785351945,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2022,
+        "oil_relative_error": 0.0028952334024233994,
+        "liquid_relative_error": 0.00027227682873195763,
+        "injection_relative_error": 0.00011608699386011428,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2023,
+        "oil_relative_error": 4.371469577498353e-05,
+        "liquid_relative_error": 0.0003111383303720068,
+        "injection_relative_error": 3.4675983800990416e-05,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2024,
+        "oil_relative_error": 0.006316770114081732,
+        "liquid_relative_error": 3.7945809509336845e-05,
+        "injection_relative_error": 0.00010859222367618962,
+        "active_well_month_relative_error": 0.0
+      },
+      {
+        "year": 2025,
+        "oil_relative_error": 0.006437237209886797,
+        "liquid_relative_error": 5.987478291759193e-05,
+        "injection_relative_error": 1.879531260937299e-05,
+        "active_well_month_relative_error": 0.0
+      }
+    ],
+    "thresholds": {
+      "max_npv_relative_error": 0.005,
+      "max_mean_physical_relative_error": 0.01,
+      "max_annual_physical_relative_error": 0.02,
+      "max_mean_active_well_month_relative_error": 0.02
+    }
+  }
+}

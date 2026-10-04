@@ -1,0 +1,7 @@
+scenarios: 32
+control_steps: 24
+max_delta: 0.15
+sampler: sobol
+seed: 42
+opm_parallelism: 4
+active_learning_batch: 8

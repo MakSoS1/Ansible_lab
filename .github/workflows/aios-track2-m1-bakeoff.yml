@@ -1,0 +1,49 @@
+name: AIOS M1 Surrogate Bake-off
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/aios_track2/surrogates/**'
+      - 'src/aios_track2/training.py'
+      - 'src/aios_track2/strategy_runner.py'
+      - 'scripts/smoke_bakeoff.py'
+      - '.github/workflows/aios-track2-m1-bakeoff.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  m1:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Hardware / MPS detection
+        run: |
+          uname -a
+          sysctl -n machdep.cpu.brand_string || true
+          python - <<'PY'
+          import torch
+          print('torch', torch.__version__)
+          print('mps_built', torch.backends.mps.is_built())
+          print('mps_available', torch.backends.mps.is_available())
+          PY
+      - name: Benchmark M1
+        run: python -m aios_track2.cli benchmark | tee m1-benchmark.json
+      - name: Execute all five strategies
+        run: python scripts/smoke_bakeoff.py | tee top5-smoke.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m1-bakeoff
+          path: |
+            m1-benchmark.json
+            top5-smoke.json

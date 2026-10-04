@@ -1,0 +1,4 @@
+name: diagonal-cma-es
+population: 128
+iterations: 50
+risk_beta: 0.10
