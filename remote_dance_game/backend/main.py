@@ -19,7 +19,7 @@ from config import (
 import config
 import database as db
 from api.dances import router as dances_router
-from api.ws import router as ws_router, create_game_session, active_sessions
+from api.ws import router as ws_router, create_game_session, active_sessions, assign_coach, public_players
 from models.schemas import GameSessionCreate
 
 
@@ -229,6 +229,30 @@ async def session_status(session_id: str):
         "status": session.get("state", "created"),
         "phone_connected": session.get("phone_connected", False),
         "calibrated": session.get("calibrated", False),
+        "coach_count": int(session.get("coach_count", 1)),
+        "players": public_players(session),
+    }
+
+
+@app.post("/api/session/{session_id}/assign")
+async def session_assign(session_id: str, payload: dict):
+    session = active_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    player_id = str(payload.get("player_id", "") or "")
+    if not player_id:
+        raise HTTPException(status_code=400, detail="player_id is required")
+    try:
+        coach_index = int(payload.get("coach_index", 0))
+    except Exception:
+        raise HTTPException(status_code=400, detail="coach_index must be an integer")
+    player = assign_coach(session, player_id, coach_index)
+    return {
+        "status": "assigned",
+        "player_id": player_id,
+        "player_slot": int(player.get("slot", 0)),
+        "coach_index": int(player.get("coach_index", 0)),
+        "players": public_players(session),
     }
 
 
@@ -261,6 +285,8 @@ async def diagnostics_live():
             "calibrated": s.get("calibrated", False),
             "pose_loaded": s.get("pose_loaded", False),
             "has_latest_score": bool(s.get("latest_score")),
+            "coach_count": int(s.get("coach_count", 1)),
+            "players": public_players(s),
         })
     return {
         "active_sessions": sessions,
