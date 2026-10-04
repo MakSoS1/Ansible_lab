@@ -41,6 +41,15 @@ namespace DanceFlow.UnityClient
                 return PlayerPrefs.GetString("dance_api_base", "http://127.0.0.1:8000").TrimEnd('/');
             }
         }
+        public static bool Enable3DCoach
+        {
+            get
+            {
+                string env = Environment.GetEnvironmentVariable("DANCE_ENABLE_3D") ?? "";
+                if (env == "1" || env.Equals("true", StringComparison.OrdinalIgnoreCase)) return true;
+                return PlayerPrefs.GetInt("dance_enable_3d", 0) == 1;
+            }
+        }
         public const int ReferenceWidth = 3840;
         public const int ReferenceHeight = 2160;
         public const int TargetFps = 60;
@@ -461,7 +470,8 @@ namespace DanceFlow.UnityClient
             int rw = Screen.width >= 3000 ? 3840 : 1920; int rh = Screen.width >= 3000 ? 2160 : 1080;
             videoTexture = new RenderTexture(rw, rh, 0, RenderTextureFormat.ARGB32);
             video = gameObject.AddComponent<VideoPlayer>(); video.playOnAwake = false; video.url = app.Api.VideoUrl(dance.dance_id);
-            video.renderMode = VideoRenderMode.RenderTexture; video.targetTexture = videoTexture; video.audioOutputMode = VideoAudioOutputMode.Direct; videoSurface.texture = videoTexture; video.loopPointReached += OnVideoFinished;
+            video.renderMode = VideoRenderMode.RenderTexture; video.targetTexture = videoTexture; video.audioOutputMode = VideoAudioOutputMode.Direct;
+            video.skipOnDrop = false; videoSurface.texture = videoTexture; video.loopPointReached += OnVideoFinished;
             RuntimeUi.Panel(canvas.transform, "Vignette", new Color(0.025f, 0.015f, 0.07f, 0.14f), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
             RawImage song = RuntimeUi.Panel(canvas.transform, "SongPanel", new Color(0.03f,0.02f,0.11f,0.82f), new Vector2(0,1), new Vector2(0,1), new Vector2(55,-230), new Vector2(1320,-45));
@@ -492,8 +502,22 @@ namespace DanceFlow.UnityClient
         {
             try
             {
-                socket = new GameSocketClient(); await socket.ConnectAsync(app.Api.GameSocketUrl(session.session_id)); await ShowCountdownAsync();
-                video.SetDirectAudioVolume(0, 1.0f); video.Play(); await socket.SendAsync(new GameActionMessage { action = "start", media_time_ms = 0 }); started = true;
+                socket = new GameSocketClient();
+                await socket.ConnectAsync(app.Api.GameSocketUrl(session.session_id));
+
+                gradeText.text = "LOADING";
+                gradeText.color = RuntimeUi.White;
+                video.Prepare();
+                float deadline = Time.realtimeSinceStartup + 20f;
+                while (!video.isPrepared && Time.realtimeSinceStartup < deadline) await Task.Delay(40);
+                if (!video.isPrepared) throw new Exception("Video master did not prepare in time");
+
+                await ShowCountdownAsync();
+                video.time = 0;
+                video.SetDirectAudioVolume(0, 1.0f);
+                video.Play();
+                await socket.SendAsync(new GameActionMessage { action = "start", media_time_ms = 0 });
+                started = true;
             }
             catch (Exception e) { gradeText.text = "CONNECTION ERROR\n" + e.Message; }
         }
@@ -550,6 +574,7 @@ namespace DanceFlow.UnityClient
 
         public void Initialize(Canvas canvas, DanceApiClient client, string id, VideoPlayer videoClock, RawImage videoImage)
         {
+            if (!AppConfig.Enable3DCoach) return;
             api = client; danceId = id; clock = videoClock; sourceVideo = videoImage;
             GameObject prefab = Resources.Load<GameObject>("Coaches/" + id) ?? Resources.Load<GameObject>("Coaches/DefaultCoach"); if (prefab == null) return; active3D = true;
             RawImage stageBackground = RuntimeUi.Panel(canvas.transform, "3DBackground", RuntimeUi.Deep, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
