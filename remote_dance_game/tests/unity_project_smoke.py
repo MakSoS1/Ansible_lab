@@ -14,7 +14,7 @@ def test_unity_project_baseline():
 
 def test_unity_runtime_contracts_present():
     runtime = (UNITY / "Assets" / "Scripts" / "DanceFlowRuntime.cs").read_text(encoding="utf-8")
-    for token in ["class DanceFlowApp", "class DanceApiClient", "class GameSocketClient", "class LibraryScreen", "class ConnectScreen", "class GameplayScreen", "class CoachStage3D", "class HumanoidPoseDriver", "3840", "pose-timeline"]:
+    for token in ["class DanceFlowApp", "class DanceApiClient", "class GameSocketClient", "class LibraryScreen", "class ConnectScreen", "class CoachSelectScreen", "class GameplayScreen", "class CoachStage3D", "class HumanoidPoseDriver", "class PosePreviewGraphic", "player_pose", "coach_cues", "CoachPreviewUrl", "3840", "pose-timeline"]:
         assert token in runtime
 
 def test_editor_bootstrap_creates_main_scene():
@@ -27,3 +27,5 @@ def test_backend_exposes_pose_timeline():
     api = (ROOT / "backend" / "api" / "dances.py").read_text(encoding="utf-8")
     assert "pose-timeline" in api
     assert "world_landmarks" in api
+    assert "build_pictogram_markers" in api
+    assert "/coaches/{coach_index}/preview" in api
