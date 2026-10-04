@@ -1107,3 +1107,9 @@ button.ref-primary { border:2px solid rgba(255,255,255,.88); }
   background:var(--player);
   box-shadow:0 0 9px var(--player);
 }
+
+
+/* Leave a dedicated bottom-right lane for multiplayer pictograms. */
+.showcase-reference-game .ref-timeline {
+  right: 28vw;
+}
