@@ -116,8 +116,8 @@ def _target_dimensions(metadata: dict, target_height: int = 2160) -> tuple[int, 
 
 
 def create_game_master(input_path: str, output_path: str, clip_start: float = 0.0,
-                       clip_end: Optional[float] = None, target_height: int = 2160,
-                       crf: int = 17, preset: str = "slow") -> dict:
+                       clip_end: Optional[float] = None, target_height: int = 1440,
+                       crf: int = 17, preset: str = "fast") -> dict:
     """Create the video-first gameplay master.
 
     This intentionally avoids denoise/frame interpolation: both can erase hands,
