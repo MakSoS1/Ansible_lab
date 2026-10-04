@@ -210,18 +210,13 @@ def clone_region(body, arm, name, keywords, mat, zlo=0.0, zhi=1.0,
     bpy.context.collection.objects.link(obj)
     obj.matrix_world = body.matrix_world.copy()
 
-    # Copy all body vertex weights for the kept vertices so clothing follows
-    # the exact same animation deformation as the body.
-    for sg in body.vertex_groups:
-        ng = obj.vertex_groups.new(name=sg.name)
-        vals = []
-        for ni, oi in enumerate(src_index):
-            try:
-                w = sg.weight(oi)
-            except RuntimeError:
-                continue
-            if w > 0.0:
-                ng.add([ni], w, "REPLACE")
+    # Copy weights only from groups that each source vertex actually belongs to.
+    # This avoids Blender emitting a warning for every missing vertex/group pair.
+    dst_groups = {sg.index: obj.vertex_groups.new(name=sg.name) for sg in body.vertex_groups}
+    for ni, oi in enumerate(src_index):
+        for ge in src.vertices[oi].groups:
+            if ge.weight > 0.0 and ge.group in dst_groups:
+                dst_groups[ge.group].add([ni], ge.weight, "REPLACE")
     add_armature_modifier(obj, arm)
 
     if mat:
