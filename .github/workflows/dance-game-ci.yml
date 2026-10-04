@@ -168,7 +168,7 @@ jobs:
           ffmpeg -y \
             -i desktop/artifacts/showcase.webm \
             -stream_loop 2 -i desktop/public/showcase/game.mp4 \
-            -filter_complex "[1:a]asplit=2[p][g];[p]atrim=0:6,volume=0.10,adelay=10000:all=1[pd];[g]atrim=0:10,volume=0.62,adelay=19000:all=1[gd];[pd][gd]amix=inputs=2:normalize=0[a]" \
+            -filter_complex "[1:a]asplit=2[p][g];[p]atrim=0:6,volume=0.10,adelay=10000:all=1[pd];[g]atrim=0:10,volume=0.62,adelay=24500:all=1[gd];[pd][gd]amix=inputs=2:normalize=0[a]" \
             -map 0:v:0 -map "[a]" -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p -c:a aac -b:a 160k -shortest \
             artifacts/final/dance-game-showcase.mp4
       - uses: actions/upload-artifact@v4
