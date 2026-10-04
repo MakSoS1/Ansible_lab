@@ -396,11 +396,68 @@ def _draw_stage_shadow(bg: np.ndarray, pose_frame: Dict[str, Any], mask: np.ndar
     bg[:] = np.clip(bg.astype(np.float32) + glow[..., None] * col * .42, 0, 255).astype(np.uint8)
 
 
+def _fit_dancer_to_stage(dancer: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Keep the coach readable without turning the dancer into a full-screen close-up.
+
+    The generated stage is 16:9, while arbitrary source footage can frame the
+    dancer very tightly.  We only shrink oversized silhouettes (never enlarge
+    small ones), preserve some horizontal choreography travel, and land the feet
+    near a stable stage baseline.
+    """
+    h, w = mask.shape[:2]
+    ys, xs = np.where(mask > 0.16)
+    if len(xs) < 12:
+        return dancer, mask
+
+    x1, x2 = int(xs.min()), int(xs.max()) + 1
+    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    bw, bh = max(1, x2 - x1), max(1, y2 - y1)
+
+    max_h = h * 0.60
+    max_w = w * 0.46
+    scale = min(1.0, max_h / bh, max_w / bw)
+    # A small universal pull-back makes the composition feel like a dance stage
+    # instead of a portrait shot, but avoids making already-small dancers tiny.
+    if bh > h * 0.50:
+        scale = min(scale, 0.94)
+
+    if scale >= 0.995:
+        return dancer, mask
+
+    pad = max(4, int(max(bw, bh) * 0.035))
+    x1p, x2p = max(0, x1 - pad), min(w, x2 + pad)
+    y1p, y2p = max(0, y1 - pad), min(h, y2 + pad)
+    crop_d = dancer[y1p:y2p, x1p:x2p]
+    crop_m = mask[y1p:y2p, x1p:x2p]
+    nw = max(1, int(crop_d.shape[1] * scale))
+    nh = max(1, int(crop_d.shape[0] * scale))
+    crop_d = cv2.resize(crop_d, (nw, nh), interpolation=cv2.INTER_AREA)
+    crop_m = cv2.resize(crop_m, (nw, nh), interpolation=cv2.INTER_LINEAR)
+
+    # Preserve choreography travel, but damp extreme camera/source framing.
+    original_cx = (x1 + x2) * 0.5
+    relative_x = (original_cx - w * 0.5) * 0.58
+    dest_cx = int(w * 0.5 + relative_x)
+    floor_y = int(h * 0.885)
+    dx1 = max(0, min(w - nw, dest_cx - nw // 2))
+    dy1 = max(0, min(h - nh, floor_y - nh))
+    dx2, dy2 = dx1 + nw, dy1 + nh
+
+    out_d = np.zeros_like(dancer)
+    out_m = np.zeros_like(mask)
+    out_d[dy1:dy2, dx1:dx2] = crop_d
+    out_m[dy1:dy2, dx1:dx2] = crop_m
+    return out_d, out_m
+
+
 def _compose(frame: np.ndarray, mask: np.ndarray, pose_frame: Dict[str, Any], theme: Theme, t: float, beat: float, seed: int, mirror_mode: bool) -> np.ndarray:
     h, w = frame.shape[:2]
     bg = _background(w, h, t, beat, theme, seed)
-    _draw_stage_shadow(bg, pose_frame, mask, theme, mirror_mode)
     dancer, soft = _stylize_person(frame, mask, pose_frame, theme, beat, mirror_mode)
+    dancer, soft = _fit_dancer_to_stage(dancer, soft)
+    # Draw the floor contact from the fitted silhouette rather than from the
+    # original source framing so the shadow stays under the pulled-back coach.
+    _draw_stage_shadow(bg, {"landmarks": []}, soft, theme, False)
 
     # A restrained halo is painted into the BACKGROUND first. The dancer is
     # composited last and is never covered by ribbons, bloom or beat flashes.
