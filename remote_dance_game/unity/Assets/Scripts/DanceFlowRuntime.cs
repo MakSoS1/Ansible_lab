@@ -28,7 +28,8 @@ namespace DanceFlow.UnityClient
     [Serializable] public class Landmark { public float x; public float y; public float z; public float v; }
     [Serializable] public class PoseTimelineFrame { public int t_ms; public Landmark[] landmarks; }
     [Serializable] public class PoseTimeline { public string dance_id; public int fps; public int duration_ms; public string space; public PoseTimelineFrame[] frames; }
-    [Serializable] public class MovePreview { public int t_ms; public int move_index; public int cue_index; public float motion; public Landmark[] landmarks; }
+    [Serializable] public class MotionHint { public int joint; public float dx; public float dy; public float magnitude; }
+    [Serializable] public class MovePreview { public int t_ms; public int move_index; public int cue_index; public float motion; public Landmark[] landmarks; public MotionHint[] motion_hints; }
     [Serializable] public class CoachCueTrack { public int coach_index; public MovePreview[] cues; }
     [Serializable] public class CoachInfo { public int coach_index; public string label; public string preview_path; public float coverage; public float avg_x; }
     [Serializable] public class PlaybackData
@@ -319,17 +320,24 @@ namespace DanceFlow.UnityClient
             {24,26},{26,28}
         };
         private Landmark[] pose = Array.Empty<Landmark>();
+        private MotionHint[] motionHints = Array.Empty<MotionHint>();
         private bool primary;
         private Color32 tint = new Color32(255, 64, 226, 255);
 
         public void SetPose(Landmark[] value, bool isPrimary)
         {
-            SetPose(value, isPrimary, isPrimary ? new Color32(255,64,226,255) : new Color32(142,96,255,235));
+            SetPose(value, isPrimary, isPrimary ? new Color32(255,64,226,255) : new Color32(142,96,255,235), null);
         }
 
         public void SetPose(Landmark[] value, bool isPrimary, Color32 tintColor)
         {
+            SetPose(value, isPrimary, tintColor, null);
+        }
+
+        public void SetPose(Landmark[] value, bool isPrimary, Color32 tintColor, MotionHint[] hints)
+        {
             pose = value ?? Array.Empty<Landmark>();
+            motionHints = hints ?? Array.Empty<MotionHint>();
             primary = isPrimary;
             tint = tintColor;
             color = Color.white;
@@ -395,6 +403,25 @@ namespace DanceFlow.UnityClient
                 if (pose[idx] == null || pose[idx].v < 0.10f) continue;
                 AddCircle(vh, Map(idx), primary ? 8f : 6.5f, outer, 10);
             }
+
+            if (motionHints != null && motionHints.Length > 0)
+            {
+                foreach (MotionHint hint in motionHints)
+                {
+                    if (hint == null || hint.joint < 0 || hint.joint >= pose.Length) continue;
+                    Landmark lm = pose[hint.joint];
+                    if (lm == null || lm.v < 0.10f) continue;
+
+                    Vector2 end = Map(hint.joint);
+                    Vector2 delta = new Vector2(hint.dx, -hint.dy) * scale;
+                    float maxLen = Mathf.Min(rect.width, rect.height) * .34f;
+                    if (delta.magnitude > maxLen) delta = delta.normalized * maxLen;
+                    if (delta.magnitude < 14f) continue;
+
+                    Vector2 start = end - delta;
+                    AddArrow(vh, start, end, primary ? 5.5f : 4.5f, outer);
+                }
+            }
         }
 
         private static void AddLine(VertexHelper vh, Vector2 a, Vector2 b, float width, Color32 color)
@@ -424,6 +451,20 @@ namespace DanceFlow.UnityClient
             }
             for (int i = 0; i < segments; i++)
                 vh.AddTriangle(centerIndex, centerIndex + i + 1, centerIndex + i + 2);
+        }
+
+        private static void AddArrow(VertexHelper vh, Vector2 start, Vector2 end, float width, Color32 color)
+        {
+            AddLine(vh, start, end, width, color);
+            Vector2 delta = end - start;
+            if (delta.sqrMagnitude < 0.0001f) return;
+            Vector2 dir = delta.normalized;
+            Vector2 side = new Vector2(-dir.y, dir.x);
+            float head = Mathf.Clamp(delta.magnitude * .22f, 12f, 26f);
+            Vector2 left = end - dir * head + side * head * .46f;
+            Vector2 right = end - dir * head - side * head * .46f;
+            AddLine(vh, left, end, width, color);
+            AddLine(vh, right, end, width, color);
         }
     }
 
@@ -1058,7 +1099,7 @@ namespace DanceFlow.UnityClient
                 if (lastCueIndex[coach] != idx)
                 {
                     lastCueIndex[coach] = idx;
-                    cueGraphics[coach].SetPose(cue.landmarks ?? Array.Empty<Landmark>(), true, CoachColor(coach));
+                    cueGraphics[coach].SetPose(cue.landmarks ?? Array.Empty<Landmark>(), true, CoachColor(coach), cue.motion_hints);
                 }
 
                 int previousT = idx > 0 ? track.cues[idx - 1].t_ms : Mathf.Max(0, cue.t_ms - 1450);
