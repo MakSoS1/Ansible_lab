@@ -219,9 +219,20 @@ async def phone_websocket(websocket: WebSocket, session_id: str):
             if msg_type == "pose_frame":
                 engine: ScoringEngine = session.get("engine")
                 if engine and engine.is_running:
+                    received_at_ms = int(time.time() * 1000)
+                    one_way_ms = max(0, min(220, int(msg.get("estimated_latency_ms", 0) or 0)))
+                    # Desktop media clock is refreshed ~25 Hz. Subtract the
+                    # measured one-way network delay to estimate where the song
+                    # was when the camera actually captured this pose.
+                    media_capture_ms = max(
+                        0,
+                        int(session.get("last_media_ms", 0) or 0) - one_way_ms,
+                    )
                     engine.add_pose_frame({
-                        "timestamp_ms": msg.get("timestamp_ms", int(time.time() * 1000)),
-                        "received_at_ms": int(time.time() * 1000),
+                        "timestamp_ms": msg.get("timestamp_ms", received_at_ms),
+                        "received_at_ms": received_at_ms,
+                        "media_capture_ms": media_capture_ms,
+                        "network_latency_ms": one_way_ms,
                         "landmarks": msg.get("landmarks", []),
                         "world_landmarks": msg.get("world_landmarks", []),
                         "tracking_score": msg.get("tracking_score", 0.0),
