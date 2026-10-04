@@ -51,7 +51,7 @@ jobs:
       - name: Install Blender
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender python3-numpy
+          sudo apt-get install -y blender python3-numpy xvfb libegl1 libgl1-mesa-dri libglx-mesa0
           blender --version
 
       - name: Build unique outfits, hair, rigged garments and physics
@@ -59,7 +59,9 @@ jobs:
         run: |
           mkdir -p artifacts/v3/final
           set -o pipefail
-          blender --background --factory-startup \
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export EGL_PLATFORM=surfaceless
+          xvfb-run -a blender --background --factory-startup \
             --python tools/moveverse_3d_v3/build_coaches_blender.py -- \
             --specs tools/moveverse_3d_v3/specs.json \
             --bases artifacts/v3/bases \
