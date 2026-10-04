@@ -218,15 +218,12 @@ async def get_playback(dance_id: str):
                 compact.append({"x": 0.0, "y": 0.0, "v": 0.0})
         return compact
 
-    def motion_hints(frames, idx):
-        if not frames or idx < 0 or idx >= len(frames):
+    def motion_hints(frames, start_idx, target_idx):
+        if not frames or target_idx < 0 or target_idx >= len(frames):
             return []
-        target_t = int(frames[idx].get("t_ms", 0))
-        prev_idx = idx
-        while prev_idx > 0 and target_t - int(frames[prev_idx].get("t_ms", 0)) < 320:
-            prev_idx -= 1
-        current = frames[idx].get("landmarks", []) or []
-        previous = frames[prev_idx].get("landmarks", []) or []
+        start_idx = max(0, min(int(start_idx), len(frames) - 1))
+        current = frames[target_idx].get("landmarks", []) or []
+        previous = frames[start_idx].get("landmarks", []) or []
         hints = []
         for joint in (15, 16, 27, 28):
             if joint >= len(current) or joint >= len(previous):
@@ -238,13 +235,13 @@ async def get_playback(dance_id: str):
             dx = float(b.get("x", 0.0)) - float(a.get("x", 0.0))
             dy = float(b.get("y", 0.0)) - float(a.get("y", 0.0))
             mag = (dx * dx + dy * dy) ** 0.5
-            if mag < 0.035:
+            if mag < 0.030:
                 continue
             hints.append({
                 "joint": joint,
                 "dx": round(dx, 4),
                 "dy": round(dy, 4),
-                "magnitude": round(min(mag, 0.45), 4),
+                "magnitude": round(min(mag, 0.55), 4),
             })
         return hints
 
@@ -256,12 +253,15 @@ async def get_playback(dance_id: str):
             idx = int(marker.get("frame_index", 0))
             if idx < 0 or idx >= len(frames):
                 continue
+            start_idx = int(marker.get("start_frame_index", max(0, idx - 1)))
+            start_idx = max(0, min(start_idx, len(frames) - 1))
             cues.append({
                 "t_ms": int(marker.get("t_ms", 0)),
                 "cue_index": int(marker.get("cue_index", len(cues))),
                 "motion": float(marker.get("motion", 0.0)),
+                "start_landmarks": compact_pose(frames[start_idx].get("landmarks", []) or []),
                 "landmarks": compact_pose(frames[idx].get("landmarks", []) or []),
-                "motion_hints": motion_hints(frames, idx),
+                "motion_hints": motion_hints(frames, start_idx, idx),
             })
         coach_cues.append({
             "coach_index": coach_index,
