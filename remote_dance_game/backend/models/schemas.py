@@ -102,6 +102,9 @@ class ScoreEvent(BaseModel):
     tracking_lost: bool = False
     pose_age_ms: Optional[int] = None
     coach_pose: Optional[List[Dict[str, float]]] = None
+    move_index: int = -1
+    move_count: int = 0
+    is_move_grade: bool = False
 
 
 class HoldEventResult(BaseModel):
