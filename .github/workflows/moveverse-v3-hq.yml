@@ -47,7 +47,7 @@ jobs:
       - name: Install Blender + system NumPy for Blender Python
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender python3-numpy
+          sudo apt-get install -y blender python3-numpy xvfb libegl1 libgl1-mesa-dri libglx-mesa0 mesa-utils
           blender --version
           blender --background --factory-startup --python-expr "import numpy; print('BLENDER_NUMPY', numpy.__version__)"
 
