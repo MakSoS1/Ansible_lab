@@ -604,6 +604,159 @@ namespace DanceFlow.UnityClient
         private void OnDestroy() { generation++; if (app != null) { app.Input.Cancel -= Back; app.Input.Submit -= TryStart; } }
     }
 
+    public sealed class CoachSelectScreen : MonoBehaviour
+    {
+        private DanceFlowApp app;
+        private DanceListItem dance;
+        private GameSession session;
+        private PlayerStatus[] players;
+        private Canvas canvas;
+        private Text title;
+        private Text playerLabel;
+        private Text hint;
+        private readonly List<RawImage> cards = new List<RawImage>();
+        private readonly List<Text> cardLabels = new List<Text>();
+        private int playerCursor;
+        private int selectedCoach;
+        private bool committing;
+
+        private static Color32 SlotColor(int slot)
+        {
+            Color32[] colors = {
+                new Color32(108,255,85,255),
+                new Color32(188,103,255,255),
+                new Color32(255,204,66,255),
+                new Color32(70,229,255,255),
+            };
+            return colors[Mathf.Abs(slot) % colors.Length];
+        }
+
+        public void Initialize(DanceFlowApp value, DanceListItem selectedDance, GameSession currentSession, PlayerStatus[] detectedPlayers)
+        {
+            app = value;
+            dance = selectedDance;
+            session = currentSession;
+            players = detectedPlayers != null && detectedPlayers.Length > 0
+                ? detectedPlayers.OrderBy(p => p.slot).ToArray()
+                : new[] { new PlayerStatus { player_id = "p0", slot = 0, coach_index = 0, ready = true, active = true } };
+            BuildUi();
+            app.Input.Left += Prev;
+            app.Input.Right += Next;
+            app.Input.Submit += Confirm;
+            app.Input.Cancel += Back;
+            SetPlayer(0);
+        }
+
+        private void BuildUi()
+        {
+            canvas = RuntimeUi.CreateCanvas(transform, "Coach Select", 0);
+            RawImage bg = RuntimeUi.Panel(canvas.transform, "Background", RuntimeUi.Deep, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            if (dance.has_poster) _ = RuntimeUi.SetTextureAsync(bg, app.Api, app.Api.PosterUrl(dance.dance_id));
+            RuntimeUi.Panel(canvas.transform, "Wash", new Color(0.18f,0.02f,0.35f,0.78f), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            RuntimeUi.Label(canvas.transform, "Brand", "DANCEFLOW", 88, TextAnchor.MiddleLeft, RuntimeUi.White,
+                new Vector2(0,1), new Vector2(0,1), new Vector2(65,-145), new Vector2(700,-45));
+            title = RuntimeUi.Label(canvas.transform, "Title", "SELECT YOUR COACH", 82, TextAnchor.MiddleCenter, RuntimeUi.White,
+                new Vector2(.18f,1), new Vector2(.82f,1), new Vector2(0,-210), new Vector2(0,-80));
+            playerLabel = RuntimeUi.Label(canvas.transform, "Player", "", 42, TextAnchor.MiddleCenter, RuntimeUi.Cyan,
+                new Vector2(.25f,1), new Vector2(.75f,1), new Vector2(0,-300), new Vector2(0,-220));
+
+            int coachCount = Mathf.Clamp(Mathf.Max(1, dance.coach_count), 1, 4);
+            float cardWidth = coachCount == 1 ? 840f : coachCount == 2 ? 730f : coachCount == 3 ? 610f : 520f;
+            float gap = 55f;
+            float total = coachCount * cardWidth + (coachCount - 1) * gap;
+            float left = -total * .5f;
+
+            for (int i = 0; i < coachCount; i++)
+            {
+                float x0 = left + i * (cardWidth + gap);
+                RawImage card = RuntimeUi.Panel(canvas.transform, "CoachCard" + i, new Color(0.08f,0.03f,0.16f,.92f),
+                    new Vector2(.5f,.5f), new Vector2(.5f,.5f),
+                    new Vector2(x0,-650), new Vector2(x0 + cardWidth, 420));
+                RawImage art = RuntimeUi.Panel(card.transform, "Art", Color.white, Vector2.zero, Vector2.one,
+                    new Vector2(18,105), new Vector2(-18,-18));
+                _ = RuntimeUi.SetTextureAsync(art, app.Api, app.Api.CoachPreviewUrl(dance.dance_id, i));
+                Text label = RuntimeUi.Label(card.transform, "Label", "COACH " + (i + 1), 38, TextAnchor.MiddleCenter, RuntimeUi.White,
+                    new Vector2(0,0), new Vector2(1,0), new Vector2(15,18), new Vector2(-15,95));
+                cards.Add(card);
+                cardLabels.Add(label);
+            }
+
+            hint = RuntimeUi.Label(canvas.transform, "Hint", "◀  ▶  CHOOSE        A / ENTER  CONFIRM", 27, TextAnchor.MiddleCenter,
+                new Color(1,1,1,.78f), new Vector2(0,0), new Vector2(1,0), new Vector2(0,35), new Vector2(0,95));
+        }
+
+        private void SetPlayer(int index)
+        {
+            playerCursor = Mathf.Clamp(index, 0, players.Length - 1);
+            PlayerStatus p = players[playerCursor];
+            selectedCoach = Mathf.Clamp(p.coach_index, 0, cards.Count - 1);
+            Color32 color = SlotColor(p.slot);
+            playerLabel.text = "PLAYER " + (p.slot + 1) + "  •  CHOOSE THE DANCER YOU WANT TO FOLLOW";
+            playerLabel.color = color;
+            UpdateCards();
+        }
+
+        private void UpdateCards()
+        {
+            for (int i = 0; i < cards.Count; i++)
+            {
+                bool active = i == selectedCoach;
+                Color32 playerColor = SlotColor(players[playerCursor].slot);
+                cards[i].color = active
+                    ? new Color(playerColor.r / 255f * .48f, playerColor.g / 255f * .22f, playerColor.b / 255f * .48f, .98f)
+                    : new Color(.055f,.025f,.12f,.90f);
+                cards[i].rectTransform.localScale = active ? Vector3.one * 1.055f : Vector3.one;
+                cardLabels[i].text = active ? "✓  COACH " + (i + 1) : "COACH " + (i + 1);
+                cardLabels[i].color = active ? Color.white : new Color(.82f,.80f,.91f,1);
+            }
+            hint.text = "PLAYER " + (players[playerCursor].slot + 1) + "     ◀  ▶  CHOOSE        A / ENTER  CONFIRM";
+        }
+
+        private void Prev() { if (!committing) { selectedCoach = (selectedCoach - 1 + cards.Count) % cards.Count; UpdateCards(); } }
+        private void Next() { if (!committing) { selectedCoach = (selectedCoach + 1) % cards.Count; UpdateCards(); } }
+        private void Confirm() { if (!committing) _ = ConfirmAsync(); }
+
+        private async Task ConfirmAsync()
+        {
+            committing = true;
+            PlayerStatus p = players[playerCursor];
+            hint.text = "SAVING PLAYER " + (p.slot + 1) + "…";
+            try
+            {
+                await app.Api.PostAsync<SessionAssignRequest, SessionAssignResponse>(
+                    "/api/session/" + session.session_id + "/assign",
+                    new SessionAssignRequest { player_id = p.player_id, coach_index = selectedCoach }
+                );
+                p.coach_index = selectedCoach;
+                if (playerCursor + 1 < players.Length)
+                {
+                    SetPlayer(playerCursor + 1);
+                    committing = false;
+                }
+                else
+                {
+                    app.ShowGameplay(session);
+                }
+            }
+            catch (Exception e)
+            {
+                hint.text = "ASSIGNMENT ERROR: " + e.Message;
+                committing = false;
+            }
+        }
+
+        private void Back() { app.ShowConnect(dance); }
+
+        private void OnDestroy()
+        {
+            if (app == null || app.Input == null) return;
+            app.Input.Left -= Prev;
+            app.Input.Right -= Next;
+            app.Input.Submit -= Confirm;
+            app.Input.Cancel -= Back;
+        }
+    }
+
     public sealed class GameplayScreen : MonoBehaviour
     {
         private DanceFlowApp app; private DanceListItem dance; private GameSession session; private GameSocketClient socket; private VideoPlayer video;
