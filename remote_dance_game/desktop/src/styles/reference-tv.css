@@ -999,3 +999,111 @@ button.ref-primary { border:2px solid rgba(255,255,255,.88); }
 .ref-selected-actions .ref-secondary {
   box-shadow:0 14px 28px rgba(0,0,0,.26) !important;
 }
+
+
+/* Just-Dance-style player mirrors: grades live inside compact top profiles. */
+.showcase-player-huds {
+  position:absolute;
+  z-index:40;
+  right:38px;
+  top:22px;
+  height:142px;
+  display:flex;
+  gap:16px;
+}
+.showcase-player-card {
+  width:330px;
+  height:138px;
+  display:grid;
+  grid-template-columns:108px 1fr;
+  align-items:center;
+  border-radius:18px;
+  overflow:hidden;
+  background:linear-gradient(110deg,rgba(8,6,31,.86),rgba(18,9,48,.72));
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 14px 38px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.08);
+  backdrop-filter:blur(12px);
+}
+.showcase-player-card.player-0 { --player:#6cff55; }
+.showcase-player-card.player-1 { --player:#bc67ff; }
+.showcase-live-mirror {
+  width:94px;
+  height:118px;
+  margin-left:8px;
+  border-radius:14px;
+  background:rgba(255,255,255,.035);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--player) 45%,transparent);
+}
+.showcase-player-card .pose-glyph.active .pose-glyph-glow {
+  stroke:#fff;
+  filter:drop-shadow(0 0 5px var(--player)) drop-shadow(0 0 8px var(--player));
+}
+.showcase-player-copy {
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding-right:14px;
+}
+.showcase-player-copy span {
+  color:var(--player);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.showcase-player-copy b {
+  margin-top:3px;
+  color:#fff;
+  font-size:31px;
+  line-height:.95;
+  font-style:italic;
+  letter-spacing:-.06em;
+  text-shadow:0 0 13px var(--player);
+  animation:ref-grade-pop .55s cubic-bezier(.16,.84,.24,1) both;
+}
+.showcase-player-copy small {
+  margin-top:8px;
+  color:rgba(255,255,255,.75);
+  font-size:12px;
+  font-weight:700;
+}
+
+.showcase-cues {
+  position:absolute;
+  right:40px;
+  bottom:46px;
+  z-index:39;
+  display:flex;
+  flex-direction:row-reverse;
+  gap:12px;
+  align-items:flex-end;
+}
+.showcase-cue {
+  --player:#6cff55;
+  width:118px;
+  height:158px;
+  position:relative;
+  filter:drop-shadow(0 8px 14px rgba(0,0,0,.38));
+}
+.showcase-cue.player-1 { --player:#bc67ff; }
+.showcase-cue .pose-glyph.active .pose-glyph-glow {
+  stroke:#fff;
+  filter:drop-shadow(0 0 4px var(--player)) drop-shadow(0 0 7px var(--player));
+}
+.showcase-cue > i {
+  position:absolute;
+  left:10px;
+  right:10px;
+  bottom:0;
+  height:5px;
+  border-radius:8px;
+  overflow:hidden;
+  background:rgba(255,255,255,.24);
+}
+.showcase-cue > i b {
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:var(--player);
+  box-shadow:0 0 9px var(--player);
+}
