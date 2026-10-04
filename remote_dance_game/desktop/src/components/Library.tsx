@@ -125,9 +125,9 @@ export default function Library() {
 
       <header className="ref-topbar">
         <div className="ref-brand">DANCE<span>FLOW</span><small>PLAY · MOVE · TOGETHER</small></div>
-        <nav className="ref-tabs" aria-label="Game sections">
+        <div className="ref-tab-shell"><span className="ref-bumper">L1</span><nav className="ref-tabs" aria-label="Game sections">
           <button className="active">Songs</button><button>Playlists</button><button>Challenges</button><button>Party</button>
-        </nav>
+        </nav><span className="ref-bumper">R1</span></div>
         <div className="ref-profile">
           <div className="ref-avatar">D</div>
           <div className="ref-profile-copy"><strong>Player</strong><span>Lv. 12</span><i><b /></i></div>
