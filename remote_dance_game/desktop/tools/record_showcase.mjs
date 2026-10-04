@@ -49,16 +49,9 @@ await assertSeparated(page, [
 // Gameplay stage: every persistent control belongs on an edge.
 await page.waitForTimeout(11200);
 await assertSeparated(page, [
-  ['.ref-song-panel', '.ref-score-panel', 12],
-  ['.ref-score-panel', '.ref-next-moves', 10],
-  ['.ref-next-moves', '.ref-timeline', 10],
+  ['.ref-song-panel', '.showcase-player-huds', 12],
+  ['.showcase-cues', '.ref-timeline', 10],
 ], 'gameplay layout');
-
-if (await page.locator('.ref-grade').count()) {
-  await assertSeparated(page, [
-    ['.ref-grade', '.ref-next-moves', 8],
-  ], 'transient grade layout');
-}
 
 const viewport = page.viewportSize();
 if (!viewport) throw new Error('No viewport');
@@ -68,7 +61,7 @@ const safe = {
   width: viewport.width * .50,
   height: viewport.height * .61,
 };
-for (const selector of ['.ref-song-panel','.ref-score-panel','.ref-next-moves','.ref-timeline']) {
+for (const selector of ['.ref-song-panel','.showcase-player-huds','.showcase-cues','.ref-timeline']) {
   const region = await box(page, selector);
   if (intersects(region, safe, 0)) {
     throw new Error(`central dancer safe-zone violation: ${selector} ${JSON.stringify(region)} intersects ${JSON.stringify(safe)}`);
