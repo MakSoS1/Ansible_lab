@@ -111,7 +111,7 @@ public final class ServerBootstrap {
                 }
                 new File(root, "dlc").mkdirs();
                 new File(root, "towns").mkdirs();
-                // Python is isolated inside this app and only listens on 127.0.0.2.
+                // Python is isolated inside this app and only listens on 127.0.0.1.
                 if (!Python.isStarted()) {
                     Python.start(new AndroidPlatform(ctx));
                 }
@@ -135,8 +135,8 @@ PY="""def serve(root):
     config_file = data / "config.json"
     config = json.loads(config_file.read_text(encoding="utf-8"))
     config.update(debug=False, http_debug=False, server_debug_mode=False,
-                  listening_ip="127.0.0.2", listening_port=9000,
-                  server_url="http://127.0.0.2:9000", reverse_proxy=False,
+                  listening_ip="127.0.0.1", listening_port=9000,
+                  server_url="http://127.0.0.1:9000", reverse_proxy=False,
                   run_tutorial=True, dlc_dir="dlc", towns_dir="towns", active_town="mytown")
     config_file.write_text(json.dumps(config, indent=2), encoding="utf-8")
     # Run full original Python Flask+protobuf server, not a fake health-check app.
