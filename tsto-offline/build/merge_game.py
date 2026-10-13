@@ -76,7 +76,7 @@ def patch_java(game):
         "https://ping1.tnt-ea.com": HOST,
         "https://www.google.com": HOST,
     }
-    cdn_regex=re.compile(r"https?://[A-Za-z0-9.-]+\\.tstodlc\\.eamobile\\.com/netstorage/gameasset/direct/simpsons/")
+    cdn_regex=re.compile(r"https?://[A-Za-z0-9.-]+\.tstodlc\.eamobile\.com/netstorage/gameasset/direct/simpsons/")
     extensions = {".smali", ".xml", ".txt", ".yml", ".json", ".properties"}
     for f in game.rglob("*"):
         if not f.is_file() or f.suffix not in extensions or f.stat().st_size > 20_000_000:
