@@ -75,7 +75,7 @@ jobs:
           profile: pixel_6
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            set -uo pipefail
+            set -u
             echo "Supported ABIs:"
             adb shell getprop ro.product.cpu.abilist | tee reports/emulator-abis.txt
             adb shell getprop ro.dalvik.vm.native.bridge | tee reports/emulator-native-bridge.txt
