@@ -74,37 +74,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            set -u
-            echo "Supported ABIs:"
-            adb shell getprop ro.product.cpu.abilist | tee reports/emulator-abis.txt
-            adb shell getprop ro.dalvik.vm.native.bridge | tee reports/emulator-native-bridge.txt
-            if ! adb install _output/tsto-experimental.apk >reports/install.txt 2>&1; then
-              cat reports/install.txt
-              exit 1
-            fi
-            adb logcat -c
-            adb shell monkey -p com.ea.game.simpsons4_row -c android.intent.category.LAUNCHER 1 \
-              >reports/launch.txt 2>&1 || true
-            adb forward tcp:19000 tcp:9000
-            OK=0
-            for attempt in $(seq 1 45); do
-              if curl -fsS --max-time 2 "http://127.0.0.1:19000/" >reports/backend-response.txt 2>/dev/null; then
-                echo "Loopback game backend reachable in original APK" | tee reports/result.txt
-                OK=1
-                break
-              fi
-              sleep 2
-            done
-            adb logcat -d -v time > reports/emulator-logcat.txt
-            grep -E "TSTO_OFFLINE_SERVER|FATAL EXCEPTION|AndroidRuntime|python|libscorpio" reports/emulator-logcat.txt | tail -100 > reports/relevant-logcat.txt || true
-            if [ "$OK" -ne 1 ]; then
-              echo "No embedded backend detected; client or Python runtime may not have launched" | tee reports/result.txt
-              cat reports/relevant-logcat.txt
-              exit 1
-            fi
-            adb shell dumpsys activity activities >reports/activity.txt || true
-            echo "NOT A PLAYABILITY TEST: no game DLC packaged; no tutorial or save verified." >>reports/result.txt
+          script: bash tsto-offline/build/test_game_on_emulator.sh
       - name: Reports only, never redistribute third-party APK or server code
         if: always()
         uses: actions/upload-artifact@v4
