@@ -24,6 +24,12 @@ jobs:
         run: |
           bash -n tsto-offline/mobile/install_termux.sh
           python -m py_compile tsto-offline/tsto_prepare.py tsto-offline/mobile/configure_server.py
+      - name: Validate REA analysis tools on synthetic APK
+        run: |
+          cd tsto-offline/rea
+          python -m unittest discover -s tests -v
+          python -m py_compile quick_recon.py
+          bash -n analyze_with_rea.sh
       - name: Publish free-code sources only (NOT a playable APK)
         uses: actions/upload-artifact@v4
         with:
