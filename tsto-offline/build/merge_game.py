@@ -71,18 +71,28 @@ def merge_payloads(game,donor):
 def patch_java(game):
     count=0
     substitutions = {
-        "https://prod.simpsons-ea.com":HOST,
-        "https://syn-dir.sn.eamobile.com":HOST,
-        "https://ping1.tnt-ea.com":HOST,
+        "https://prod.simpsons-ea.com": HOST,
+        "https://syn-dir.sn.eamobile.com": HOST,
+        "https://ping1.tnt-ea.com": HOST,
+        "https://www.google.com": HOST,
     }
-    cdn_regex=re.compile(r"https?://[A-Za-z0-9.-]+\.tstodlc\.eamobile\.com/netstorage/gameasset/direct/simpsons/")
-    for f in game.glob("smali*/**/*.smali"):
-        s=f.read_text(encoding="utf-8",errors="ignore")
-        ns=s
-        for old,new in substitutions.items():ns=ns.replace(old,new)
-        ns=cdn_regex.sub(DLC,ns)
-        if ns!=s:f.write_text(ns,encoding="utf-8");count+=1
-    print("Rewrote embedded EA addresses in",count,"smali files")
+    cdn_regex=re.compile(r"https?://[A-Za-z0-9.-]+\\.tstodlc\\.eamobile\\.com/netstorage/gameasset/direct/simpsons/")
+    extensions = {".smali", ".xml", ".txt", ".yml", ".json", ".properties"}
+    for f in game.rglob("*"):
+        if not f.is_file() or f.suffix not in extensions or f.stat().st_size > 20_000_000:
+            continue
+        original=f.read_text(encoding="utf-8", errors="ignore")
+        patched=original
+        for old,new in substitutions.items():
+            patched=patched.replace(old,new)
+        patched=cdn_regex.sub(DLC,patched)
+        if patched != original:
+            f.write_text(patched,encoding="utf-8")
+            count+=1
+            print("Patched URLs in", f.relative_to(game))
+    print("Rewrote EA addresses in",count,"text/config files including XML")
+    if not count:
+        raise RuntimeError("No EA endpoints patched: unexpected client format")
 
 def patch_native(game):
     patched=0
