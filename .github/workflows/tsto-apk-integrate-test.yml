@@ -63,6 +63,9 @@ jobs:
           "$BUILDTOOLS/apksigner" verify -v _output/tsto-experimental.apk
           unzip -l _output/tsto-experimental.apk | grep -E "lib/arm64-v8a/(libscorpio|libpython|libchaquopy)|assets/chaquopy|classes[0-9]*.dex" | head -30
           ls -lh _output/tsto-experimental.apk
+      - name: Enable KVM for Android emulator
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
       - name: Emulate Android 15 with ARM compatibility
         uses: reactivecircus/android-emulator-runner@v2
         with:
