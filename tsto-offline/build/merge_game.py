@@ -14,7 +14,7 @@ EXPECTED = {
     "8137faf7a4349043e6e0b0516249c673eb402cf96012c87d805c969cdccae3c2",
     "5b6bf2e4ee386a825e58c3e12aae923d66db8b6fbdd21df05b81b4e1edeb44ae",
 }
-HOST = "http://127.0.0.2:9000"
+HOST = "http://127.0.0.1:9000"
 DLC = HOST + "/gameassets/"
 CDN = b"http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com/netstorage/gameasset/direct/simpsons/"
 SIG_BYPASS_469 = {
