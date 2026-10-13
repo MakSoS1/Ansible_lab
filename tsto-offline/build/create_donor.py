@@ -55,6 +55,7 @@ MANIFEST="""<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
   <application android:label="TSTO Offline Server Probe" android:usesCleartextTraffic="true">
+    <service android:name="com.tsto.offline.ServerService" android:process=":tsto_backend" android:exported="false" android:stopWithTask="true" />
     <activity android:name="com.tsto.offline.ProbeActivity" android:exported="true">
       <intent-filter><action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
@@ -81,6 +82,7 @@ public class ProbeActivity extends Activity {
 """
 BOOTSTRAP="""package com.tsto.offline;
 import android.content.Context;
+import android.content.Intent;
 import android.util.Log;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
@@ -92,7 +94,12 @@ import java.io.FileOutputStream;
 public final class ServerBootstrap {
     private static volatile boolean running = false;
     private static final String TAG = "TSTO_OFFLINE_SERVER";
-    public static synchronized void start(Context context) {
+    public static void start(Context context) {
+        Context ctx = context.getApplicationContext();
+        Intent intent = new Intent(ctx, ServerService.class);
+        ctx.startService(intent);
+    }
+    public static synchronized void runInBackend(Context context) {
         if (running) return;
         running = true;
         final Context ctx = context.getApplicationContext();
@@ -126,6 +133,26 @@ public final class ServerBootstrap {
     }
 }
 """
+SERVICE="""package com.tsto.offline;
+import android.app.Service;
+import android.content.Intent;
+import android.os.IBinder;
+import android.util.Log;
+
+public final class ServerService extends Service {
+    @Override public void onCreate() {
+        super.onCreate();
+        Log.i("TSTO_OFFLINE_SERVER", "Separate Android backend process started");
+        ServerBootstrap.runInBackend(this);
+    }
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        return START_NOT_STICKY;
+    }
+    @Override public IBinder onBind(Intent intent) {
+        return null;
+    }
+}
+"""
 PY="""def serve(root):
     import json
     import os
@@ -152,6 +179,7 @@ def main():
     write(out/"app/src/main/AndroidManifest.xml",MANIFEST)
     write(out/"app/src/main/java/com/tsto/offline/ProbeActivity.java",ACTIVITY)
     write(out/"app/src/main/java/com/tsto/offline/ServerBootstrap.java",BOOTSTRAP)
+    write(out/"app/src/main/java/com/tsto/offline/ServerService.java",SERVICE)
     write(out/"app/src/main/python/offline_server.py",PY)
     for name in ("tsto_server.py","auth_manager.py"):
         shutil.copy2(root/name,out/"app/src/main/python"/name)
