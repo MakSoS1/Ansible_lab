@@ -45,7 +45,7 @@ jobs:
           profile: pixel_6
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            set -euo pipefail
+            set -eu
             adb install _donor/app/build/outputs/apk/debug/app-debug.apk
             adb logcat -c
             adb shell am start -n com.tsto.offline.sidecarprobe/com.tsto.offline.ProbeActivity
