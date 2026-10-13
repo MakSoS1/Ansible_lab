@@ -1,0 +1,28 @@
+name: TSTO offline preflight
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tsto-offline/**'
+      - '.github/workflows/tsto-preflight.yml'
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run checks
+        run: cd tsto-offline && python -m unittest discover -s tests -v
+      - name: Check source
+        run: python -m py_compile tsto-offline/tsto_prepare.py
+      - name: Publish reproducible sources (not a playable APK)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-preflight
+          path: tsto-offline/
+          retention-days: 7
