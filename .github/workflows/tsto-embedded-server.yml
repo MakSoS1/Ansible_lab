@@ -33,6 +33,9 @@ jobs:
         run: |
           unzip -l _donor/app/build/outputs/apk/debug/app-debug.apk | grep -E 'libpython|libchaquopy|assets/chaquopy|classes.*dex' | head -50
           ls -lh _donor/app/build/outputs/apk/debug/app-debug.apk
+      - name: Enable KVM for Android emulator
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
       - name: Run Android 14 x86_64 emulator, smoke test embedded server
         uses: reactivecircus/android-emulator-runner@v2
         with:
