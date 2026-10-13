@@ -122,6 +122,13 @@ def hook_lifecycle(game):
         xml=xml.replace("<application ","<application android:usesCleartextTraffic=\"true\" ",1)
     if "android:extractNativeLibs=" not in xml:
         xml=xml.replace("<application ","<application android:extractNativeLibs=\"true\" ",1)
+    # Run Python in another Linux process. Original Scorpio and Python native
+    # runtimes crashed together on the translated Android 15 ARM64 emulator.
+    service = '<service android:name="com.tsto.offline.ServerService" android:process=":tsto_backend" android:exported="false" android:stopWithTask="true" />'
+    if 'com.tsto.offline.ServerService' not in xml:
+        if "</application>" not in xml:
+            raise RuntimeError("Manifest has no application closing tag")
+        xml = xml.replace("</application>", "    " + service + "\\n</application>", 1)
     manifest.write_text(xml)
     print("Hooked",f)
 
