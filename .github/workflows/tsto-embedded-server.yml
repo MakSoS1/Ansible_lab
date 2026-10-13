@@ -44,23 +44,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            set -eu
-            adb install _donor/app/build/outputs/apk/debug/app-debug.apk
-            adb logcat -c
-            adb shell am start -n com.tsto.offline.sidecarprobe/com.tsto.offline.ProbeActivity
-            adb forward tcp:19000 tcp:9000
-            for n in $(seq 1 60); do
-              if curl --silent --fail --max-time 2 "http://127.0.0.1:19000/" >/dev/null; then
-                echo "Embedded Flask server is accepting HTTP in Android emulator"; break
-              fi
-              if [ "$n" = 60 ]; then
-                adb logcat -d | grep -E -A 12 'TSTO_OFFLINE_SERVER|FATAL EXCEPTION|AndroidRuntime|Python' | tail -130 || true
-                exit 1
-              fi
-              sleep 2
-            done
-            adb shell dumpsys activity activities | grep -E "topResumedActivity|ResumedActivity" || true
+          script: bash tsto-offline/build/test_donor_on_emulator.sh
       - name: Do not publish third-party server or copyrighted client
         if: always()
         run: rm -rf _upstream_server _donor
