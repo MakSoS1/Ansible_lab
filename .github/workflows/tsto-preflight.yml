@@ -1,4 +1,4 @@
-name: TSTO offline preflight
+name: TSTO Android and DLC preflight
 on:
   workflow_dispatch:
   push:
@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 jobs:
-  preflight:
+  source-and-offline-preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -16,13 +16,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run checks
+      - name: Test APK and DLC inspector
         run: cd tsto-offline && python -m unittest discover -s tests -v
-      - name: Check source
-        run: python -m py_compile tsto-offline/tsto_prepare.py
-      - name: Publish reproducible sources (not a playable APK)
+      - name: Test Pixel 10 local server configurator
+        run: cd tsto-offline/mobile && python -m unittest discover -s tests -v
+      - name: Shell and Python syntax validation
+        run: |
+          bash -n tsto-offline/mobile/install_termux.sh
+          python -m py_compile tsto-offline/tsto_prepare.py tsto-offline/mobile/configure_server.py
+      - name: Publish free-code sources only (NOT a playable APK)
         uses: actions/upload-artifact@v4
         with:
-          name: tsto-preflight
+          name: tsto-source-tools
           path: tsto-offline/
           retention-days: 7
