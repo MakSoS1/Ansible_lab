@@ -1,0 +1,63 @@
+name: TSTO embedded Android server prototype
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-embedded-server.yml'
+      - 'tsto-offline/build/**'
+permissions:
+  contents: read
+jobs:
+  embedded-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Clone unlicensed personal-use server into temporary workspace
+        run: git clone --depth 1 https://github.com/sp00nznet/tsto-springfield.git _upstream_server
+      - name: Generate embedded Chaquopy application
+        run: python tsto-offline/build/create_donor.py _upstream_server _donor
+      - name: Build Android server donor package
+        run: gradle --no-daemon --stacktrace -p _donor :app:assembleDebug
+      - name: Inspect signed donor package
+        run: |
+          unzip -l _donor/app/build/outputs/apk/debug/app-debug.apk | grep -E 'libpython|libchaquopy|assets/chaquopy|classes.*dex' | head -50
+          ls -lh _donor/app/build/outputs/apk/debug/app-debug.apk
+      - name: Run Android 14 x86_64 emulator, smoke test embedded server
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -euo pipefail
+            adb install _donor/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am start -n com.tsto.offline.sidecarprobe/com.tsto.offline.ProbeActivity
+            adb forward tcp:19000 tcp:9000
+            for n in $(seq 1 60); do
+              if curl --silent --fail --max-time 2 "http://127.0.0.1:19000/" >/dev/null; then
+                echo "Embedded Flask server is accepting HTTP in Android emulator"; break
+              fi
+              if [ "$n" = 60 ]; then
+                adb logcat -d | grep -E -A 12 'TSTO_OFFLINE_SERVER|FATAL EXCEPTION|AndroidRuntime|Python' | tail -130 || true
+                exit 1
+              fi
+              sleep 2
+            done
+            adb shell dumpsys activity activities | grep -E "topResumedActivity|ResumedActivity" || true
+      - name: Do not publish third-party server or copyrighted client
+        if: always()
+        run: rm -rf _upstream_server _donor
