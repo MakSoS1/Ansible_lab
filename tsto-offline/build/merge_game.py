@@ -128,7 +128,7 @@ def hook_lifecycle(game):
     if 'com.tsto.offline.ServerService' not in xml:
         if "</application>" not in xml:
             raise RuntimeError("Manifest has no application closing tag")
-        xml = xml.replace("</application>", "    " + service + "\\n</application>", 1)
+        xml = xml.replace("</application>", "    " + service + "\n</application>", 1)
     manifest.write_text(xml)
     print("Hooked",f)
 
