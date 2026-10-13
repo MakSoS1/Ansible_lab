@@ -82,6 +82,17 @@ jobs:
           timeout 600s npx --yes rea-agents@6.3.0 inspect-android-package \
             "$GITHUB_WORKSPACE/_temporary_original/Original Files/tsto_original.apk" --json \
             > reports/rea-android.json
+      - name: REA inspect lifecycle classes and methods
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          APK="$GITHUB_WORKSPACE/_temporary_original/Original Files/tsto_original.apk"
+          for class in com.ea.game.simpsons4_row.SimpsonsApplication com.ea.simpsons.SimpsonsSplashScreen com.ea.simpsons.SimpsonsActivity; do
+            short="$(echo "$class" | rev | cut -d. -f1 | rev)"
+            timeout 180s npx --yes rea-agents@6.3.0 inspect-android-class "$APK" "$class" --json > "reports/$short.class.json" 2> "reports/$short.class.stderr.txt" || true
+            timeout 180s npx --yes rea-agents@6.3.0 inspect-android-method "$APK" "$class" onCreate --json > "reports/$short.onCreate.json" 2> "reports/$short.onCreate.stderr.txt" || true
+          done
       - name: Record analysis coverage
         if: always()
         shell: bash
