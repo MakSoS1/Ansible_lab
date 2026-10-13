@@ -1,0 +1,26 @@
+name: TSTO DLC offline size feasibility
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-dlc-sizes.yml'
+      - 'tsto-offline/rea/dlc_sizes.py'
+permissions:
+  contents: read
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Calculate resource pack size without downloading assets
+        run: python tsto-offline/rea/dlc_sizes.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tsto-resource-size-report
+          path: reports/
+          if-no-files-found: ignore
