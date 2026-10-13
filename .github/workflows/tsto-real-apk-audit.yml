@@ -1,0 +1,104 @@
+name: Research original TSTO APK (reports only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-real-apk-audit.yml'
+permissions:
+  contents: read
+jobs:
+  analyze-original-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout research toolkit
+        uses: actions/checkout@v4
+      - name: Download archived client into temporary runner workspace (never publish)
+        uses: actions/checkout@v4
+        with:
+          repository: bodnjenie14/Tsto_patcher
+          path: _temporary_original
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate APK archive and collect ARM64 engine evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          APK="_temporary_original/Original Files/tsto_original.apk"
+          test -s "$APK"
+          python - "$APK" <<'PY'
+          import sys,zipfile
+          a=sys.argv[1]
+          if not zipfile.is_zipfile(a):
+              raise SystemExit("Original source is not a ZIP/APK binary")
+          with zipfile.ZipFile(a) as z:
+              if 'AndroidManifest.xml' not in z.namelist():
+                  raise SystemExit("Not a valid Android APK: missing manifest")
+          PY
+          python tsto-offline/rea/quick_recon.py "$APK" --output reports/apk-recon.json > /dev/null
+          python - "$APK" <<'PY'
+          import sys, zipfile, pathlib
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              candidates=[x for x in z.namelist() if x.startswith("lib/arm64-v8a/libscorpio") and x.endswith(".so")]
+              pathlib.Path("_native").mkdir(exist_ok=True)
+              for name in candidates:
+                  pathlib.Path("_native",pathlib.Path(name).name).write_bytes(z.read(name))
+              print("Found",len(candidates),"arm64 Scorpio engine binaries")
+          PY
+          for so in _native/*.so; do
+            test -f "$so" || continue
+            readelf -hW "$so" > "reports/$(basename "$so").elf-header.txt" || true
+            readelf -lW "$so" > "reports/$(basename "$so").segments.txt" || true
+            readelf -dW "$so" > "reports/$(basename "$so").dynamic.txt" || true
+          done
+      - name: Set up Java and Node for REA
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.0'
+      - name: Install SHA-verified standalone JADX engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _tools
+          curl -fL --retry 3 --max-time 180 \
+            "https://github.com/1013503897/jadx-headless-mcp/releases/download/v0.7.1/jadx-headless-mcp-0.7.1-all.jar" \
+            -o "_tools/jadx-headless-mcp-0.7.1-all.jar"
+          echo "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75  _tools/jadx-headless-mcp-0.7.1-all.jar" | sha256sum -c -
+          echo "REA_JADX_MCP_JAR=$GITHUB_WORKSPACE/_tools/jadx-headless-mcp-0.7.1-all.jar" >> "$GITHUB_ENV"
+      - name: Run REA/JADX read-only package inspection
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 600s npx --yes rea-agents@6.3.0 inspect-android-package \
+            "$GITHUB_WORKSPACE/_temporary_original/Original Files/tsto_original.apk" --json \
+            > reports/rea-android.json
+      - name: Record analysis coverage
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p reports
+          echo "REA attempted; see job step conclusion and evidence report." > reports/rea-status.txt
+          echo "The original EA APK and .so files are intentionally never uploaded." >> reports/rea-status.txt
+      - name: Upload analysis reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-reverse-evidence
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Remove source binaries
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- _temporary_original _native _tools
