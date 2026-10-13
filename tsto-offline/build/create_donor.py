@@ -160,6 +160,7 @@ def main():
         src=root/folder
         if not src.is_dir():raise RuntimeError("Missing protobuf stubs: "+str(src))
         shutil.copytree(src,out/"app/src/main/python"/folder,dirs_exist_ok=True)
+    (out/"app/src/main/assets").mkdir(parents=True, exist_ok=True)
     shutil.copy2(root/"config.json",out/"app/src/main/assets/server_config.json")
     print("Prepared Chaquopy embedded-server donor",out)
 if __name__=="__main__":main()
