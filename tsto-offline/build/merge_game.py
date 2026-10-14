@@ -230,17 +230,24 @@ def allow_external_loopback(game):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--original",type=Path,required=True)
-    p.add_argument("--donor",type=Path,required=True)
+    p.add_argument("--donor",type=Path,help="Required only for the embedded-server build; not used in --external-server control")
     p.add_argument("--apktool",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
     p.add_argument("--external-server",action="store_true",help="Diagnostic: skip starting embedded Python service; external localhost server required")
     a=p.parse_args()
+    if not a.external_server and not a.donor:
+        p.error("--donor is required for the embedded-server build")
     with tempfile.TemporaryDirectory(prefix="tsto-merge-") as tmp:
-        game=Path(tmp)/"game";donor=Path(tmp)/"donor"
+        game=Path(tmp)/"game"
         run("java","-jar",str(a.apktool.resolve()),"d",str(a.original.resolve()),"-f","-o",str(game))
-        run("java","-jar",str(a.apktool.resolve()),"d",str(a.donor.resolve()),"-f","-o",str(donor))
-        merge_dex(game,donor)
-        merge_payloads(game,donor)
+        if not a.external_server:
+            # A/B isolation: the external-server control must contain *no*
+            # Chaquopy classes, Python runtime or server native libraries.
+            # Otherwise GL/ART crashes could be caused by the merge itself.
+            donor=Path(tmp)/"donor"
+            run("java","-jar",str(a.apktool.resolve()),"d",str(a.donor.resolve()),"-f","-o",str(donor))
+            merge_dex(game,donor)
+            merge_payloads(game,donor)
         patch_java(game)
         patch_native(game)
         if a.external_server:
