@@ -57,7 +57,16 @@ def main():
                 abort(500,"Unexpected master DLC index XML count")
             return Response(z.read(names[0]),mimetype="application/xml")
 
+    # Optional address-length-preserving patch: original DLC URL size is
+    # 89 bytes. The path prefix pads the localhost URL without changing its
+    # length; this lets us test the string-allocation hypothesis in native code.
+    raw_old = "http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com/netstorage/gameasset/direct/simpsons/"
+    raw_new = "http://127.0.0.1:9000/gameassets/"
+    pad_prefix = "/" + "p" * (len(raw_old) - len(raw_new) - 1)
+    srv.app.add_url_rule(pad_prefix + "/gameassets/<string:directory>/<string:filename>",
+                         endpoint="padded_dlc_download", view_func=guarded_dlc)
     for route,endpoint in (
+        (pad_prefix + "/gameassets/", "master_xml_at_padded_gameassets"),
         ("/gameassets/","master_xml_at_gameassets"),
         ("/netstorage/gameasset/direct/simpsons/","master_xml_at_original_root")
     ):
