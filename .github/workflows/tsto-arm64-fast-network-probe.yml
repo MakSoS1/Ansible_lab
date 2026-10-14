@@ -1,0 +1,185 @@
+name: TSTO ARM64 fast pre-DLC network and graphics A/B probe (diagnostics only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-arm64-fast-network-probe.yml'
+      - 'tsto-offline/build/merge_game.py'
+permissions:
+  contents: read
+jobs:
+  native-arm64-integrated-game:
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Bootstrap Android command-line SDK without deprecated tools package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SDK_ROOT="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest" "$RUNNER_TEMP/android-sdk-download"
+          curl -fL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            -o "$RUNNER_TEMP/android-sdk-download/cmdline.zip"
+          unzip -q "$RUNNER_TEMP/android-sdk-download/cmdline.zip" -d "$RUNNER_TEMP/android-sdk-download"
+          cp -a "$RUNNER_TEMP/android-sdk-download/cmdline-tools/." "$SDK_ROOT/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --version
+      - name: Install native ARM64 AAPT2 and other Android tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y adb unzip
+          yes | sdkmanager "platforms;android-35" "build-tools;35.0.1" > /dev/null || test "${PIPESTATUS[1]}" -eq 0
+          curl --fail --show-error --location https://raw.githubusercontent.com/Commit451/android-arm-build-tools/main/install.sh -o /tmp/tsto-arm-build-tools.sh
+          bash /tmp/tsto-arm-build-tools.sh --version 35.0.1 --sdk "$ANDROID_HOME"
+          "$ANDROID_HOME/build-tools/35.0.1/aapt2" version
+          mkdir -p ~/.gradle
+          printf 'android.aapt2FromMavenOverride=%s/build-tools/35.0.1/aapt2\n' "$ANDROID_HOME" >> ~/.gradle/gradle.properties
+      - name: Retrieve game code and game server for ephemeral testing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clone --depth 1 https://github.com/bodnjenie14/Tsto_patcher.git _game_source
+          git clone --depth 1 https://github.com/sp00nznet/tsto-springfield.git _upstream_server
+          test -s '_game_source/Original Files/tsto_original.apk'
+          test -s _game_source/apktool_2.10.0.jar
+          mkdir -p reports _output
+      - name: Build Scorpio-only control with external host DLC server
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python tsto-offline/build/merge_game.py \
+            --original '_game_source/Original Files/tsto_original.apk' \
+            --external-server \
+            --apktool _game_source/apktool_2.10.0.jar \
+            --aapt2 "$ANDROID_HOME/build-tools/35.0.1/aapt2" \
+            --out _output/game-unsigned.apk | tee reports/merge-build.txt
+          "$ANDROID_HOME/build-tools/35.0.1/zipalign" -P 16 -f 4 _output/game-unsigned.apk _output/game-aligned.apk
+          keytool -genkeypair -keystore _output/test-only.jks -alias ephemeral -storepass local-testing-only \
+            -keypass local-testing-only -keyalg RSA -keysize 3072 -validity 1 \
+            -dname 'CN=Ephemeral CI Build, O=Local Compatibility Test, C=US' >/dev/null 2>&1
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" sign --ks _output/test-only.jks \
+            --ks-key-alias ephemeral --ks-pass pass:local-testing-only \
+            --key-pass pass:local-testing-only \
+            --out _output/game-ci.apk _output/game-aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify -v _output/game-ci.apk
+          du -h _output/game-ci.apk | tee reports/size.txt
+      - name: Create synthetic master index ONLY for auth/renderer diagnostics (not game assets)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p _dlc_stage/dlc
+          python - <<'PY'
+          from zipfile import ZipFile,ZIP_DEFLATED
+          with ZipFile('_dlc_stage/dlc/DLCIndex.zip','w',compression=ZIP_DEFLATED) as z:
+              z.writestr('DLCIndex.xml','<?xml version="1.0" encoding="UTF-8"?><DLCIndex></DLCIndex>')
+          PY
+          echo 'NO GAME ASSETS AVAILABLE IN THIS PROBE; AUTH AND RENDERING DIAGNOSTICS ONLY' > reports/PROBE_ONLY_NO_DLC.txt
+      - name: Start host protocol server without historical assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install flask==3.1.2 flask-inflate protobuf==6.33.0 PyJWT==2.10.1 Werkzeug
+          nohup python -u tsto-offline/build/start_host_server.py \
+            _upstream_server _dlc_stage >reports/host-game-server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 3 http://127.0.0.1:9000/ >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:9000/gameassets/ \
+            | python -c 'import sys,xml.etree.ElementTree as ET; d=sys.stdin.buffer.read(); print(ET.fromstring(d).tag, len(d))' \
+            | tee reports/gameassets-master-root.txt
+      - name: Boot fully native ARM64 Android 15 on the ARM runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+          grep binder /proc/filesystems
+          mkdir -p "$RUNNER_TEMP/tsto-android-data"
+          sudo docker run -d --rm --privileged --name tsto-native-arm-game \
+            -v "$RUNNER_TEMP/tsto-android-data:/data" -p 127.0.0.1:5555:5555 \
+            redroid/redroid:15.0.0_64only-latest \
+            androidboot.redroid_width=1080 androidboot.redroid_height=1920 \
+            androidboot.redroid_dpi=420 androidboot.redroid_gpu_mode=guest androidboot.use_memfd=1
+          for i in $(seq 1 45); do
+            adb connect 127.0.0.1:5555 || true
+            if adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q '^1'; then break; fi
+            sleep 3
+          done
+          adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abilist | tee reports/abi.txt
+          adb -s 127.0.0.1:5555 shell getprop ro.build.version.release | tee reports/android-release.txt
+          adb -s 127.0.0.1:5555 shell getprop sys.boot_completed | tee reports/boot.txt
+          test "$(tr -d '\r\n' <reports/boot.txt)" = 1
+          grep -q arm64-v8a reports/abi.txt
+      - name: A/B diagnose before DLC – display dialogs, local auth, connectivity and software rendering
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          adb -s 127.0.0.1:5555 install --no-incremental _output/game-ci.apk >reports/install.txt 2>&1
+          adb -s 127.0.0.1:5555 reverse tcp:9000 tcp:9000
+          adb -s 127.0.0.1:5555 shell settings put secure immersive_mode_confirmations confirmed || true
+          adb -s 127.0.0.1:5555 shell settings get global captive_portal_mode >reports/portal-before.txt || true
+          adb -s 127.0.0.1:5555 shell dumpsys connectivity >reports/connectivity-before.txt || true
+          adb -s 127.0.0.1:5555 logcat -c || true
+          adb -s 127.0.0.1:5555 shell am start -W -n com.ea.game.simpsons4_row/com.ea.simpsons.SimpsonsSplashScreen >reports/baseline-start.txt 2>&1 || true
+          sleep 25
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/baseline-25s.png || true
+          adb -s 127.0.0.1:5555 shell ps -A | grep simpsons >reports/baseline-processes.txt || true
+          adb -s 127.0.0.1:5555 logcat -d -v time >reports/baseline-logcat.txt || true
+          # The app must not be expected to reach Springfield in this probe:
+          # the DLC index is a deliberate dummy. Check only whether earlier
+          # authentication reaches /mh/gameplayconfig.
+          adb -s 127.0.0.1:5555 shell am force-stop com.ea.game.simpsons4_row || true
+          adb -s 127.0.0.1:5555 shell settings put global captive_portal_mode 0 || true
+          adb -s 127.0.0.1:5555 shell settings put global device_provisioned 1 || true
+          adb -s 127.0.0.1:5555 shell settings put secure user_setup_complete 1 || true
+          adb -s 127.0.0.1:5555 shell setprop debug.hwui.renderer skiagl || true
+          adb -s 127.0.0.1:5555 shell setprop debug.renderengine.backend skiagl || true
+          adb -s 127.0.0.1:5555 shell getprop debug.hwui.renderer >reports/renderer-after.txt
+          adb -s 127.0.0.1:5555 shell dumpsys connectivity >reports/connectivity-after.txt || true
+          adb -s 127.0.0.1:5555 shell am start -W -n com.ea.game.simpsons4_row/com.ea.simpsons.SimpsonsSplashScreen >reports/treatment-start.txt 2>&1 || true
+          sleep 30
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/treatment-30s.png || true
+          adb -s 127.0.0.1:5555 shell ps -A | grep simpsons >reports/treatment-processes.txt || true
+          adb -s 127.0.0.1:5555 logcat -d -v time >reports/treatment-logcat.txt || true
+          python - <<'PY' | tee reports/auth-AB.txt
+          from pathlib import Path
+          s=Path('reports/host-game-server.log').read_text(errors='replace')
+          n=s.count('"GET /mh/gameplayconfig HTTP/1.1" 200')
+          print('Total gameplayconfig 200 in two trials:',n)
+          print('NB: This is just early authentication, NOT proof of real game.')
+          print('Host log request lines:')
+          for line in s.splitlines():
+              if '"GET /' in line or '"POST /' in line: print(line[:260])
+          PY
+          echo 'NO GAMEPLAY OR REAL DLC WAS TESTED. SCREENSHOTS ARE DIAGNOSTIC.' >reports/result.txt
+      - name: Collect native Android diagnostics, without game binaries
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p reports
+          (timeout 10 adb -s 127.0.0.1:5555 logcat -d -v time >reports/final-logcat.txt 2>&1) || true
+          (timeout 10 sudo docker exec tsto-native-arm-game /system/bin/getprop >reports/native-getprop.txt 2>&1) || true
+          (sudo docker logs --tail 200 tsto-native-arm-game >reports/container-log.txt 2>&1) || true
+          (sudo docker rm -f tsto-native-arm-game) || true
+          rm -rf _game_source _upstream_server _donor _output _dlc_stage _temporary_tsto_7z
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tsto-arm64-fast-auth-graphics-diagnostics-not-apk
+          path: reports/
+          retention-days: 5
