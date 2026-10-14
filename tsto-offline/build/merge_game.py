@@ -233,6 +233,7 @@ def main():
     p.add_argument("--donor",type=Path,help="Required only for the embedded-server build; not used in --external-server control")
     p.add_argument("--apktool",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
+    p.add_argument("--aapt2",type=Path,help="Native ARM64 aapt2 override for APKtool on ARM cloud runners")
     p.add_argument("--external-server",action="store_true",help="Diagnostic: skip starting embedded Python service; external localhost server required")
     a=p.parse_args()
     if not a.external_server and not a.donor:
@@ -254,6 +255,10 @@ def main():
             allow_external_loopback(game)
         else:
             hook_lifecycle(game)
-        run("java","-jar",str(a.apktool.resolve()),"b",str(game),"-o",str(a.out.resolve()))
+        build_args=["java","-jar",str(a.apktool.resolve()),"b",str(game)]
+        if a.aapt2:
+            build_args.extend(["-a",str(a.aapt2.resolve())])
+        build_args.extend(["-o",str(a.out.resolve())])
+        run(*build_args)
         print("Wrote experimental UNSIGNED APK",a.out.resolve())
 if __name__=="__main__":main()
