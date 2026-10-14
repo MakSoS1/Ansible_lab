@@ -1,10 +1,6 @@
 name: Pixel 10 Android 16 and 16KB game compatibility tests
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/tsto-pixel10-validation.yml'
-      - 'tsto-offline/build/merge_game.py'
 permissions:
   contents: read
 jobs:
