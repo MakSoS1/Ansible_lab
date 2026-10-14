@@ -88,6 +88,20 @@ jobs:
               print("Master DLC index", z.namelist())
           PY
           fi
+      - name: Retrieve complete DLC index collection from archived CDN
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _dlc_archives _dlc_stage reports
+          curl --retry 3 --connect-timeout 25 --max-time 300 -fSL \
+            "https://archive.org/download/tsto-dlc-cdn-oct2024/cdn/dlc.7z" \
+            -o _dlc_archives/dlc.7z
+          echo "8a72dd4072537164749a431cf85da7861751f47c  _dlc_archives/dlc.7z" | sha1sum -c -
+          if ! command -v 7z >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y p7zip-full; fi
+          7z x -y -o_dlc_stage _dlc_archives/dlc.7z >reports/archive-index-extraction.txt
+          find _dlc_stage -type f | sed -n '1,30p' | tee reports/archive-index-extracted-paths.txt
+          du -sh _dlc_stage | tee reports/archive-index-size.txt
+          rm -f _dlc_archives/dlc.7z
       - name: Emulate Android 15 with native x86 server and translated ARM game
         uses: reactivecircus/android-emulator-runner@v2
         with:
