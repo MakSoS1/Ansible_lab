@@ -1,0 +1,71 @@
+name: TSTO original APK connectivity callsite scan (private diagnostics)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-network-inspect.yml'
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Retrieve original game temporarily and decode Java-side network guards
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clone --depth 1 https://github.com/bodnjenie14/Tsto_patcher.git _game_source
+          java -jar _game_source/apktool_2.10.0.jar d '_game_source/Original Files/tsto_original.apk' -f -o _decoded_game >/dev/null
+          mkdir -p reports
+          python - <<'PY'
+          from pathlib import Path
+          terms=(
+              'Landroid/net/ConnectivityManager;->getActiveNetworkInfo',
+              'Landroid/net/NetworkInfo;->isConnected',
+              'Landroid/net/NetworkInfo;->isAvailable',
+              'Landroid/net/NetworkCapabilities;->hasCapability',
+              'Landroid/net/ConnectivityManager;->getNetworkInfo',
+              'Landroid/provider/Settings$System;->getInt',
+              'Landroid/provider/Settings$Global;->getInt',
+              'Landroid/net/ConnectivityManager;->getAllNetworkInfo',
+              'Landroid/net/ConnectivityManager;->getActiveNetwork',
+              'Landroid/net/NetworkInfo;->getType',
+          )
+          hits=[]
+          allfiles=0
+          for p in Path('_decoded_game').glob('smali*/**/*.smali'):
+              allfiles+=1
+              s=p.read_text('utf-8',errors='replace').splitlines()
+              for i,line in enumerate(s):
+                  term=next((t for t in terms if t in line),None)
+                  if not term:continue
+                  meth=next((s[j].strip() for j in range(i,-1,-1) if s[j].lstrip().startswith('.method ')),None)
+                  if not meth:continue
+                  rel=str(p.relative_to('_decoded_game'))
+                  entry={'path':rel,'line':i+1,'method':meth,'term':term,'context':s[max(0,i-4):min(len(s),i+6)]}
+                  hits.append(entry)
+          import json
+          out=Path('reports/network-callsites.json')
+          out.write_text(json.dumps({'file_count':allfiles,'num_calls':len(hits),'matches':hits},indent=2),encoding='utf-8')
+          print('Scanned files:',allfiles,'matched network callsites:',len(hits))
+          for e in hits:
+              if e['path'].startswith(('smali/com/ea','smali_classes2/com/ea','smali_classes3/com/ea')) or '/Scorpio' in e['path']:
+                  print(e['path'],e['line'],e['method'],e['term'])
+          PY
+      - name: Wipe original binary and dex before artifact upload
+        if: always()
+        shell: bash
+        run: |
+          rm -rf _game_source _decoded_game
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tsto-network-java-callsite-diagnostics-not-apk
+          path: reports/
+          retention-days: 3
