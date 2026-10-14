@@ -216,3 +216,34 @@ there are no real game assets in this fast test.
 **No full offline Pixel 10 APK exists or passed acceptance.** The working
 single-APK test only tested that the Python sidecar ran on native ARM64,
 not that the game could render Springfield or persist saves.
+
+
+## October 15 — ARM64 native Android 14/15 A/B result
+
+[Run 38648273294](https://github.com/MakSoS1/Ansible_lab/actions/runs/38648273294)
+booted **both** Redroid Android 14 (arm64-v8a) and Android 15
+(arm64-v8a), each with the same original 4.69.5 game client,
+patched loopback network access, local test server and synthetic DLC
+index. Both backends returned gameplay config and master DLC index
+HTTP 200. Nevertheless, each application ABORTED before showing any
+Springfield scene; both `baseline-logcat.txt` files contain
+`Fatal signal 11 (SIGSEGV)` in the game's `GLThread` with a null
+fault address. Device-version downgrade from 15 to 14 **does not**
+resolve this reproduction. Because the probe's DLC index is *synthetic*,
+this neither rules out DLC-related parser crashes nor establishes actual
+gameplay for either OS. Full archive run 38638648732 used genuine
+restored DLC but crashed at the same state `DLCTask` with a different
+allocator signature.
+
+The A/B workflow's reporting-only Python regex initially threw a
+PatternError after collecting the app logs. The error is unrelated to
+game execution; it was corrected in commit `23691f5a`.
+All images and logs exclude distributing the original EA APK.
+
+The existing signed 88MiB integrated build runs the backend but **does
+not bundle even the base game DLC**. A conventional single Android APK
+cannot directly contain the full restored 31.4GB game archive;
+reliable self-installing offline operation would additionally require
+on-device asset provisioning/expansion packages, a correct complete
+asset set, native graphics compatibility and verified save/reload.
+No APK meets the requested standalone/offline/full-game criteria.
