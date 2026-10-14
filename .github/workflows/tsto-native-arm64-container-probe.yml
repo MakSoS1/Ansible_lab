@@ -79,6 +79,27 @@ jobs:
           grep -q arm64-v8a reports/android-abi.txt
           test "$(tr -d '\r\n' <reports/boot.txt)" = 1
           echo "PASS: Native ARM64 Android booted, can next test real client without USB device"
+      - name: Native ARM64 original Scorpio engine smoke check (no DLC)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p reports
+          git clone --depth 1 https://github.com/bodnjenie14/Tsto_patcher.git "$RUNNER_TEMP/tsto-game-ci"
+          APK="$RUNNER_TEMP/tsto-game-ci/Original Files/tsto_original.apk"
+          test -s "$APK"
+          adb -s 127.0.0.1:5555 install "$APK" >reports/original-install.txt 2>&1
+          adb -s 127.0.0.1:5555 logcat -c || true
+          adb -s 127.0.0.1:5555 shell monkey -p com.ea.game.simpsons4_row -c android.intent.category.LAUNCHER 1 >reports/original-launch.txt 2>&1
+          sleep 25
+          adb -s 127.0.0.1:5555 shell ps -A | grep simpsons4_row >reports/original-process.txt || true
+          adb -s 127.0.0.1:5555 logcat -d -v time >reports/original-logcat.txt
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/original-screen.png || true
+          grep -Ei 'libscorpio|SIGSEGV|SIGABRT|FATAL EXCEPTION|AndroidRuntime' reports/original-logcat.txt | tail -160 >reports/original-native-summary.txt || true
+          grep -q 'libscorpio' reports/original-native-summary.txt || {
+            echo 'FAIL: game Scorpio engine did not initialize' > reports/original-game-result.txt; exit 1;
+          }
+          echo 'PASS: genuine ARM64 Scorpio loader reached; not proof of gameplay or assets' > reports/original-game-result.txt
+          rm -rf "$RUNNER_TEMP/tsto-game-ci"
       - name: Preserve host diagnostics; do not upload copyrighted binaries
         if: always()
         shell: bash
