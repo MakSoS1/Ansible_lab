@@ -215,12 +215,25 @@ def hook_lifecycle(game):
     manifest.write_text(xml)
     print("Hooked",f)
 
+def allow_external_loopback(game):
+    # Diagnostic only: same modified client but no Python service startup.
+    # A separately installed x86 server serves local DLC on the emulator.
+    p=game/"AndroidManifest.xml"
+    xml=p.read_text()
+    if 'android:usesCleartextTraffic=' not in xml:
+        xml=xml.replace("<application ","<application android:usesCleartextTraffic=\"true\" ",1)
+    if 'android:extractNativeLibs=' not in xml:
+        xml=xml.replace("<application ","<application android:extractNativeLibs=\"true\" ",1)
+    p.write_text(xml)
+    print("External-server test variant: no in-game Python process is started")
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--original",type=Path,required=True)
     p.add_argument("--donor",type=Path,required=True)
     p.add_argument("--apktool",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
+    p.add_argument("--external-server",action="store_true",help="Diagnostic: skip starting embedded Python service; external localhost server required")
     a=p.parse_args()
     with tempfile.TemporaryDirectory(prefix="tsto-merge-") as tmp:
         game=Path(tmp)/"game";donor=Path(tmp)/"donor"
@@ -228,7 +241,12 @@ def main():
         run("java","-jar",str(a.apktool.resolve()),"d",str(a.donor.resolve()),"-f","-o",str(donor))
         merge_dex(game,donor)
         merge_payloads(game,donor)
-        patch_java(game);patch_native(game);hook_lifecycle(game)
+        patch_java(game)
+        patch_native(game)
+        if a.external_server:
+            allow_external_loopback(game)
+        else:
+            hook_lifecycle(game)
         run("java","-jar",str(a.apktool.resolve()),"b",str(game),"-o",str(a.out.resolve()))
         print("Wrote experimental UNSIGNED APK",a.out.resolve())
 if __name__=="__main__":main()
