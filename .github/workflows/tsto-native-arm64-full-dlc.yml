@@ -140,17 +140,27 @@ jobs:
           mkdir -p reports
           adb -s 127.0.0.1:5555 install --no-incremental _output/game-ci.apk >reports/install.txt 2>&1
           adb -s 127.0.0.1:5555 reverse tcp:9000 tcp:9000
+          # Android's first-run fullscreen coaching overlay previously obscured
+          # the REAL game error screen for 110 seconds; turn it off before start.
+          adb -s 127.0.0.1:5555 shell settings put secure immersive_mode_confirmations confirmed || true
+          adb -s 127.0.0.1:5555 shell settings get secure immersive_mode_confirmations >reports/immersive-setting.txt || true
           adb -s 127.0.0.1:5555 logcat -c || true
           adb -s 127.0.0.1:5555 shell am start -W \
             -n com.ea.game.simpsons4_row/com.ea.simpsons.SimpsonsSplashScreen \
             | tee reports/game-start.txt
-          sleep 8
-          # Dismiss mandatory Android immersive-mode consent, not a game button.
-          adb -s 127.0.0.1:5555 shell input tap 1245 445 || true
+          sleep 18
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-18s.png || true
+          (timeout 20 adb -s 127.0.0.1:5555 shell uiautomator dump /sdcard/game-window.xml \
+            && adb -s 127.0.0.1:5555 pull /sdcard/game-window.xml reports/game-ui.xml) || true
+          # TSTO sometimes shows an actual OS network dialog with SETTINGS /
+          # RETRY (the prior screenshot had these under the immersive overlay).
+          # Capture the failure before pressing Retry for a second protocol pass.
+          adb -s 127.0.0.1:5555 shell input tap 1190 575 || true
           sleep 35
-          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-45s.png || true
-          sleep 65
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-post-retry.png || true
+          sleep 55
           adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-110s.png || true
+          adb -s 127.0.0.1:5555 shell dumpsys activity activities >reports/activities-after-retry.txt || true
           adb -s 127.0.0.1:5555 shell ps -A | grep -E 'simpsons4_row' | tee reports/processes-online.txt || true
           # Restart game offline; ADB reverse still makes host-side local DLC
           # accessible. This is NOT standalone offline APK validation.
