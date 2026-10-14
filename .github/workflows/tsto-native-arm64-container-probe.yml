@@ -59,6 +59,15 @@ jobs:
               DEVICE_ARGS+=(--device="/dev/binderfs/$dev:/dev/$dev")
             fi
           done
+          # Host binderfs nodes are initially crw------- root:root. Android
+          # servicemanager and HAL run as non-root UIDs and cannot open them.
+          # A device mapping alone is insufficient; grant access before boot.
+          for dev in binder hwbinder vndbinder; do
+            if [ -e "/dev/binderfs/$dev" ]; then
+              sudo chmod 0666 "/dev/binderfs/$dev"
+              stat -c '%a %n' "/dev/binderfs/$dev"
+            fi
+          done
           sudo docker run -d --rm --privileged --name tsto-redroid16 \
             "${DEVICE_ARGS[@]}" \
             -v "$RUNNER_TEMP/tsto-redroid-data:/data" \
