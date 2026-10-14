@@ -12,6 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-26.04-arm]
+        android: ['15', '16']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -60,9 +61,9 @@ jobs:
           sudo docker run -d --rm --privileged --name tsto-redroid16 \
             -v "$RUNNER_TEMP/tsto-redroid-data:/data" \
             -p 127.0.0.1:5555:5555 \
-            redroid/redroid:16.0.0_64only-latest \
+            redroid/redroid:${{ matrix.android }}.0.0_64only-latest \
             androidboot.redroid_width=1080 androidboot.redroid_height=1920 \
-            androidboot.redroid_dpi=420 androidboot.redroid_gpu_mode=guest
+            androidboot.redroid_dpi=420 androidboot.redroid_gpu_mode=guest androidboot.use_memfd=1
           for i in $(seq 1 30); do
             timeout 5 adb connect 127.0.0.1:5555 || true
             if timeout 4 adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q 1; then
@@ -94,6 +95,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: native-arm64-android16-container-${{ matrix.os }}
+          name: native-arm64-android${{ matrix.android }}-container-${{ matrix.os }}
           path: reports/
           retention-days: 5
