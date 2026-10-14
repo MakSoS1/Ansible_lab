@@ -20,6 +20,8 @@ jobs:
         run: cd tsto-offline && python -m unittest discover -s tests -v
       - name: Test Pixel 10 local server configurator
         run: cd tsto-offline/mobile && python -m unittest discover -s tests -v
+      - name: Regression test original Scorpio ARM64 URL relocation
+        run: cd tsto-offline/build && python -m unittest discover -s tests -v
       - name: Shell and Python syntax validation
         run: |
           bash -n tsto-offline/mobile/install_termux.sh
