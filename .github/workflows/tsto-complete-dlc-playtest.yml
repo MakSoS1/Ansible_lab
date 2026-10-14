@@ -1,6 +1,9 @@
 name: TSTO complete archived DLC gameplay and airplane-mode test
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-complete-dlc-playtest.yml'
 permissions:
   contents: read
 jobs:
