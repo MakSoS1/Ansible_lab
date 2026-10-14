@@ -30,3 +30,17 @@ This is a preservation and interoperability experiment, **not a playable or redi
 5. Avoid publishing EA copyrighted APKs, DLC, or unlicensed third-party server code in public repositories/artifacts.
 
 Run green != playable. Final acceptance requires a screenshot of Springfield, actual town persistence across app restarts, and true offline cold start on ARM64 Android 16.
+
+
+## Latest definitive validation — October 14 (evening)
+
+- [GPU A/B full-DLC workflow 38591127595](https://github.com/MakSoS1/Ansible_lab/actions/runs/38591127595): **both** Android 16 full-DLC `software` and `swangle` jobs FAILED strict gameplay acceptance. Actual town GET 200 = 0, town POST 200 = 0, initial `mytown` placeholder remains 33 bytes. Screenshots show Android launcher, not Springfield.
+- `swangle` tombstone: `SIGSEGV` in ART's `ModUnionTableReferenceCache::UpdateAndMarkReferences` on `HeapTaskDaemon`, after native ARM64 Scorpio loading, under x86_64 guest translation. It is a crash, despite HTTP 200 authentication and master DLC index response.
+- `software`: game still terminates in graphics/native code; changing GPU mode did not fix it.
+- [ARM64 JNI shader test 38593820427](https://github.com/MakSoS1/Ansible_lab/actions/runs/38593820427): all three emulator GPU modes passed 256 shader creations/deletions; passing this does not establish that the complete game renderer is sound.
+- [Native ARM64 Android16 macOS emulator 38595139675](https://github.com/MakSoS1/Ansible_lab/actions/runs/38595139675): FAILED boot; no real ARM64 full-game execution available on public GitHub runners. `HV_UNSUPPORTED` occurs with hardware acceleration; emulation without it timed out.
+- Actual restored DLC coverage report: 151/151 subindexes loaded, 19,207 unique package references, **15,239 present / 3,968 missing** across tiers and languages. For approximate RU/EN/tier candidates, **3,343 present / 790 missing** out of 4,133. This is an archive completeness problem independent of emulator rendering.
+- Extracted primary archive is 31,424,954,905 bytes. One conventional APK cannot simply embed all assets; native game/Flask sidecar cannot yet support verified completely offline gameplay. There is no acceptable complete `.apk` to distribute.
+- The missing dynamically requested `DLCIndex-v4-69-5-412AA04C483EBCA5.zip` has been independently reported as never existing, even on original official servers (community discussion, Feb 2025); don't misattribute ART heap corruption to that HTTP 404 without evidence.
+
+**Current deliverable acceptance: FAIL. Do not label merged APK playable or distribute as a finished offline game.**
