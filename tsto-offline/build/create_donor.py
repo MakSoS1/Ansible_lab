@@ -181,9 +181,23 @@ PY="""def serve(root):
                   server_url="http://127.0.0.1:9000", reverse_proxy=False,
                   run_tutorial=True, dlc_dir="dlc", towns_dir="towns", active_town="mytown")
     config_file.write_text(json.dumps(config, indent=2), encoding="utf-8")
-    # Run full original Python Flask+protobuf server, not a fake health-check app.
+    # The original Android client requests the bare assets root first, and
+    # otherwise receives a 404 before asking for DLCIndex.zip. Support this
+    # compatibility alias without weakening specific per-package paths.
     import tsto_server
-    tsto_server.start_server()
+    from flask import send_file, abort
+    srv = tsto_server.TheSimpsonsTappedOutLocalServer()
+    def master_index_at_root():
+        index = data / "dlc" / "dlc" / "DLCIndex.zip"
+        if not index.is_file():
+            return abort(404, description="Required DLCIndex.zip not provisioned")
+        return send_file(str(index), mimetype="application/zip")
+    srv.app.add_url_rule("/gameassets/", endpoint="master_index_at_root",
+                         view_func=master_index_at_root)
+    srv.app.add_url_rule("/netstorage/gameasset/direct/simpsons/",
+                         endpoint="master_index_at_original_root",
+                         view_func=master_index_at_root)
+    srv.run()
 """
 def main():
     p=argparse.ArgumentParser();p.add_argument("server_root");p.add_argument("output");a=p.parse_args()
