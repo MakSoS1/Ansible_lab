@@ -1,0 +1,111 @@
+name: TSTO complete archived DLC gameplay and airplane-mode test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-complete-dlc-playtest.yml'
+      - 'tsto-offline/build/merge_game.py'
+      - 'tsto-offline/build/create_donor.py'
+      - 'tsto-offline/build/download_full_dlc.py'
+      - 'tsto-offline/build/test_full_asset_game.sh'
+permissions:
+  contents: read
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Checkout original archived APK from patcher source
+        uses: actions/checkout@v4
+        with:
+          repository: bodnjenie14/Tsto_patcher
+          path: _game_source
+          persist-credentials: false
+      - name: Checkout local Python/protobuf game server
+        run: git clone --depth 1 https://github.com/sp00nznet/tsto-springfield.git _upstream_server
+      - name: Validate game/server merger Python syntax
+        run: python -m py_compile tsto-offline/build/create_donor.py tsto-offline/build/merge_game.py
+      - name: Create Android Chaquopy server module
+        run: |
+          python tsto-offline/build/create_donor.py _upstream_server _donor
+          grep -F 'getattr(self, "donut_balance", 0)' _donor/app/src/main/python/tsto_server.py
+          gradle --no-daemon -p _donor :app:assembleDebug
+      - name: Decode and merge original game with loopback server
+        run: |
+          set -euo pipefail
+          test -s "_game_source/Original Files/tsto_original.apk"
+          test -s "_game_source/apktool_2.10.0.jar"
+          mkdir -p _output reports
+          python tsto-offline/build/merge_game.py \
+            --original "_game_source/Original Files/tsto_original.apk" \
+            --donor "_donor/app/build/outputs/apk/debug/app-debug.apk" \
+            --apktool "_game_source/apktool_2.10.0.jar" \
+            --out "_output/merged-unsigned.apk" | tee reports/merge-build.txt
+      - name: Re-align and sign experimentally
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILDTOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILDTOOLS/zipalign" -P 16 -f 4 _output/merged-unsigned.apk _output/merged-aligned.apk
+          keytool -genkeypair -v -keystore _output/key.jks -alias tsto-experimental \
+            -storepass local-testing-only -keypass local-testing-only \
+            -keyalg RSA -keysize 3072 -validity 1 \
+            -dname "CN=Local Smoke Test, O=Local Build, C=US" >/dev/null 2>&1
+          "$BUILDTOOLS/apksigner" sign --ks _output/key.jks \
+            --ks-key-alias tsto-experimental --ks-pass pass:local-testing-only \
+            --key-pass pass:local-testing-only \
+            --out _output/tsto-experimental.apk _output/merged-aligned.apk
+          "$BUILDTOOLS/apksigner" verify -v _output/tsto-experimental.apk
+          unzip -l _output/tsto-experimental.apk | grep -E "lib/arm64-v8a/(libscorpio|libpython|libchaquopy)|assets/chaquopy|classes[0-9]*.dex" | head -30
+          ls -lh _output/tsto-experimental.apk
+      - name: Enable KVM for Android emulator
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
+      - name: Inspect available resources before full extraction
+        shell: bash
+        run: |
+          mkdir -p reports
+          df -hT | tee reports/initial-disk.txt
+          free -h | tee reports/initial-memory.txt
+      - name: Restore and verify entire 2024 historical DLC archive (about 27.5GB)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v 7z >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y p7zip-full; fi
+          python tsto-offline/build/download_full_dlc.py \
+            --output-dir _dlc_stage --max-download-gb 30 --min-free-gb 12 \
+            | tee reports/full-dlc-console.txt
+          du -sh _dlc_stage | tee reports/full-dlc-extracted-size.txt
+          df -hT >reports/disk-after-extraction.txt
+      - name: Full Android 15 game, saves, and offline restart on same device
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disk-size: 50G
+          ram-size: 4096M
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash tsto-offline/build/test_full_asset_game.sh
+      - name: Reports only, never redistribute third-party APK or server code
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-complete-dlc-gameplay-evidence
+          path: reports/
+          retention-days: 7
+      - name: Purge all source binaries and build outputs
+        if: always()
+        run: rm -rf _upstream_server _donor _game_source _output _dlc_mini _dlc_stage _dlc_archives _temporary_tsto_7z
