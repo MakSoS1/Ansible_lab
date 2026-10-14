@@ -95,6 +95,13 @@ public final class ServerBootstrap {
     private static volatile boolean running = false;
     private static final String TAG = "TSTO_OFFLINE_SERVER";
     public static void start(Context context) {
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            String runningProcess = android.app.Application.getProcessName();
+            if (runningProcess != null && runningProcess.endsWith(":tsto_backend")) {
+                Log.i(TAG, "Avoid recursive start from embedded backend process");
+                return;
+            }
+        }
         Context ctx = context.getApplicationContext();
         Intent intent = new Intent(ctx, ServerService.class);
         ctx.startService(intent);
