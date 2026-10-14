@@ -88,3 +88,14 @@ offline APK.** Real native ARM64 gameplay, tutorial, persistent town save and
 asset-complete offline install remain unverified. The complete preserved asset
 archive is approximately 31.4 GB and the RU/EN subset still has missing
 referenced packages. See prior blockers above.
+
+## One-APK native ARM64 smoke test — build succeeds, gameplay NOT validated
+
+- [GitHub Actions run 38618502598](https://github.com/MakSoS1/Ansible_lab/actions/runs/38618502598) completed successfully on native Linux ARM64 + Redroid Android **15**, with single signed experimental APK (~88 MiB), native Scorpio loaded, embedded Python/Flask backend available over localhost, and EA authentication/director endpoints returning 200.
+- This is an **integration smoke test**, not a fully working single-APK game: the APK contains no historical 31.4GB DLC. Its screenshot is the Android immersive-mode hint over a blank game area, **not** Springfield, and neither tutorial nor town GET/POST/save were observed in the short test.
+- [Full-DLC native ARM64 acceptance run 38628132176](https://github.com/MakSoS1/Ansible_lab/actions/runs/38628132176) added to distinguish rendering/protocol issues from asset loss, with ~31GB DLC staged **on runner host**. It uses ADB reverse, so even a successful result is NOT evidence that all assets fit in one APK, or that Android 16/Pixel 10 is supported.
+- Fixed the host game-server's `/gameassets/` root route to return uncompressed XML, and aligned first-run tutorial behavior for new towns.
+- Missing archives: 790 of 4,133 candidate RU/EN package references missing (archived reconstruction), independently of app/server integration. Full historical game content must NOT be advertised as complete.
+- No copyrighted original game binary or DLC is published in this public repository or GitHub Actions artifacts. Full signed APK is not distributed; the existing `88 MiB` file is a **non-playable diagnostic build**.
+
+**Acceptance still FAIL:** standalone offline Pixel 10/Android 16 cold start, complete asset set, visible Springfield, tutorial completion and persistent saves have not all been demonstrated.
