@@ -247,3 +247,30 @@ reliable self-installing offline operation would additionally require
 on-device asset provisioning/expansion packages, a correct complete
 asset set, native graphics compatibility and verified save/reload.
 No APK meets the requested standalone/offline/full-game criteria.
+
+
+## Follow-up: native URL allocation control — Oct 15
+
+A new reproducible experiment distinguishes a native DLC URL *string length*
+bug from downstream DLC parsing / graphics. The upstream patcher changes the
+original CDN URL from **89** to **33 bytes** and rewrites three ARM64 length
+immediates. The additional `merge_game.py --pad-native-dlc-url` mode
+uses a localhost alias exactly **89 bytes** long so the ARM64 string
+allocation immediates remain at their **original values** (90/90/89).
+The temporary Flask server aliases the extra path prefix to the same DLC
+endpoint. The mode is opt-in; regular builds are unaffected.
+
+[Run 38651730743](https://github.com/MakSoS1/Ansible_lab/actions/runs/38651730743)
+**SUCCEEDED as a diagnostic job, not gameplay**. The padded endpoint returned
+HTTP 200 for `/gameassets/dlc/DLCIndex.zip` on both starts and the local
+backend returned `/mh/gameplayconfig` 200 twice. But `libscorpio.so`
+still crashed with `SIGSEGV`, `fault addr 0x0`, in `GLThread` approximately
+237–245 ms after entering `DLCTask`, on BOTH starts. This used only a
+deliberately synthetic empty master XML; **do not claim real DLC can load**
+from that run. The prior fully restored 31.4 GB case also crashed in
+DLCTask, with `Scudo: corrupted chunk header`.
+
+Conclusion: merely shortening the native URL allocation is **not sufficient**
+to explain the crashes. Do not deploy or distribute a phone APK based on this
+test. No complete single offline Pixel10 APK has passed real gameplay, save
+or offline cold-start tests.
