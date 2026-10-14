@@ -171,7 +171,7 @@ jobs:
           for n in ['baseline-logcat.txt','treatment-logcat.txt']:
               log=Path('reports',n).read_text(errors='replace')
               crashes=[line for line in log.splitlines()
-                       if re.search(r'Fatal signal (6|11).*\\(GLThread',line)]
+                       if 'Fatal signal' in line and '(GLThread' in line
               scudo=[line for line in log.splitlines()
                      if 'Scudo ERROR:' in line]
               dlc=[line for line in log.splitlines()
