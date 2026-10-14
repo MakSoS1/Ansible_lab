@@ -4,6 +4,9 @@ mkdir -p reports
 echo "Supported ABIs:"
 adb shell getprop ro.product.cpu.abilist | tee reports/emulator-abis.txt
 adb shell getprop ro.dalvik.vm.native.bridge | tee reports/emulator-native-bridge.txt
+adb shell getprop ro.build.version.release | tee reports/android-version.txt
+adb shell getconf PAGE_SIZE | tee reports/page-size.txt
+adb shell getprop ro.build.version.sdk | tee reports/api-level.txt
 if ! adb install _output/tsto-experimental.apk >reports/install.txt 2>&1; then
     cat reports/install.txt
     exit 1
@@ -20,8 +23,9 @@ for attempt in $(seq 1 45); do
     fi
     sleep 2
 done
+adb shell ps -A | grep -E "simpsons4_row|tsto_backend" > reports/app-processes.txt || true
 adb logcat -d -v time > reports/emulator-logcat.txt
-grep -E 'TSTO_OFFLINE_SERVER|FATAL EXCEPTION|AndroidRuntime|python|libscorpio|UnsatisfiedLinkError' reports/emulator-logcat.txt | tail -140 >reports/relevant-logcat.txt || true
+grep -E 'TSTO_OFFLINE_SERVER|FATAL EXCEPTION|AndroidRuntime|Python|python|libscorpio|UnsatisfiedLinkError|Zygote.*exited|Process.*tsto_backend' reports/emulator-logcat.txt | tail -140 >reports/relevant-logcat.txt || true
 adb exec-out screencap -p >reports/screenshot.png || true
 adb shell dumpsys activity activities >reports/activity.txt || true
 if [ "$ok" -ne 1 ]; then
