@@ -18,6 +18,11 @@ EXPECTED = {
 HOST = "http://127.0.0.1:9000"
 DLC = HOST + "/gameassets/"
 CDN = b"http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com/netstorage/gameasset/direct/simpsons/"
+# Diagnostic experiment: retain original 89-byte CDN string length exactly.
+# A host Flask route strips this path segment for the local server.
+PADDED_PATH_PREFIX = "/" + "p" * (len(CDN) - len(DLC) - 1)
+PADDED_DLC = HOST + PADDED_PATH_PREFIX + "/gameassets/"
+assert len(PADDED_DLC.encode("ascii")) == len(CDN)
 SIG_BYPASS_469 = {
     "lib/arm64-v8a/libscorpio-neon.so": (7519612,b"\x9f\x00\x00\x14"),
     "lib/arm64-v8a/libscorpio.so": (7519464,b"\x9f\x00\x00\x14"),
@@ -185,7 +190,7 @@ def patch_native(game):
         if sha not in EXPECTED:raise RuntimeError("Unexpected engine sha: "+sha)
         pos=b.find(CDN)
         if pos<0:raise RuntimeError("Expected CDN URL not found in "+str(f))
-        if len(DLC.encode("ascii"))>=len(CDN):raise RuntimeError("DLC URL too long")
+        if len(DLC.encode("ascii"))>len(CDN):raise RuntimeError("DLC URL too long")
         patch_a64_url_lengths(b,name)
         b[pos:pos+len(CDN)] = DLC.encode("ascii") + b"\0"*(len(CDN)-len(DLC))
         if offset+4>len(b):raise RuntimeError("Signature offset outside engine binary")
@@ -264,6 +269,7 @@ def allow_external_loopback(game):
     print("External-server test variant: no in-game Python process is started")
 
 def main():
+    global DLC
     p=argparse.ArgumentParser()
     p.add_argument("--original",type=Path,required=True)
     p.add_argument("--donor",type=Path,help="Required only for the embedded-server build; not used in --external-server control")
@@ -272,7 +278,9 @@ def main():
     p.add_argument("--aapt2",type=Path,help="Native ARM64 aapt2 override for APKtool on ARM cloud runners")
     p.add_argument("--external-server",action="store_true",help="Diagnostic: skip starting embedded Python service; external localhost server required")
     p.add_argument("--retain-legacy-network-gates",action="store_true",help="A/B diagnostic: leave original Wi-Fi/mobile-only network guards intact")
+    p.add_argument("--pad-native-dlc-url",action="store_true",help="A/B diagnostic: make replacement CDN string exactly as long as original")
     a=p.parse_args()
+    DLC = PADDED_DLC if a.pad_native_dlc_url else HOST + "/gameassets/"
     if not a.external_server and not a.donor:
         p.error("--donor is required for the embedded-server build")
     with tempfile.TemporaryDirectory(prefix="tsto-merge-") as tmp:
