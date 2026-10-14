@@ -1,0 +1,88 @@
+name: Probe native ARM64 Android 16 via container without Pixel USB
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-native-arm64-container-probe.yml'
+permissions:
+  contents: read
+jobs:
+  native-android-capability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04-arm, ubuntu-24.04-arm, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Probe binder availability and install matching kernel module when possible
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p reports
+          exec > >(tee reports/probe.log) 2>&1
+          uname -a
+          getconf PAGESIZE
+          df -h .
+          grep -Ei 'binder|ashmem' /proc/filesystems /proc/misc || true
+          ls -la /dev/binder* /dev/hwbinder /dev/vndbinder 2>/dev/null || true
+          (zgrep -E '^CONFIG_ANDROID_BINDER_(IPC|FS)=' /proc/config.gz || grep -E '^CONFIG_ANDROID_BINDER_(IPC|FS)=' /boot/config-$(uname -r)) || true
+          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+          if ! grep -q binder /proc/filesystems && ! test -e /dev/binder; then
+            sudo apt-get update -qq || true
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)" || true
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+          fi
+          grep -i binder /proc/filesystems || true
+          if grep -q binder /proc/filesystems; then
+            sudo mkdir -p /dev/binderfs
+            sudo mount -t binder binder /dev/binderfs || true
+            ls -la /dev/binderfs || true
+          fi
+          if ! test -e /dev/binder && ! test -e /dev/binderfs/binder; then
+            echo "BLOCKED: GitHub ARM64 host kernel has no Android binder driver; Redroid cannot boot"
+            exit 2
+          fi
+          echo "PASS: kernel Android binder interface available"
+      - name: Start native ARM64 Android 16 without instruction translation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          exec > >(tee reports/redroid.log) 2>&1
+          docker info --format '{{.ServerVersion}}'
+          mkdir -p "$RUNNER_TEMP/tsto-redroid-data"
+          sudo docker run -d --rm --privileged --name tsto-redroid16 \
+            -v "$RUNNER_TEMP/tsto-redroid-data:/data" \
+            -p 127.0.0.1:5555:5555 \
+            redroid/redroid:16.0.0_64only-latest \
+            androidboot.redroid_width=1080 androidboot.redroid_height=1920 \
+            androidboot.redroid_dpi=420 androidboot.redroid_gpu_mode=guest
+          for i in $(seq 1 90); do
+            timeout 5 adb connect 127.0.0.1:5555 || true
+            if timeout 4 adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q 1; then
+              break
+            fi
+            sleep 3
+          done
+          timeout 15 adb -s 127.0.0.1:5555 shell getprop ro.build.version.release | tee reports/android-release.txt
+          timeout 15 adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abilist | tee reports/android-abi.txt
+          timeout 15 adb -s 127.0.0.1:5555 shell getprop ro.dalvik.vm.native.bridge | tee reports/native-bridge.txt
+          timeout 15 adb -s 127.0.0.1:5555 shell getconf PAGE_SIZE | tee reports/android-page-size.txt
+          timeout 15 adb -s 127.0.0.1:5555 shell getprop sys.boot_completed | tee reports/boot.txt
+          grep -q arm64-v8a reports/android-abi.txt
+          test "$(tr -d '\r\n' <reports/boot.txt)" = 1
+          echo "PASS: Native ARM64 Android booted, can next test real client without USB device"
+      - name: Preserve host diagnostics; do not upload copyrighted binaries
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p reports
+          (sudo docker logs --tail 250 tsto-redroid16 >reports/container-log.txt 2>&1) || true
+          (sudo docker inspect tsto-redroid16 >reports/container-inspect.json 2>&1) || true
+          sudo docker rm -f tsto-redroid16 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-arm64-android16-container-${{ matrix.os }}
+          path: reports/
+          retention-days: 5
