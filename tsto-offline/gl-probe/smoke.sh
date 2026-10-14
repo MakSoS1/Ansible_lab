@@ -7,7 +7,18 @@ adb shell getprop ro.dalvik.vm.native.bridge >reports/native-bridge.txt
 adb install tsto-offline/gl-probe/app/build/outputs/apk/debug/app-debug.apk >reports/install.txt 2>&1
 adb logcat -c
 adb shell am start -n com.tsto.glprobe/.MainActivity | tee reports/launch.txt
-sleep 12
+# First launch under SWANGLE can be substantially slower than 12 seconds.
+# Poll for the actual JNI stress result rather than relying on a fixed delay.
+for i in $(seq 1 35); do
+    adb logcat -d -v brief >reports/logcat-poll.txt
+    if grep -q 'PASS native ARM64 shader stress=256' reports/logcat-poll.txt; then
+        break
+    fi
+    if grep -Eq 'Fatal signal .*\(SIGSEGV\)|FAIL native ARM64 shader stress' reports/logcat-poll.txt; then
+        break
+    fi
+    sleep 2
+done
 adb logcat -d -v time >reports/logcat.txt
 grep -E 'TSTO_GLPROBE|Fatal signal|libOpenglCodecCommon|libGLESv2_enc|SIGSEGV|AndroidRuntime' reports/logcat.txt | tail -170 >reports/graphics-summary.txt || true
 if ! grep -q 'PASS native ARM64 glCreateShader=' reports/logcat.txt;then
