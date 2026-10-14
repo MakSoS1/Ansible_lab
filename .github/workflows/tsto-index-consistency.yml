@@ -1,0 +1,44 @@
+name: Audit DLC master-to-subindex consistency
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-index-consistency.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download one master index and historical index collection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _index_test reports
+          curl -fLsS --retry 3 --max-time 90 \
+            http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com/netstorage/gameasset/direct/simpsons/dlc/DLCIndex.zip \
+            -o _index_test/DLCIndex.zip
+          curl -fLsS --retry 3 --max-time 120 \
+            https://archive.org/download/tsto-dlc-cdn-oct2024/cdn/dlc.7z \
+            -o _index_test/index-collection.7z
+          echo '8a72dd4072537164749a431cf85da7861751f47c  _index_test/index-collection.7z' | sha1sum -c -
+          mkdir -p _index_test/extracted
+          7z x -y -o_index_test/extracted _index_test/index-collection.7z >/dev/null
+          python tsto-offline/build/check_master_index.py \
+            _index_test/DLCIndex.zip _index_test/extracted >reports/console.txt
+          grep -E 'missing_count|found_count|Untroubled|4-69-5' reports/console.txt | tail -40 || true
+      - name: Reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-master-index-reference-analysis
+          path: reports/
+          retention-days: 7
+      - name: Purge proprietary DLC archives
+        if: always()
+        run: rm -rf _index_test
