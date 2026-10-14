@@ -41,7 +41,10 @@ fi
 
 # Launch the actual EA game, with its known redirect and patched native engine.
 adb shell monkey -p com.ea.game.simpsons4_row -c android.intent.category.LAUNCHER 1 >reports/game-launch.txt 2>&1
-sleep 25
+sleep 8
+# Dismiss Android immersive-mode hint, rather than capturing the OS overlay.
+adb shell input tap 1695 495 || true
+sleep 22
 adb shell dumpsys activity activities >reports/activities.txt || true
 adb shell ps -A | grep -E 'simpsons4_row|sidecarprobe' > reports/app-processes.txt || true
 adb logcat -d -v time >reports/logcat.txt
@@ -50,6 +53,10 @@ grep -Ei 'tsto_offline_server|/gameassets/|/netstorage/|DLCIndex|404|simpsons4_r
 adb exec-out screencap -p >reports/game-screenshot.png || true
 curl -sS -m 5 -o reports/second-response.txt -w '%{http_code}' \
    http://127.0.0.1:19000/ >reports/server-after-client-status.txt || true
+if ! grep -q 'GET /mh/gameplayconfig.*200' reports/logcat.txt; then
+   echo "FAIL: client did not complete actual server game-config handshake" | tee -a reports/result.txt
+   exit 1
+fi
 if ! grep -q 'com.ea.game.simpsons4_row' reports/app-processes.txt; then
    echo "FAIL: game process absent after 25 seconds" | tee -a reports/result.txt
    exit 1
@@ -58,5 +65,5 @@ if ! grep -q '^200$' reports/server-after-client-status.txt; then
    echo "FAIL: server stopped during EA client startup" | tee -a reports/result.txt
    exit 1
 fi
-echo "PASS: game process and independent local server coexisted" | tee -a reports/result.txt
+echo "PASS: game client and independent local server coexisted; gameplayconfig HTTP 200" | tee -a reports/result.txt
 echo "INCOMPLETE: tutorial/saves/airplane mode unavailable until required DLC packs are staged" | tee -a reports/result.txt
