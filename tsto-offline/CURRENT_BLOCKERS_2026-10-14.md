@@ -44,3 +44,47 @@ Run green != playable. Final acceptance requires a screenshot of Springfield, ac
 - The missing dynamically requested `DLCIndex-v4-69-5-412AA04C483EBCA5.zip` has been independently reported as never existing, even on original official servers (community discussion, Feb 2025); don't misattribute ART heap corruption to that HTTP 404 without evidence.
 
 **Current deliverable acceptance: FAIL. Do not label merged APK playable or distribute as a finished offline game.**
+
+## Native ARM64 cloud-only test progress (no Pixel/USB needed)
+
+The user cannot connect a physical Pixel. A cloud-only alternative was implemented
+in `.github/workflows/tsto-native-arm64-container-probe.yml`, with GitHub-hosted
+native `ubuntu-26.04-arm` and separate Redroid Android 15/16 images. All
+original game APK bytes are kept on ephemeral runners and deliberately omitted
+from uploaded artifacts.
+
+- Initial Redroid errors traced to missing ADB, host binderfs nodes passed via
+  Docker `--device` from the wrong binderfs instance, and root-only access to
+  binder device nodes. Linux binderfs instances are independent. Letting
+  Redroid create its own private BinderFS devices **fixed** the system-service
+  crashes (`servicemanager` now runs; no ARM instruction translation).
+- **Android 15 native ARM64 boot verified** in run
+  [38617037083](https://github.com/MakSoS1/Ansible_lab/actions/runs/38617037083).
+  `sys.boot_completed=1`, `ro.product.cpu.abilist=arm64-v8a`,
+  no native bridge, 4-KiB page size. This is native ARM64 cloud infrastructure
+  and not a Pixel 10 or 16-KiB page test.
+- Android 16 reaches working Binder, ADB and package infrastructure but
+  `SurfaceFlinger` crashes while priming a SkiaRenderEngine shader cache,
+  reporting `output buffer not gpu writeable` under software GPU, preventing
+  completed boot. This matches the Redroid issue #934 reported when ashmem is
+  unavailable on new Linux kernels. `androidboot.use_memfd=1` was added and
+  Android 15/16 compared; full Android 16 boot is still unverified.
+- Native ARM64 game APK **installation** succeeded in Redroid Android 15
+  (run [38617135606](https://github.com/MakSoS1/Ansible_lab/actions/runs/38617135606),
+  reports/original-install.txt). Initial launcher automation returned
+  `monkey` exit 251 before capturing full logs; the test now tolerates
+  monkey failure, also tries explicit `am start`, and captures screenshot/logcat.
+  This is **NOT** proof of gameplay.
+- The merged-APK x86/ARM-translated Android 15 test
+  [38613958873](https://github.com/MakSoS1/Ansible_lab/actions/runs/38613958873)
+  started `:tsto_backend` and loaded libpython3.13.so, but the process
+  exited during `Python.start` without responding on localhost.
+- `merge_game.py --external-server` previously **still merged** the Python
+  donor DEX and runtime. Fixed: the external control now omits the donor
+  entirely. Added `tests/test_merge_modes.py`; preflight passing.
+
+**Do not label any CI APK, source artifact, or alive process a playable single
+offline APK.** Real native ARM64 gameplay, tutorial, persistent town save and
+asset-complete offline install remain unverified. The complete preserved asset
+archive is approximately 31.4 GB and the RU/EN subset still has missing
+referenced packages. See prior blockers above.
