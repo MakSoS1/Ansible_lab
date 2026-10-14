@@ -116,16 +116,16 @@ def patch_android_loopback_connectivity(game):
         if not file.is_file():
             raise RuntimeError(f"Expected original 4.69.5 connectivity guard missing: {name}")
         source = file.read_text(encoding="utf-8")
-        pat = re.compile(r"(?ms)^\\.method[^\\n]*\\b" + re.escape(method) +
-                         r"\\(\\)Z[ \\t]*\\n.*?^\\.end method")
+        pat = re.compile(r"(?ms)^\.method[^\n]*\b" + re.escape(method) +
+                         r"\(\)Z[ \t]*\n.*?^\.end method")
         found = list(pat.finditer(source))
         if len(found) != 1:
             raise RuntimeError(f"Expected unique network guard {name}:{method}, got {len(found)}")
         original = found[0].group(0)
-        signature = original.split("\\n", 1)[0]
+        signature = original.split("\n", 1)[0]
         literal = "0x1" if result else "0x0"
-        replacement = (signature + "\\n    .locals 1\\n    const/4 v0, " +
-                       literal + "\\n    return v0\\n.end method")
+        replacement = (signature + "\n    .locals 1\n    const/4 v0, " +
+                       literal + "\n    return v0\n.end method")
         file.write_text(source[:found[0].start()] + replacement +
                         source[found[0].end():], encoding="utf-8")
         print(f"Patched localhost connectivity {name}:{method} -> {result}")
