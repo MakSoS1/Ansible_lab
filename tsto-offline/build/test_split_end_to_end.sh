@@ -39,6 +39,19 @@ if [ -s "_dlc_mini/DLCIndex.zip" ]; then
   adb shell rm -f /data/local/tmp/tsto_index_ci.zip
 fi
 
+# Stage original DLC index collection from Internet Archive. This only
+# includes manifests: no city art/textures or gameplay sounds yet.
+if [ -d "_dlc_stage" ]; then
+  mkdir -p _dlc_archives
+  tar -cf _dlc_archives/dlc-staging.tar -C _dlc_stage .
+  adb push _dlc_archives/dlc-staging.tar /data/local/tmp/tsto-dlc-indices.tar >/dev/null
+  adb shell run-as com.tsto.offline.sidecarprobe mkdir -p files/offline_tsto/dlc
+  adb shell run-as com.tsto.offline.sidecarprobe tar -xf /data/local/tmp/tsto-dlc-indices.tar -C files/offline_tsto/dlc
+  adb shell rm -f /data/local/tmp/tsto-dlc-indices.tar
+  adb shell run-as com.tsto.offline.sidecarprobe ls -l files/offline_tsto/dlc/dlc/ > reports/dlc-index-dir.txt || true
+  echo "Staged historical DLC manifests into game server's private storage"
+fi
+
 # Launch the actual EA game, with its known redirect and patched native engine.
 adb shell monkey -p com.ea.game.simpsons4_row -c android.intent.category.LAUNCHER 1 >reports/game-launch.txt 2>&1
 sleep 8
