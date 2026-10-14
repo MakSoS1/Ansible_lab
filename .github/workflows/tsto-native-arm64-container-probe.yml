@@ -53,23 +53,11 @@ jobs:
           sudo apt-get install -y adb
           docker info --format '{{.ServerVersion}}'
           mkdir -p "$RUNNER_TEMP/tsto-redroid-data"
-          DEVICE_ARGS=()
-          for dev in binder hwbinder vndbinder; do
-            if [ -e "/dev/binderfs/$dev" ]; then
-              DEVICE_ARGS+=(--device="/dev/binderfs/$dev:/dev/$dev")
-            fi
-          done
-          # Host binderfs nodes are initially crw------- root:root. Android
-          # servicemanager and HAL run as non-root UIDs and cannot open them.
-          # A device mapping alone is insufficient; grant access before boot.
-          for dev in binder hwbinder vndbinder; do
-            if [ -e "/dev/binderfs/$dev" ]; then
-              sudo chmod 0666 "/dev/binderfs/$dev"
-              stat -c '%a %n' "/dev/binderfs/$dev"
-            fi
-          done
+          # Android 16 Redroid mounts its OWN binderfs instance and invokes
+          # binder_alloc to create /dev/binder, /dev/hwbinder and /dev/vndbinder.
+          # Host binderfs nodes are NOT interchangeable across mounts. Passing
+          # --device from host caused ENXIO and fatal servicemanager aborts.
           sudo docker run -d --rm --privileged --name tsto-redroid16 \
-            "${DEVICE_ARGS[@]}" \
             -v "$RUNNER_TEMP/tsto-redroid-data:/data" \
             -p 127.0.0.1:5555:5555 \
             redroid/redroid:16.0.0_64only-latest \
