@@ -1,0 +1,47 @@
+name: TSTO unmodified original APK Android ABI crash controls
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-original-crash-controls.yml'
+      - 'tsto-offline/build/test_original_game.sh'
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 33, 35, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve exact original APK for temporary diagnostic
+        uses: actions/checkout@v4
+        with:
+          repository: bodnjenie14/Tsto_patcher
+          path: _game_source
+          persist-credentials: false
+      - name: Enable Linux KVM virtualization
+        run: |
+          if test -c /dev/kvm; then sudo chmod a+rw /dev/kvm; fi
+      - name: Test unmodified EA APK (no patches, no server)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash tsto-offline/build/test_original_game.sh
+      - name: Publish reports only, not copyrighted APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-original-android-${{ matrix.api }}-baseline
+          path: reports/
+          retention-days: 7
+      - name: Purge original APK
+        if: always()
+        run: rm -rf _game_source
