@@ -1,0 +1,109 @@
+name: TSTO game + local backend complete emulator diagnostic
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-full-emulator-diagnostic.yml'
+      - 'tsto-offline/build/merge_game.py'
+      - 'tsto-offline/build/create_donor.py'
+      - 'tsto-offline/build/test_split_end_to_end.sh'
+permissions:
+  contents: read
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Checkout original archived APK from patcher source
+        uses: actions/checkout@v4
+        with:
+          repository: bodnjenie14/Tsto_patcher
+          path: _game_source
+          persist-credentials: false
+      - name: Checkout local Python/protobuf game server
+        run: git clone --depth 1 https://github.com/sp00nznet/tsto-springfield.git _upstream_server
+      - name: Validate game/server merger Python syntax
+        run: python -m py_compile tsto-offline/build/create_donor.py tsto-offline/build/merge_game.py
+      - name: Create Android Chaquopy server module
+        run: |
+          python tsto-offline/build/create_donor.py _upstream_server _donor
+          grep -F 'getattr(self, "donut_balance", 0)' _donor/app/src/main/python/tsto_server.py
+          gradle --no-daemon -p _donor :app:assembleDebug
+      - name: Decode and merge original game with loopback server
+        run: |
+          set -euo pipefail
+          test -s "_game_source/Original Files/tsto_original.apk"
+          test -s "_game_source/apktool_2.10.0.jar"
+          mkdir -p _output reports
+          python tsto-offline/build/merge_game.py \
+            --original "_game_source/Original Files/tsto_original.apk" \
+            --donor "_donor/app/build/outputs/apk/debug/app-debug.apk" \
+            --apktool "_game_source/apktool_2.10.0.jar" \
+            --out "_output/merged-unsigned.apk" | tee reports/merge-build.txt
+      - name: Re-align and sign experimentally
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILDTOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILDTOOLS/zipalign" -P 16 -f 4 _output/merged-unsigned.apk _output/merged-aligned.apk
+          keytool -genkeypair -v -keystore _output/key.jks -alias tsto-experimental \
+            -storepass local-testing-only -keypass local-testing-only \
+            -keyalg RSA -keysize 3072 -validity 1 \
+            -dname "CN=Local Smoke Test, O=Local Build, C=US" >/dev/null 2>&1
+          "$BUILDTOOLS/apksigner" sign --ks _output/key.jks \
+            --ks-key-alias tsto-experimental --ks-pass pass:local-testing-only \
+            --key-pass pass:local-testing-only \
+            --out _output/tsto-experimental.apk _output/merged-aligned.apk
+          "$BUILDTOOLS/apksigner" verify -v _output/tsto-experimental.apk
+          unzip -l _output/tsto-experimental.apk | grep -E "lib/arm64-v8a/(libscorpio|libpython|libchaquopy)|assets/chaquopy|classes[0-9]*.dex" | head -30
+          ls -lh _output/tsto-experimental.apk
+      - name: Enable KVM for Android emulator
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
+      - name: Capture available disk and stage game master index (not complete DLC)
+        shell: bash
+        run: |
+          mkdir -p reports _dlc_mini
+          df -hT >reports/runner-disk.txt
+          free -h >reports/runner-memory.txt
+          curl --retry 2 --connect-timeout 20 --max-time 120 -fSL             "http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com/netstorage/gameasset/direct/simpsons/dlc/DLCIndex.zip"             -o _dlc_mini/DLCIndex.zip || echo "Master DLC index could not be downloaded" >reports/master-index-status.txt
+          if [ -s _dlc_mini/DLCIndex.zip ]; then
+            python - <<'PY'
+          import zipfile
+          path="_dlc_mini/DLCIndex.zip"
+          if not zipfile.is_zipfile(path):
+              raise SystemExit("Master DLC index download is not a valid ZIP")
+          with zipfile.ZipFile(path) as z:
+              print("Master DLC index", z.namelist())
+          PY
+          fi
+      - name: Emulate Android 15 with native x86 server and translated ARM game
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: bash tsto-offline/build/test_split_end_to_end.sh
+      - name: Reports only, never redistribute third-party APK or server code
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-full-game-emulator-reports
+          path: reports/
+          retention-days: 14
+      - name: Purge all source binaries and build outputs
+        if: always()
+        run: rm -rf _upstream_server _donor _game_source _output _dlc_mini
