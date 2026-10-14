@@ -1,4 +1,4 @@
-name: TSTO ARM64 fast pre-DLC network and graphics A/B probe (diagnostics only)
+name: TSTO ARM64 original-length DLC URL allocator regression (diagnostics only)
 on:
   workflow_dispatch:
   push:
@@ -65,6 +65,7 @@ jobs:
           python tsto-offline/build/merge_game.py \
             --original '_game_source/Original Files/tsto_original.apk' \
             --external-server \
+            --pad-native-dlc-url \
             --apktool _game_source/apktool_2.10.0.jar \
             --aapt2 "$ANDROID_HOME/build-tools/35.0.1/aapt2" \
             --out _output/game-unsigned.apk | tee reports/merge-build.txt
