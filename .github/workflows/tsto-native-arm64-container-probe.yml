@@ -49,9 +49,18 @@ jobs:
         run: |
           set -Eeuo pipefail
           exec > >(tee reports/redroid.log) 2>&1
+          sudo apt-get update -qq
+          sudo apt-get install -y adb
           docker info --format '{{.ServerVersion}}'
           mkdir -p "$RUNNER_TEMP/tsto-redroid-data"
+          DEVICE_ARGS=()
+          for dev in binder hwbinder vndbinder; do
+            if [ -e "/dev/binderfs/$dev" ]; then
+              DEVICE_ARGS+=(--device="/dev/binderfs/$dev:/dev/$dev")
+            fi
+          done
           sudo docker run -d --rm --privileged --name tsto-redroid16 \
+            "${DEVICE_ARGS[@]}" \
             -v "$RUNNER_TEMP/tsto-redroid-data:/data" \
             -p 127.0.0.1:5555:5555 \
             redroid/redroid:16.0.0_64only-latest \
