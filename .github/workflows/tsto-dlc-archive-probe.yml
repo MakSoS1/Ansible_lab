@@ -1,0 +1,30 @@
+name: Discover complete TSTO DLC archive layout
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-dlc-archive-probe.yml'
+      - 'tsto-offline/build/probe_dlc_sources.py'
+permissions:
+  contents: read
+jobs:
+  archive-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Measure hosted runner space
+        run: |
+          mkdir -p reports
+          df -hT | tee reports/runner-disk.txt
+      - name: Probe full historical DLC archive metadata without downloading assets
+        run: python tsto-offline/build/probe_dlc_sources.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tsto-dlc-archive-source-probe
+          path: reports/
+          retention-days: 7
