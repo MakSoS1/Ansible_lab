@@ -30,11 +30,13 @@ echo "PASS: Flask game server reachable on the emulator" | tee reports/result.tx
 
 # This file comes from the archived original CDN; no DLC or APK is published.
 if [ -s "_dlc_mini/DLCIndex.zip" ]; then
-  adb exec-in run-as com.tsto.offline.sidecarprobe sh -c \
-    'mkdir -p files/offline_tsto/dlc/dlc && cat > files/offline_tsto/dlc/dlc/DLCIndex.zip' \
-    < _dlc_mini/DLCIndex.zip
-  adb shell run-as com.tsto.offline.sidecarprobe \
-    ls -lh files/offline_tsto/dlc/dlc/DLCIndex.zip >reports/staged-master-index.txt
+  # Avoid ADB exec-in stdin/quoting ambiguity: stage through a short-lived,
+  # world-readable /data/local/tmp file, then copy as the app UID.
+  adb push _dlc_mini/DLCIndex.zip /data/local/tmp/tsto_index_ci.zip >/dev/null
+  adb shell run-as com.tsto.offline.sidecarprobe mkdir -p files/offline_tsto/dlc/dlc
+  adb shell run-as com.tsto.offline.sidecarprobe cp /data/local/tmp/tsto_index_ci.zip files/offline_tsto/dlc/dlc/DLCIndex.zip
+  adb shell run-as com.tsto.offline.sidecarprobe ls -lh files/offline_tsto/dlc/dlc/DLCIndex.zip >reports/staged-master-index.txt
+  adb shell rm -f /data/local/tmp/tsto_index_ci.zip
 fi
 
 # Launch the actual EA game, with its known redirect and patched native engine.
