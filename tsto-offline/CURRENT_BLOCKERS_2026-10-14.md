@@ -99,3 +99,38 @@ referenced packages. See prior blockers above.
 - No copyrighted original game binary or DLC is published in this public repository or GitHub Actions artifacts. Full signed APK is not distributed; the existing `88 MiB` file is a **non-playable diagnostic build**.
 
 **Acceptance still FAIL:** standalone offline Pixel 10/Android 16 cold start, complete asset set, visible Springfield, tutorial completion and persistent saves have not all been demonstrated.
+
+
+## Fully archived ARM64 test — completed failure diagnosis (Oct 14, latest)
+
+The strict 31.4GB archive run [38628132176](https://github.com/MakSoS1/Ansible_lab/actions/runs/38628132176) **FAILED**.
+It restored 410/410 7z historical archive parts and served `/gameassets/`
+as XML (HTTP 200). ARM64 Android 15 booted, patched EA client 4.69.5
+installed and started, loaded `libscorpio.so`, and local server returned
+200 for director, device, anonymous login, token info and tracking.
+
+Nevertheless, **zero `/mh/gameplayconfig` calls, zero town GET/POST**
+were observed; saved `mytown` remained 33 bytes. At 45/110 seconds the
+screenshot was obscured by Android's "Viewing full screen" modal;
+a SETTINGS/RETRY network-style dialog was partially visible underneath.
+After restart, the actual game process (PID 2219) crashed in
+`RenderThread`: Scudo `corrupted chunk header` in
+`/vendor/lib64/hw/vulkan.pastel.so`, tracing through LLVM AArch64
+`TargetSubtargetInfo` destructor, SwiftShader JIT, and Vulkan draw.
+That is a **guest software-renderer** failure, not proof of a Pixel GPU
+crash. Google Play services and Facebook warnings are present, but no
+direct causation has been shown. After restart, the captured screen was
+the Android launcher, not Springfield.
+
+Commit `7daf36c4` updated the full-archive workflow to suppress Android's
+immersive-mode modal **before launch**, capture an 18s failure image and
+UI dump, press the observed RETRY control, and capture post-retry state.
+Fresh run [38636313925](https://github.com/MakSoS1/Ansible_lab/actions/runs/38636313925)
+started; it must be inspected before claiming that gameplay works.
+
+For reference, [official Redroid configuration](https://github.com/remote-android/redroid-doc)
+identifies `androidboot.redroid_gpu_mode=guest` as software rendering,
+while `host` requires compatible GPU access unavailable on these
+GitHub ARM runners. **No complete playable offline Pixel 10 APK exists in
+our artifacts.** Continue to require real town rendering, tutorial
+completion, saved-city persistence and offline cold-start validation.
