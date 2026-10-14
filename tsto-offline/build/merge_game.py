@@ -125,8 +125,8 @@ def hook_lifecycle(game):
     # Reserve one additional register without overwriting an existing register.
     # The secondary Android process needs Application context but not game SDK
     # initialization, which wastes memory and sometimes starts native Scorpio.
-    local = re.search(r"(?m)^\\s*\\.locals\\s+(\\d+)\\s*$", fragment)
-    regs = re.search(r"(?m)^\\s*\\.registers\\s+(\\d+)\\s*$", fragment)
+    local = re.search(r"(?m)^\s*\.locals\s+(\d+)\s*$", fragment)
+    regs = re.search(r"(?m)^\s*\.registers\s+(\d+)\s*$", fragment)
     if local:
         old_count = int(local.group(1))
         scratch = "v" + str(old_count)
@@ -137,14 +137,14 @@ def hook_lifecycle(game):
         fragment = fragment[:regs.start(1)] + str(old_count + 1) + fragment[regs.end(1):]
     else:
         raise RuntimeError("onCreate has no .locals/.registers declaration")
-    site = re.search(r"(?m)^\\s*invoke-super \\{p0\\}, L[^;]+;->onCreate\\(\\)V\\s*$",fragment)
+    site = re.search(r"(?m)^\s*invoke-super \{p0\}, L[^;]+;->onCreate\(\)V\s*$",fragment)
     hook = (
-        "\\n    invoke-static {}, Lcom/tsto/offline/ServerBootstrap;->isBackendProcess()Z"
-        + "\\n    move-result " + scratch
-        + "\\n    if-eqz " + scratch + ", :tsto_game_main_process"
-        + "\\n    return-void"
-        + "\\n    :tsto_game_main_process"
-        + "\\n    invoke-static {p0}, Lcom/tsto/offline/ServerBootstrap;->start(Landroid/content/Context;)V"
+        "\n    invoke-static {}, Lcom/tsto/offline/ServerBootstrap;->isBackendProcess()Z"
+        + "\n    move-result " + scratch
+        + "\n    if-eqz " + scratch + ", :tsto_game_main_process"
+        + "\n    return-void"
+        + "\n    :tsto_game_main_process"
+        + "\n    invoke-static {p0}, Lcom/tsto/offline/ServerBootstrap;->start(Landroid/content/Context;)V"
     )
     new_fragment=fragment[:site.end()]+hook+fragment[site.end():]
     text=text[:methods[0].start()]+new_fragment+text[methods[0].end():]
