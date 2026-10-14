@@ -6,7 +6,7 @@ Chaquopy backend instead. Source server stays on the ephemeral runner.
 """
 import json, os, sys
 from pathlib import Path
-from flask import send_file
+from flask import Response, abort, send_file
 
 def main():
     if len(sys.argv)!=3:
@@ -44,5 +44,24 @@ def main():
     for ep in ("dlc_download","dlc_download_netstorage"):
         if ep in srv.app.view_functions:
             srv.app.view_functions[ep]=guarded_dlc
+
+    # Scorpio requests the bare root URL for UNCOMPRESSED master XML, not
+    # zipped DLCIndex.zip. Previously the hosted-server control could
+    # return a 404 here even though all 151 subindexes were present.
+    def master_xml():
+        import zipfile
+        with zipfile.ZipFile(dlc/"dlc"/"DLCIndex.zip") as z:
+            names=[x for x in z.namelist() if x.lower().endswith(".xml")
+                   and not x.startswith("__MACOSX/") and not Path(x).name.startswith("._")]
+            if len(names)!=1:
+                abort(500,"Unexpected master DLC index XML count")
+            return Response(z.read(names[0]),mimetype="application/xml")
+
+    for route,endpoint in (
+        ("/gameassets/","master_xml_at_gameassets"),
+        ("/netstorage/gameasset/direct/simpsons/","master_xml_at_original_root")
+    ):
+        if route not in {rule.rule for rule in srv.app.url_map.iter_rules()}:
+            srv.app.add_url_rule(route,endpoint=endpoint,view_func=master_xml)
     srv.run()
 if __name__=="__main__":main()
