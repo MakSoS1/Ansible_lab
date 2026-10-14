@@ -188,10 +188,19 @@ PY="""def serve(root):
     from flask import send_file, abort
     srv = tsto_server.TheSimpsonsTappedOutLocalServer()
     def master_index_at_root():
+        # The Scorpio master-index network handler expects the uncompressed
+        # XML document on this bare assets URL (not ZIP bytes).
+        import zipfile
+        from flask import Response
         index = data / "dlc" / "dlc" / "DLCIndex.zip"
         if not index.is_file():
             return abort(404, description="Required DLCIndex.zip not provisioned")
-        return send_file(str(index), mimetype="application/zip")
+        with zipfile.ZipFile(index) as archive:
+            xml_names = [n for n in archive.namelist() if n.lower().endswith(".xml")]
+            if not xml_names:
+                return abort(500, description="Master DLC index has no XML")
+            contents = archive.read(xml_names[0])
+        return Response(contents, mimetype="application/xml")
     srv.app.add_url_rule("/gameassets/", endpoint="master_index_at_root",
                          view_func=master_index_at_root)
     srv.app.add_url_rule("/netstorage/gameasset/direct/simpsons/",
