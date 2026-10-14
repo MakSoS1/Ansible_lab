@@ -1,0 +1,37 @@
+name: Inspect historical DLC archive package layout
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-dlc-layout.yml'
+      - 'tsto-offline/build/inspect_dlc_archive.py'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scan DLC file inventory and download only one tiny sample
+        run: python tsto-offline/build/inspect_dlc_archive.py | tee reports-log.txt
+      - name: Inspect 7z package path structure
+        run: |
+          mkdir -p reports
+          cp reports-log.txt reports/archive-probe-log.txt
+          if [ -s sample.7z ]; then
+            if ! command -v 7z >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y p7zip-full; fi
+            7z l -slt sample.7z > reports/sample-7z-file-list.txt
+            sed -n '1,65p' reports/sample-7z-file-list.txt
+            rm -f sample.7z
+          fi
+      - name: Report filenames only, no game assets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-dlc-archive-structure
+          path: reports/
+          retention-days: 7
