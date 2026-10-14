@@ -4,7 +4,7 @@
 Downloaded EA assets MUST NOT be committed or uploaded as public Actions
 artifacts. Reports contain filenames, hashes, and sizes only.
 """
-import argparse,hashlib,json,os,subprocess,urllib.request,urllib.parse,shutil,time
+import argparse,hashlib,json,os,subprocess,urllib.request,urllib.parse,shutil,time,zipfile
 from pathlib import Path
 
 ITEM="tsto-dlc-cdn-oct2024"
@@ -80,6 +80,44 @@ def main():
         finally:
             local.unlink(missing_ok=True)
             if index%8==0 or index==len(items):report()
+    # The September 2024 CDN backup is missing 27 master-linked indexes.
+    # The earlier-history collection supplies all 151 of 151 (655 index files).
+    # Add ONLY its compact index bundle; don't redownload 41.6GB of assets.
+    if not status["failed"]:
+        secondary="https://archive.org/download/tsto-cdn-content/cdn/dlc.7z"
+        lookup="https://archive.org/metadata/tsto-cdn-content"
+        with urllib.request.urlopen(urllib.request.Request(
+                lookup,headers={"User-Agent":AGENT}),timeout=55) as res:
+            alternate=json.load(res)
+        record=next((x for x in alternate.get("files",[])
+                     if x.get("name")=="cdn/dlc.7z"),None)
+        if not record:raise RuntimeError("Secondary archive has no dlc.7z")
+        local=temp/"complete-indexes.7z"
+        result=subprocess.run(["curl","-fLsS","--retry","3",
+            "--max-time","480","-o",str(local),secondary],timeout=520)
+        if result.returncode:raise RuntimeError("Supplemental index download failed")
+        with local.open("rb") as f:
+            sha=hashlib.file_digest(f,"sha1").hexdigest()
+        if sha != record.get("sha1"):
+            raise RuntimeError("Supplemental index SHA-1 mismatch")
+        unpack=subprocess.run(["7z","x","-y","-aoa","-o"+str(root),str(local)],
+                              stdout=subprocess.DEVNULL,timeout=180)
+        if unpack.returncode:raise RuntimeError("Supplemental index extraction failed")
+        local.unlink()
+        # Master index is a separate network file absent from the archived
+        # index collection. Without this the client always gets a 404.
+        master=root/"dlc"/"DLCIndex.zip"
+        master.parent.mkdir(parents=True,exist_ok=True)
+        master_url=("http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com"
+                    "/netstorage/gameasset/direct/simpsons/dlc/DLCIndex.zip")
+        result=subprocess.run(["curl","-fLsS","--retry","3","--max-time","180",
+                 "-o",str(master),master_url],timeout=200)
+        if result.returncode or not zipfile.is_zipfile(master):
+            raise RuntimeError("Could not fetch and verify original DLCIndex.zip")
+        status["supplemental_index_count"]=sum(1 for x in (root/"dlc").glob("DLCIndex*.zip"))
+        status["master_index_available"]=True
+        print("MASTER_READY: supplemental indexes",
+              status["supplemental_index_count"],"master",master.stat().st_size,flush=True)
     report()
     print("FINAL",len(status["completed"]),"of",len(items),
           "failed",len(status["failed"]),"bytes",status["current_uncompressed_size_bytes"])
