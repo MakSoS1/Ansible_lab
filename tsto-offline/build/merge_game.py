@@ -126,7 +126,12 @@ def patch_a64_url_lengths(code,name):
         base,mask,shift,max_imm=A64_TEMPLATES[kind]
         if offset+4>len(code):raise RuntimeError("AArch64 instruction offset beyond file")
         before=struct.unpack_from("<I",code,offset)[0]
-        if (before & mask)!=base:
+        allowed_original_bases={base}
+        # The upstream patcher deliberately rewrites this neon instruction
+        # from 'add x9,x0,imm' into 'add x0,x0,imm'.
+        if name.endswith("libscorpio-neon.so") and kind=="add_x0_x0":
+            allowed_original_bases.add(A64_TEMPLATES["add_x9_x0"][0])
+        if (before & mask) not in allowed_original_bases:
             raise RuntimeError(f"Unexpected AArch64 instruction at {offset:#x}: {before:#x}; expected {kind}")
         value=len(DLC)+1 if value_type=="alloc" else len(DLC)
         if value>max_imm:raise RuntimeError("DLC URL exceeds immediate capacity")
