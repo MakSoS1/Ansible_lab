@@ -178,3 +178,41 @@ completion, saved-city persistence and offline cold-start validation.
   tutorial completion and durable save/reload **remain unverified**. The
   790 known missing RU/EN DLC refs were not recovered by this network fix.
   There is still no verified complete distributable APK.
+
+
+## October 15 additional definitive result — exact native GLThread failure
+
+The **network-patched and full 31.4GB DLC** Android 15 test
+[38638648732](https://github.com/MakSoS1/Ansible_lab/actions/runs/38638648732)
+completed with strict gameplay acceptance **FAIL**. Unlike the older pre-patch
+build, this client reached `GET /mh/gameplayconfig` (200) and
+`GET /gameassets/dlc/DLCIndex.zip` (200) both on original startup and
+again after restart. No town GET/POST, and `mytown` remains only 33 bytes.
+
+The native game process itself ABORTED **~240 milliseconds after entering
+`DLCTask`**, in `GLThread 71`: `Scudo ERROR: corrupted chunk header`,
+signal `SIGABRT`. Tombstone addresses show free/deallocation in
+`libscorpio.so` at offsets 0x1435208, 0x1435220; second attempt aborts
+around 0x1436310. This is NOT the Android Bluetooth daemon crash, and
+the screenshot at 18 seconds is already the Android launcher. Do not
+attribute it to missing town state or to an unavailable endpoint, because
+the process crashed before asking for any individual DLC files.
+
+The shorter network-patched probe
+[38638648697](https://github.com/MakSoS1/Ansible_lab/actions/runs/38638648697)
+with intentionally *synthetic empty* DLC index also entered `DLCTask`,
+then crashed in Scorpio `GLThread`, this time `SIGSEGV` at NULL.
+So asset-set incompleteness ALONE is not a supported explanation for
+the engine failures. A difference in whether the input ZIP is valid can
+also affect how the native client crashes; root cause remains unproven.
+
+A/B experiment [38648273294](https://github.com/MakSoS1/Ansible_lab/actions/runs/38648273294)
+now tests native ARM64 Redroid **Android 14 vs 15** and collects
+`Scudo`, `SIGABRT`, `SIGSEGV` and entry into `DLCTask`, with no
+31.4 GB repeated transfer. This may isolate Android-runtime dependence,
+but even a result with no crash would NOT prove actual gameplay:
+there are no real game assets in this fast test.
+
+**No full offline Pixel 10 APK exists or passed acceptance.** The working
+single-APK test only tested that the Python sidecar ran on native ARM64,
+not that the game could render Springfield or persist saves.
