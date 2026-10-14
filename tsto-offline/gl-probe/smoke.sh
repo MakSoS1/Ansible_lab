@@ -16,4 +16,7 @@ fi
 if ! grep -q 'PASS Java GLES20 glCreateShader=' reports/logcat.txt;then
  echo 'FAIL: Java GLES20 glCreateShader did not return' | tee reports/result.txt; exit 1
 fi
+if ! grep -q 'PASS native ARM64 shader stress=256' reports/logcat.txt;then
+ echo 'FAIL: ARM64 256-shader GLSharedGroup stress did not complete' | tee reports/result.txt; cat reports/graphics-summary.txt; exit 1
+fi
 echo 'PASS: ARM64 JNI and Java shader creation completed under native translation' | tee reports/result.txt
