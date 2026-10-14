@@ -106,6 +106,11 @@ public final class ServerBootstrap {
         Intent intent = new Intent(ctx, ServerService.class);
         ctx.startService(intent);
     }
+    public static boolean isBackendProcess() {
+        if (android.os.Build.VERSION.SDK_INT < 28) return false;
+        String name = android.app.Application.getProcessName();
+        return name != null && name.endsWith(":tsto_backend");
+    }
     public static synchronized void runInBackend(Context context) {
         Log.i(TAG, "ENTER runInBackend");
         if (running) return;
