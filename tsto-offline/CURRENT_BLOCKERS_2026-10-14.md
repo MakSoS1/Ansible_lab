@@ -134,3 +134,47 @@ while `host` requires compatible GPU access unavailable on these
 GitHub ARM runners. **No complete playable offline Pixel 10 APK exists in
 our artifacts.** Continue to require real town rendering, tutorial
 completion, saved-city persistence and offline cold-start validation.
+
+
+## October 15 — solved one concrete network gate (not yet gameplay)
+
+- ARM64 Android 15 Redroid's network was Ethernet TYPE_ETHERNET=9 and
+  `VALIDATED` with local HTTP 200. Original app nonetheless showed
+  **"Cannot Connect to the Internet. This one's your fault, not ours.
+  Check your settings and retry."** before `/mh/gameplayconfig`.
+  The screenshot was captured without the system immersive-mode overlay
+  in [fast A/B run 38637497043](https://github.com/MakSoS1/Ansible_lab/actions/runs/38637497043).
+  Changing Android's captive portal mode and HWUI renderer settings did
+  NOT make the error disappear.
+- Decoded the **original** APK in a CI ephemeral runner, scanned 9,840
+  Java smali classes, and found the old guard in
+  `com/ea/simpsons/NetworkStatus.smali`,
+  `com/bight/android/app/BGActivity.smali` and
+  `com/ea/nimble/NetworkImpl.smali`. In particular,
+  `BGActivity.isConnectivityOn()` checks **only** cellular and Wi-Fi,
+  not the validated Ethernet transport. True localhost offline mode
+  also needs these outdated network gates bypassed.
+- Patched 4 zero-argument boolean network methods *only in experimental
+  local-loopback APKs* via `merge_game.py`, preserving an opt-out
+  `--retain-legacy-network-gates` for comparison. Dedicated unit tests
+  added in `tests/test_merge_modes.py`; latest preflight run
+  [38638748599](https://github.com/MakSoS1/Ansible_lab/actions/runs/38638748599)
+  PASSED.
+- [Patched early-protocol A/B run 38638648697](https://github.com/MakSoS1/Ansible_lab/actions/runs/38638648697)
+  now reached **2x `GET /mh/gameplayconfig 200`, 2x
+  `GET /gameassets/dlc/DLCIndex.zip 200`**; before the patch
+  both were 0. The quick probe used deliberately **synthetic empty DLC**
+  and showed the launcher after the client exited, so this is strictly
+  **authentication/network progress and NOT a graphics/gameplay PASS**.
+- Updated ARM64 integrated single-APK build
+  [38638649782](https://github.com/MakSoS1/Ansible_lab/actions/runs/38638649782)
+  SUCCESS (build + embedded backend smoke test, still no bundled real DLC).
+- Strict real-archive reruns
+  [38638648732](https://github.com/MakSoS1/Ansible_lab/actions/runs/38638648732)
+  and [38636313925](https://github.com/MakSoS1/Ansible_lab/actions/runs/38636313925)
+  were still active when status was recorded. Check their town acceptance
+  and actual screenshots; older runner 38636313925 predates the Java patch.
+- Real offline Android 16 / Pixel 10 gameplay, a complete archived asset set,
+  tutorial completion and durable save/reload **remain unverified**. The
+  790 known missing RU/EN DLC refs were not recovered by this network fix.
+  There is still no verified complete distributable APK.
