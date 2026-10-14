@@ -52,12 +52,20 @@ if [ -d "_dlc_stage" ]; then
   echo "Staged historical DLC manifests into game server's private storage"
 fi
 
+# Validate the native client's expected contract before starting Scorpio:
+# the gameassets root must return parseable XML, not a ZIP archive.
+curl -fsS --max-time 15 http://127.0.0.1:19000/gameassets/ |
+  python -c 'import sys,xml.etree.ElementTree as E; b=sys.stdin.buffer.read(); r=E.fromstring(b); print("DLC master XML root:",r.tag,"bytes:",len(b))' \
+  >reports/master-index-xml-test.txt
+
 # Launch the actual EA game, with its known redirect and patched native engine.
 adb shell monkey -p com.ea.game.simpsons4_row -c android.intent.category.LAUNCHER 1 >reports/game-launch.txt 2>&1
 sleep 8
 # Dismiss Android immersive-mode hint, rather than capturing the OS overlay.
 adb shell input tap 1695 495 || true
 sleep 22
+adb shell input tap 1695 495 || true
+sleep 2
 adb shell dumpsys activity activities >reports/activities.txt || true
 adb shell ps -A | grep -E 'simpsons4_row|sidecarprobe' > reports/app-processes.txt || true
 adb logcat -d -v time >reports/logcat.txt
