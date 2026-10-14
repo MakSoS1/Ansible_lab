@@ -5,6 +5,7 @@ Never publish copyright-protected APKs without permission.
 import argparse
 import hashlib
 import re
+import struct
 import shutil
 import subprocess
 import tempfile
@@ -94,6 +95,45 @@ def patch_java(game):
     if not count:
         raise RuntimeError("No EA endpoints patched: unexpected client format")
 
+# These length-immediate sites are documented by
+# TappedOutReborn/Patch-Apk/patch_native.py for the exact original Scorpio SHA.
+# A naive shorter URL + trailing NUL silently breaks string construction:
+# the native game starts requesting /gameassets/ rather than the DLC filename.
+A64_CDN_IMMEDIATES = {
+    "lib/arm64-v8a/libscorpio.so": (
+        0x00373230,
+        [(0x012cd644,"mov_w0","alloc"),(0x012cd674,"add_x9_x0","alloc"),
+         (0x012cd6b4,"add_x9_x0","string")],
+    ),
+    "lib/arm64-v8a/libscorpio-neon.so": (
+        0x00373227,
+        [(0x012cc6fc,"mov_w0","alloc"),(0x012cc72c,"add_x9_x0","alloc"),
+         (0x012cc76c,"add_x0_x0","string")],
+    ),
+}
+A64_TEMPLATES = {
+    "mov_w0":(0x52800000,0xFF80001F,5,0xFFFF),
+    "add_x9_x0":(0x91000009,0xFFC003FF,10,0xFFF),
+    "add_x0_x0":(0x91000000,0xFFC003FF,10,0xFFF),
+}
+
+def patch_a64_url_lengths(code,name):
+    expected_url_offset,instructions=A64_CDN_IMMEDIATES[name]
+    position=code.find(CDN)
+    if position!=expected_url_offset:
+        raise RuntimeError(f"Unexpected CDN address in {name}: found {position:#x}, expected {expected_url_offset:#x}")
+    for offset,kind,value_type in instructions:
+        base,mask,shift,max_imm=A64_TEMPLATES[kind]
+        if offset+4>len(code):raise RuntimeError("AArch64 instruction offset beyond file")
+        before=struct.unpack_from("<I",code,offset)[0]
+        if (before & mask)!=base:
+            raise RuntimeError(f"Unexpected AArch64 instruction at {offset:#x}: {before:#x}; expected {kind}")
+        value=len(DLC)+1 if value_type=="alloc" else len(DLC)
+        if value>max_imm:raise RuntimeError("DLC URL exceeds immediate capacity")
+        encoded=base | (value<<shift)
+        struct.pack_into("<I",code,offset,encoded)
+        print(f"Patched A64 {name}@{offset:#x}: {before:#010x} -> {encoded:#010x}; imm={value}")
+
 def patch_native(game):
     patched=0
     for name,(offset,patch) in SIG_BYPASS_469.items():
@@ -105,6 +145,7 @@ def patch_native(game):
         pos=b.find(CDN)
         if pos<0:raise RuntimeError("Expected CDN URL not found in "+str(f))
         if len(DLC.encode("ascii"))>=len(CDN):raise RuntimeError("DLC URL too long")
+        patch_a64_url_lengths(b,name)
         b[pos:pos+len(CDN)] = DLC.encode("ascii") + b"\0"*(len(CDN)-len(DLC))
         if offset+4>len(b):raise RuntimeError("Signature offset outside engine binary")
         b[offset:offset+4]=patch
