@@ -100,6 +100,7 @@ public final class ServerBootstrap {
         ctx.startService(intent);
     }
     public static synchronized void runInBackend(Context context) {
+        Log.i(TAG, "ENTER runInBackend");
         if (running) return;
         running = true;
         final Context ctx = context.getApplicationContext();
@@ -119,9 +120,11 @@ public final class ServerBootstrap {
                 new File(root, "dlc").mkdirs();
                 new File(root, "towns").mkdirs();
                 // Python is isolated inside this app and only listens on 127.0.0.1.
+                Log.i(TAG, "BEFORE Python.start");
                 if (!Python.isStarted()) {
                     Python.start(new AndroidPlatform(ctx));
                 }
+                Log.i(TAG, "AFTER Python.start");
                 Python.getInstance().getModule("offline_server").callAttr("serve", root.getAbsolutePath());
             } catch (Throwable e) {
                 running = false;
