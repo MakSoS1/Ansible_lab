@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/tsto-apk-integrate-test.yml'
       - 'tsto-offline/build/merge_game.py'
+      - 'tsto-offline/build/create_donor.py'
+      - 'tsto-offline/build/test_game_on_emulator.sh'
 permissions:
   contents: read
 jobs:
@@ -31,9 +33,12 @@ jobs:
           persist-credentials: false
       - name: Checkout local Python/protobuf game server
         run: git clone --depth 1 https://github.com/sp00nznet/tsto-springfield.git _upstream_server
+      - name: Validate game/server merger Python syntax
+        run: python -m py_compile tsto-offline/build/create_donor.py tsto-offline/build/merge_game.py
       - name: Create Android Chaquopy server module
         run: |
           python tsto-offline/build/create_donor.py _upstream_server _donor
+          grep -F 'getattr(self, "donut_balance", 0)' _donor/app/src/main/python/tsto_server.py
           gradle --no-daemon -p _donor :app:assembleDebug
       - name: Decode and merge original game with loopback server
         run: |
