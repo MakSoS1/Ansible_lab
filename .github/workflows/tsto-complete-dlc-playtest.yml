@@ -81,6 +81,19 @@ jobs:
             | tee reports/full-dlc-console.txt
           du -sh _dlc_stage | tee reports/full-dlc-extracted-size.txt
           df -hT >reports/disk-after-extraction.txt
+      - name: Ensure emulator disk preconditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import shutil
+          free=shutil.disk_usage(".").free
+          # A 38G Android userdata partition reserves approx 47 GiB on the
+          # host during AVD creation. Prevent retrying if disk is too full.
+          print(f"Free host space before AVD: {free / 1024**3:.2f} GiB")
+          if free < 50*1024**3:
+              raise SystemExit("Insufficient host space for 38G AVD; optimize DLC subset first")
+          PY
       - name: Full Android 15 game, saves, and offline restart on same device
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -88,7 +101,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
-          disk-size: 50G
+          disk-size: 38G
           ram-size: 4096M
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash tsto-offline/build/test_full_asset_game.sh
