@@ -21,14 +21,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
       - name: Install cross-compiler and CMake
+        shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1"
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMGR="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMGR"
+          "$SDKMGR" --licenses </dev/null >/dev/null 2>&1 || true
+          "$SDKMGR" --install "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Build tiny ARM64-only GLES shader JNI application
         run: |
           gradle --no-daemon -p tsto-offline/gl-probe :app:assembleDebug
