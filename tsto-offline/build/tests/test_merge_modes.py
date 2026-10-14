@@ -21,6 +21,7 @@ class MergeModesTest(unittest.TestCase):
              mock.patch.object(merge, "merge_dex") as dex, \
              mock.patch.object(merge, "merge_payloads") as native, \
              mock.patch.object(merge, "patch_java"), \
+             mock.patch.object(merge, "patch_android_loopback_connectivity") as network, \
              mock.patch.object(merge, "patch_native"), \
              mock.patch.object(merge, "allow_external_loopback") as external, \
              mock.patch.object(merge, "hook_lifecycle") as embedded:
@@ -43,7 +44,7 @@ class MergeModesTest(unittest.TestCase):
         self.assertEqual(network, 0)
 
     def test_embedded_server_includes_donor(self):
-        runs, dex, native, external, embedded = self.run_mode(["--donor", "/tmp/donor.apk"])
+        runs, dex, native, external, embedded, network = self.run_mode(["--donor", "/tmp/donor.apk"])
         self.assertEqual(len(runs), 3, "Decode game/donor, rebuild game")
         self.assertEqual(dex, 1)
         self.assertEqual(native, 1)
