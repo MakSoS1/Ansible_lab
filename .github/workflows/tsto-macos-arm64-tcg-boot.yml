@@ -1,0 +1,41 @@
+name: Boot native ARM64 Android 16 via QEMU TCG without HVF
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-macos-arm64-tcg-boot.yml'
+permissions:
+  contents: read
+jobs:
+  boot:
+    runs-on: macos-15
+    timeout-minutes: 33
+    steps:
+      - name: Inspect host and virtualization constraints
+        run: |
+          uname -m
+          sysctl -n hw.optional.arm64 || true
+          sysctl -n kern.hv_support || true
+      - name: Boot ARM64 Android 16 using software CPU translation instead of HVF
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: arm64-v8a
+          target: google_apis
+          profile: pixel_6
+          emulator-boot-timeout: 1100
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -accel off
+          script: |
+            mkdir -p reports
+            adb shell getprop ro.build.version.release | tee reports/android-release.txt
+            adb shell getprop ro.product.cpu.abilist | tee reports/abis.txt
+            adb shell getprop ro.dalvik.vm.native.bridge | tee reports/bridge.txt
+            adb shell getconf PAGE_SIZE | tee reports/page-size.txt
+            adb shell getprop sys.boot_completed | tee reports/boot.txt
+      - name: Report guest platform on ARM64 macOS
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-native-arm64-android16-tcg-boot
+          path: reports/
+          retention-days: 7
