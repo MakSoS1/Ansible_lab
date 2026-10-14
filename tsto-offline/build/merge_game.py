@@ -201,11 +201,10 @@ def hook_lifecycle(game):
         xml=xml.replace("<application ","<application android:usesCleartextTraffic=\"true\" ",1)
     if "android:extractNativeLibs=" not in xml:
         xml=xml.replace("<application ","<application android:extractNativeLibs=\"true\" ",1)
-    # Android 16 explicitly supports a backcompat loader for 4-KiB-aligned
-    # prebuilt ELF engines (Scorpio has 4-KiB PT_LOAD alignment). This cannot
-    # fix real engine bugs and still requires Pixel 10 runtime verification.
-    if "android:pageSizeCompat=" not in xml:
-        xml=xml.replace("<application ","<application android:pageSizeCompat=\"enabled\" ",1)
+    # Android 16 auto-enables 16-KiB backcompat for legacy 4-KiB ELF pages.
+    # We intentionally omit android:pageSizeCompat because the original
+    # apktool 2.10 framework used for this 4.69.5 build cannot resolve that
+    # Android 16-only resource attribute (AAPT2 manifest-link failure).
     # Run Python in another Linux process. Original Scorpio and Python native
     # runtimes crashed together on the translated Android 15 ARM64 emulator.
     service = '<service android:name="com.tsto.offline.ServerService" android:process=":tsto_backend" android:exported="false" android:stopWithTask="true" />'
