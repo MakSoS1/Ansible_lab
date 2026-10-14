@@ -118,6 +118,16 @@ def main():
         status["master_index_available"]=True
         print("MASTER_READY: supplemental indexes",
               status["supplemental_index_count"],"master",master.stat().st_size,flush=True)
+        try:
+            from verify_asset_coverage import check
+            coverage=check(root)
+            (reports/"restored-dlc-coverage.json").write_text(
+                json.dumps(coverage,ensure_ascii=False,indent=2))
+            status["coverage_counts"]=coverage["counts"]
+            print("DLC_COVERAGE",coverage["counts"],flush=True)
+        except Exception as e:
+            status["coverage_error"]=str(e)
+            print("DLC_COVERAGE_ERROR",str(e),flush=True)
     report()
     print("FINAL",len(status["completed"]),"of",len(items),
           "failed",len(status["failed"]),"bytes",status["current_uncompressed_size_bytes"])
