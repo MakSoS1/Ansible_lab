@@ -1,9 +1,6 @@
 name: Android 16 full DLC gameplay without ARM Python service
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/tsto-android16-full-game-test.yml'
 permissions:
   contents: read
 jobs:
@@ -111,6 +108,10 @@ jobs:
           ram-size: 4096M
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
           script: bash tsto-offline/build/test_game_host_dlc.sh
+      - name: Strict playable-town and save verification
+        if: always()
+        run: |
+          python tsto-offline/build/verify_real_gameplay.py _upstream_server
       - name: Reports only, never redistribute third-party APK or server code
         if: always()
         uses: actions/upload-artifact@v4
