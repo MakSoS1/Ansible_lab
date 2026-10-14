@@ -1,0 +1,54 @@
+name: Compare DLC subindex coverage across both historical archives
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-compare-archive-indexes.yml'
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download archival DLC subindex collections
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports _indexes/archive1 _indexes/archive2
+          curl --retry 3 -fLsS --max-time 180 \
+            http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com/netstorage/gameasset/direct/simpsons/dlc/DLCIndex.zip \
+            -o _indexes/master.zip
+          curl --retry 3 -fLsS --max-time 180 \
+            https://archive.org/download/tsto-dlc-cdn-oct2024/cdn/dlc.7z \
+            -o _indexes/archive1.7z
+          curl --retry 3 -fLsS --max-time 180 \
+            https://archive.org/download/tsto-cdn-content/cdn/dlc.7z \
+            -o _indexes/archive2.7z
+          7z x -y -o_indexes/archive1 _indexes/archive1.7z >/dev/null
+          7z x -y -o_indexes/archive2 _indexes/archive2.7z >/dev/null
+          python tsto-offline/build/check_master_index.py _indexes/master.zip _indexes/archive1 >reports/primary-index-coverage.txt
+          python tsto-offline/build/check_master_index.py _indexes/master.zip _indexes/archive2 >reports/alternate-index-coverage.txt
+          mkdir -p _indexes/combined
+          cp -a _indexes/archive1/. _indexes/combined/
+          cp -an _indexes/archive2/. _indexes/combined/
+          python tsto-offline/build/check_master_index.py _indexes/master.zip _indexes/combined >reports/merged-index-coverage.txt
+          sed -n '/"found_count"/,+2p' reports/primary-index-coverage.txt
+          sed -n '/"found_count"/,+2p' reports/alternate-index-coverage.txt
+          sed -n '/"found_count"/,+2p' reports/merged-index-coverage.txt
+          find _indexes/archive1/dlc/ -type f | wc -l | tee reports/index-count-primary.txt
+          find _indexes/archive2/dlc/ -type f | wc -l | tee reports/index-count-alternate.txt
+          find _indexes/combined/dlc/ -type f | wc -l | tee reports/index-count-merged.txt
+      - name: Upload text coverage only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsto-index-coverage-two-archives
+          path: reports/
+      - name: Remove copyrighted files
+        if: always()
+        run: rm -rf _indexes
