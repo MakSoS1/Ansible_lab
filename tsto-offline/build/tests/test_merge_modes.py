@@ -1,6 +1,7 @@
 """Regression tests: external-server game control must not carry Python runtime."""
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -25,15 +26,21 @@ class MergeModesTest(unittest.TestCase):
              mock.patch.object(merge, "hook_lifecycle") as embedded:
             merge.main()
             return (run.call_args_list, dex.call_count, native.call_count,
-                    external.call_count, embedded.call_count)
+                    external.call_count, embedded.call_count, network.call_count)
 
     def test_external_server_control_never_loads_donor(self):
-        runs, dex, native, external, embedded = self.run_mode(["--external-server"])
+        runs, dex, native, external, embedded, network = self.run_mode(["--external-server"])
         self.assertEqual(len(runs), 2, "Game decode and APK rebuild only")
         self.assertEqual(dex, 0)
         self.assertEqual(native, 0)
         self.assertEqual(external, 1)
         self.assertEqual(embedded, 0)
+        self.assertEqual(network, 1)
+
+    def test_legacy_offline_guard_can_be_retained_for_ab_testing(self):
+        runs, dex, native, external, embedded, network = self.run_mode(
+            ["--external-server", "--retain-legacy-network-gates"])
+        self.assertEqual(network, 0)
 
     def test_embedded_server_includes_donor(self):
         runs, dex, native, external, embedded = self.run_mode(["--donor", "/tmp/donor.apk"])
@@ -42,6 +49,7 @@ class MergeModesTest(unittest.TestCase):
         self.assertEqual(native, 1)
         self.assertEqual(external, 0)
         self.assertEqual(embedded, 1)
+        self.assertEqual(network, 1)
 
     def test_embedded_server_rejects_missing_donor(self):
         with mock.patch.object(sys, "argv", ["merge_game.py", "--original", "ea.apk",
@@ -50,6 +58,39 @@ class MergeModesTest(unittest.TestCase):
                 merge.main()
             self.assertEqual(result.exception.code, 2)
 
+
+
+class LoopbackNetworkPatchTest(unittest.TestCase):
+    def test_legacy_wifi_mobile_guards_are_patched_for_localhost(self):
+        targets = (
+            ("smali/com/bight/android/app/BGActivity.smali",
+             (("isConnectivityOn", True), ("isAirplaneModeOn", False))),
+            ("smali/com/ea/simpsons/NetworkStatus.smali",
+             (("HasInternetAccess", True),)),
+            ("smali/com/ea/nimble/NetworkImpl.smali",
+             (("reachabilityCheck", True),)),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            game = Path(tmp)
+            for path, methods in targets:
+                f = game / path
+                f.parent.mkdir(parents=True, exist_ok=True)
+                text = ".class public LTest;\n"
+                for name, value in methods:
+                    signature = ("private" if name == "reachabilityCheck"
+                                 else "public static")
+                    text += (f".method {signature} {name}()Z\n"
+                             "    .locals 1\n    const/4 v0, 0x0\n"
+                             "    return v0\n.end method\n")
+                f.write_text(text, encoding="utf-8")
+            merge.patch_android_loopback_connectivity(game)
+            for path, methods in targets:
+                contents = (game / path).read_text()
+                for name, value in methods:
+                    needle = ("0x1" if value else "0x0")
+                    self.assertIn(f"{name}()Z\n    .locals 1\n"
+                                  f"    const/4 v0, {needle}\n"
+                                  "    return v0\n.end method", contents)
 
 if __name__ == "__main__":
     unittest.main()
