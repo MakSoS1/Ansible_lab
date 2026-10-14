@@ -82,6 +82,9 @@ jobs:
           python tsto-offline/build/download_full_dlc.py \
             --output-dir _dlc_stage --max-download-gb 30 --min-free-gb 12 \
             | tee reports/full-dlc-console.txt
+          test -s _dlc_stage/dlc/DLCIndex.zip
+          test "$(find _dlc_stage/dlc -maxdepth 1 -name 'DLCIndex*.zip' -type f | wc -l)" -ge 150
+          python tsto-offline/build/verify_asset_coverage.py _dlc_stage             --output reports/full-dlc-package-coverage.json
           du -sh _dlc_stage | tee reports/full-dlc-extracted-size.txt
           df -hT >reports/disk-after-extraction.txt
       - name: Ensure emulator disk preconditions
