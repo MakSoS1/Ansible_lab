@@ -11,7 +11,7 @@ from xml.etree import ElementTree as ET
 
 def load_xml(path):
     with zipfile.ZipFile(path) as z:
-        names=[n for n in z.namelist() if n.lower().endswith(".xml")]
+        names=[n for n in z.namelist() if n.lower().endswith(".xml") and not n.startswith("__MACOSX/") and not Path(n).name.startswith("._")]
         if len(names)!=1:raise ValueError(f"Expected one XML in {path.name}: {names[:10]}")
         return ET.fromstring(z.read(names[0]))
 
