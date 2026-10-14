@@ -1,10 +1,6 @@
 name: Native ARM64 Android 16 smoke test on Apple Silicon
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/tsto-macos-arm64.yml'
-      - 'tsto-offline/build/merge_game.py'
 permissions:
   contents: read
 jobs:
