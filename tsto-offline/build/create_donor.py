@@ -192,6 +192,22 @@ PY="""def serve(root):
     # Chaquopy, so the DLC path MUST be absolute in the installed Android app.
     srv.dlc_dir = str(data / "dlc")
     srv.towns_dir = str(data / "towns")
+    # The live master index still references 27 updates absent from the
+    # preserved 2024 snapshot. Serve a ZIP retaining only available index
+    # entries: this permits loading preserved content but cannot recreate
+    # missing event quests and should never be described as complete DLC.
+    import repair_dlc_index
+    upstream_dl = srv.dlc_download
+    def available_dlc(directory, filename):
+        if directory == "dlc" and filename == "DLCIndex.zip":
+            repaired = repair_dlc_index.prepare_private_index(data / "dlc")
+            if repaired is not None:
+                return send_file(repaired, mimetype="application/zip",
+                                 download_name="DLCIndex.zip")
+        return upstream_dl(directory, filename)
+    for endpoint in ("dlc_download", "dlc_download_netstorage"):
+        if endpoint in srv.app.view_functions:
+            srv.app.view_functions[endpoint] = available_dlc
     def master_index_at_root():
         # The Scorpio master-index network handler expects the uncompressed
         # XML document on this bare assets URL (not ZIP bytes).
@@ -224,6 +240,7 @@ def main():
     write(out/"app/src/main/java/com/tsto/offline/ServerBootstrap.java",BOOTSTRAP)
     write(out/"app/src/main/java/com/tsto/offline/ServerService.java",SERVICE)
     write(out/"app/src/main/python/offline_server.py",PY)
+    shutil.copy2(Path(__file__).resolve().parent/"repair_dlc_index.py", out/"app/src/main/python/repair_dlc_index.py")
     # Personal offline build: preserve the original economic progression, not
     # the third-party server's default balance of 1,234,567 premium donuts.
     src = (root/"tsto_server.py").read_text(encoding="utf-8")
