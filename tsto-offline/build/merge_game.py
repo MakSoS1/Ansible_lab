@@ -95,6 +95,42 @@ def patch_java(game):
     if not count:
         raise RuntimeError("No EA endpoints patched: unexpected client format")
 
+def patch_android_loopback_connectivity(game):
+    """Permit localhost gameplay when Android has no Wi-Fi/mobile transport.
+
+    EA's original Java bridge checks *only* TYPE_WIFI / TYPE_MOBILE,
+    so native ARM64 Redroid's validated TYPE_ETHERNET (9) is incorrectly
+    reported as offline. More importantly, a truly offline phone also
+    needs local loopback communication without an active data network.
+    Leave real HTTP errors to the bundled/hosted server rather than
+    pretending that absent mobile service means 127.0.0.1 is unreachable.
+    """
+    targets = (
+        ("smali/com/bight/android/app/BGActivity.smali", "isConnectivityOn", True),
+        ("smali/com/bight/android/app/BGActivity.smali", "isAirplaneModeOn", False),
+        ("smali/com/ea/simpsons/NetworkStatus.smali", "HasInternetAccess", True),
+        ("smali/com/ea/nimble/NetworkImpl.smali", "reachabilityCheck", True),
+    )
+    for name, method, result in targets:
+        file = game / name
+        if not file.is_file():
+            raise RuntimeError(f"Expected original 4.69.5 connectivity guard missing: {name}")
+        source = file.read_text(encoding="utf-8")
+        pat = re.compile(r"(?ms)^\\.method[^\\n]*\\b" + re.escape(method) +
+                         r"\\(\\)Z[ \\t]*\\n.*?^\\.end method")
+        found = list(pat.finditer(source))
+        if len(found) != 1:
+            raise RuntimeError(f"Expected unique network guard {name}:{method}, got {len(found)}")
+        original = found[0].group(0)
+        signature = original.split("\\n", 1)[0]
+        literal = "0x1" if result else "0x0"
+        replacement = (signature + "\\n    .locals 1\\n    const/4 v0, " +
+                       literal + "\\n    return v0\\n.end method")
+        file.write_text(source[:found[0].start()] + replacement +
+                        source[found[0].end():], encoding="utf-8")
+        print(f"Patched localhost connectivity {name}:{method} -> {result}")
+
+
 # These length-immediate sites are documented by
 # TappedOutReborn/Patch-Apk/patch_native.py for the exact original Scorpio SHA.
 # A naive shorter URL + trailing NUL silently breaks string construction:
@@ -235,6 +271,7 @@ def main():
     p.add_argument("--out",type=Path,required=True)
     p.add_argument("--aapt2",type=Path,help="Native ARM64 aapt2 override for APKtool on ARM cloud runners")
     p.add_argument("--external-server",action="store_true",help="Diagnostic: skip starting embedded Python service; external localhost server required")
+    p.add_argument("--retain-legacy-network-gates",action="store_true",help="A/B diagnostic: leave original Wi-Fi/mobile-only network guards intact")
     a=p.parse_args()
     if not a.external_server and not a.donor:
         p.error("--donor is required for the embedded-server build")
@@ -250,6 +287,8 @@ def main():
             merge_dex(game,donor)
             merge_payloads(game,donor)
         patch_java(game)
+        if not a.retain_legacy_network_gates:
+            patch_android_loopback_connectivity(game)
         patch_native(game)
         if a.external_server:
             allow_external_loopback(game)
