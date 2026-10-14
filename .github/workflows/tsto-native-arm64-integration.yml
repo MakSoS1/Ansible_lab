@@ -1,0 +1,144 @@
+name: TSTO native ARM64 integrated client and server (private CI diagnostics)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tsto-native-arm64-integration.yml'
+      - 'tsto-offline/build/merge_game.py'
+permissions:
+  contents: read
+jobs:
+  native-arm64-integrated-game:
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Install Android SDK for ARM64 native compilation
+        uses: android-actions/setup-android@v3
+      - name: Install native ARM64 AAPT2 and other Android tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y adb unzip
+          yes | sdkmanager "platforms;android-35" "build-tools;35.0.1" > /dev/null || test "${PIPESTATUS[1]}" -eq 0
+          curl --fail --show-error --location https://raw.githubusercontent.com/Commit451/android-arm-build-tools/main/install.sh -o /tmp/tsto-arm-build-tools.sh
+          bash /tmp/tsto-arm-build-tools.sh --version 35.0.1 --sdk "$ANDROID_HOME"
+          "$ANDROID_HOME/build-tools/35.0.1/aapt2" version
+          mkdir -p ~/.gradle
+          printf 'android.aapt2FromMavenOverride=%s/build-tools/35.0.1/aapt2\n' "$ANDROID_HOME" >> ~/.gradle/gradle.properties
+      - name: Retrieve game code and game server for ephemeral testing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clone --depth 1 https://github.com/bodnjenie14/Tsto_patcher.git _game_source
+          git clone --depth 1 https://github.com/sp00nznet/tsto-springfield.git _upstream_server
+          test -s '_game_source/Original Files/tsto_original.apk'
+          test -s _game_source/apktool_2.10.0.jar
+          mkdir -p reports _output
+      - name: Generate and build Python game-server donor on ARM64
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python tsto-offline/build/create_donor.py _upstream_server _donor
+          gradle --no-daemon -p _donor :app:assembleDebug | tee reports/donor-build.txt
+          test -s _donor/app/build/outputs/apk/debug/app-debug.apk
+      - name: Merge original Scorpio + embedded Python server on native ARM64
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python tsto-offline/build/merge_game.py \
+            --original '_game_source/Original Files/tsto_original.apk' \
+            --donor _donor/app/build/outputs/apk/debug/app-debug.apk \
+            --apktool _game_source/apktool_2.10.0.jar \
+            --aapt2 "$ANDROID_HOME/build-tools/35.0.1/aapt2" \
+            --out _output/game-unsigned.apk | tee reports/merge-build.txt
+          "$ANDROID_HOME/build-tools/35.0.1/zipalign" -P 16 -f 4 _output/game-unsigned.apk _output/game-aligned.apk
+          keytool -genkeypair -keystore _output/test-only.jks -alias ephemeral -storepass local-testing-only \
+            -keypass local-testing-only -keyalg RSA -keysize 3072 -validity 1 \
+            -dname 'CN=Ephemeral CI Build, O=Local Compatibility Test, C=US' >/dev/null 2>&1
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" sign --ks _output/test-only.jks \
+            --ks-key-alias ephemeral --ks-pass pass:local-testing-only \
+            --key-pass pass:local-testing-only \
+            --out _output/game-ci.apk _output/game-aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify -v _output/game-ci.apk
+          du -h _output/game-ci.apk | tee reports/size.txt
+      - name: Boot fully native ARM64 Android 15 on the ARM runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+          grep binder /proc/filesystems
+          mkdir -p "$RUNNER_TEMP/tsto-android-data"
+          sudo docker run -d --rm --privileged --name tsto-native-arm-game \
+            -v "$RUNNER_TEMP/tsto-android-data:/data" -p 127.0.0.1:5555:5555 \
+            redroid/redroid:15.0.0_64only-latest \
+            androidboot.redroid_width=1080 androidboot.redroid_height=1920 \
+            androidboot.redroid_dpi=420 androidboot.redroid_gpu_mode=guest androidboot.use_memfd=1
+          for i in $(seq 1 45); do
+            adb connect 127.0.0.1:5555 || true
+            if adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q '^1'; then break; fi
+            sleep 3
+          done
+          adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abilist | tee reports/abi.txt
+          adb -s 127.0.0.1:5555 shell getprop ro.build.version.release | tee reports/android-release.txt
+          adb -s 127.0.0.1:5555 shell getprop sys.boot_completed | tee reports/boot.txt
+          test "$(tr -d '\r\n' <reports/boot.txt)" = 1
+          grep -q arm64-v8a reports/abi.txt
+      - name: Test merged single APK and local server without a Pixel
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          adb -s 127.0.0.1:5555 install _output/game-ci.apk >reports/install.txt 2>&1
+          adb -s 127.0.0.1:5555 logcat -c || true
+          adb -s 127.0.0.1:5555 shell am start -W -n com.ea.game.simpsons4_row/com.ea.simpsons.SimpsonsSplashScreen | tee reports/game-start.txt || true
+          adb -s 127.0.0.1:5555 forward tcp:19000 tcp:9000
+          ready=0
+          for i in $(seq 1 45); do
+            if curl -fsS --max-time 2 http://127.0.0.1:19000/ >reports/backend-response.txt 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          adb -s 127.0.0.1:5555 shell ps -A | grep -E 'simpsons4_row|tsto_backend' | tee reports/app-processes.txt || true
+          adb -s 127.0.0.1:5555 logcat -d -v time >reports/game-logcat.txt
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-screenshot.png || true
+          grep -Ei 'libscorpio|TSTO_OFFLINE_SERVER|Python.start|SIGSEGV|SIGABRT|FATAL EXCEPTION' \
+            reports/game-logcat.txt | tail -400 >reports/game-relevant-log.txt || true
+          if [ "$ready" != 1 ]; then
+            echo 'FAIL: merged APK Python backend did not respond on native ARM64 Android 15' | tee reports/result.txt
+            exit 1
+          fi
+          if ! grep -q 'libscorpio' reports/game-relevant-log.txt; then
+            echo 'FAIL: Scorpio engine not confirmed in merged APK' | tee reports/result.txt
+            exit 1
+          fi
+          echo 'PARTIAL PASS: both native Scorpio loader and local backend alive.' | tee reports/result.txt
+          echo 'NOT A GAMEPLAY PASS: complete DLC, tutorial, persistence and Android 16 are not verified.' | tee -a reports/result.txt
+      - name: Collect native Android diagnostics, without game binaries
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p reports
+          (timeout 10 adb -s 127.0.0.1:5555 logcat -d -v time >reports/final-logcat.txt 2>&1) || true
+          (timeout 10 sudo docker exec tsto-native-arm-game /system/bin/getprop >reports/native-getprop.txt 2>&1) || true
+          (sudo docker logs --tail 200 tsto-native-arm-game >reports/container-log.txt 2>&1) || true
+          (sudo docker rm -f tsto-native-arm-game) || true
+          rm -rf _game_source _upstream_server _donor _output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tsto-arm64-merged-game-diagnostics-not-apk
+          path: reports/
+          retention-days: 5
