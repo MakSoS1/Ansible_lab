@@ -187,6 +187,11 @@ PY="""def serve(root):
     import tsto_server
     from flask import send_file, abort
     srv = tsto_server.TheSimpsonsTappedOutLocalServer()
+    # Flask send_file resolves relative names against app.root_path rather than
+    # the current working directory. Its packaged app.root_path is inside
+    # Chaquopy, so the DLC path MUST be absolute in the installed Android app.
+    srv.dlc_dir = str(data / "dlc")
+    srv.towns_dir = str(data / "towns")
     def master_index_at_root():
         # The Scorpio master-index network handler expects the uncompressed
         # XML document on this bare assets URL (not ZIP bytes).
