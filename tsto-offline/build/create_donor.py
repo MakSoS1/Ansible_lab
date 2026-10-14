@@ -196,8 +196,16 @@ def main():
     write(out/"app/src/main/java/com/tsto/offline/ServerBootstrap.java",BOOTSTRAP)
     write(out/"app/src/main/java/com/tsto/offline/ServerService.java",SERVICE)
     write(out/"app/src/main/python/offline_server.py",PY)
-    for name in ("tsto_server.py","auth_manager.py"):
-        shutil.copy2(root/name,out/"app/src/main/python"/name)
+    # Personal offline build: preserve the original economic progression, not
+    # the third-party server's default balance of 1,234,567 premium donuts.
+    src = (root/"tsto_server.py").read_text(encoding="utf-8")
+    cheat = 'getattr(self, "donut_balance", 1234567)'
+    if src.count(cheat) != 1:
+        raise RuntimeError("Upstream premium-currency logic changed; verify manually")
+    write(out/"app/src/main/python/tsto_server.py",src.replace(
+        cheat, 'getattr(self, "donut_balance", 0)'
+    ))
+    shutil.copy2(root/"auth_manager.py",out/"app/src/main/python/auth_manager.py")
     # The repository stores protobuf stubs as a proto package.
     for folder in ("proto",):
         src=root/folder
