@@ -22,7 +22,7 @@ def main():
     c.update({"listening_ip":"127.0.0.1","listening_port":9000,
               "server_url":"http://127.0.0.1:9000",
               "dlc_dir":str(dlc),"towns_dir":str(towns),
-              "active_town":"mytown","debug":False,
+              "active_town":"mytown","run_tutorial":True,"debug":False,
               "http_debug":False,"server_debug_mode":False,
               "reverse_proxy":False})
     conf_path.write_text(json.dumps(c,ensure_ascii=False,indent=2),encoding="utf-8")
