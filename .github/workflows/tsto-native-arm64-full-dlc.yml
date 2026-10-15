@@ -162,43 +162,69 @@ jobs:
           adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-110s.png || true
           adb -s 127.0.0.1:5555 shell dumpsys activity activities >reports/activities-after-retry.txt || true
           adb -s 127.0.0.1:5555 shell ps -A | grep -E 'simpsons4_row' | tee reports/processes-online.txt || true
-          # Restart game offline; ADB reverse still makes host-side local DLC
-          # accessible. This is NOT standalone offline APK validation.
+          # Restart game offline; ADB reverse still makes HOST DLC accessible.
+          # DO NOT send blind touch events if app crashes to Android launcher:
+          # earlier tests mistakenly tapped launcher/Google and called it onboarding.
           adb -s 127.0.0.1:5555 shell svc wifi disable || true
           adb -s 127.0.0.1:5555 shell svc data disable || true
-          adb -s 127.0.0.1:5555 shell am force-stop com.ea.game.simpsons4_row
-          adb -s 127.0.0.1:5555 shell am start \
-            -n com.ea.game.simpsons4_row/com.ea.simpsons.SimpsonsSplashScreen \
-            >reports/restart.txt 2>&1 || true
-          sleep 65
-          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-restart.png || true
-          # Prior full-archive run 38651681773 reached the *real native game*
-          # date-of-birth onboarding screen after the second launch, but did
-          # not exercise it. Investigate on an isolated CI test persona only.
-          # The selected 1990 test year is NOT the user's personal DOB.
-          (timeout 20 adb -s 127.0.0.1:5555 shell uiautomator dump /sdcard/age-gate.xml \
-            && adb -s 127.0.0.1:5555 pull /sdcard/age-gate.xml reports/age-gate.xml) || true
-          adb -s 127.0.0.1:5555 shell input tap 857 244 || true
-          sleep 2
-          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-month-opened.png || true
-          # Try filling the fields using Android IME. Actual controls may
-          # be native Scorpio widgets rather than text fields; screenshots
-          # must be manually verified before any gameplay success assertion.
-          adb -s 127.0.0.1:5555 shell input text 1 || true
-          adb -s 127.0.0.1:5555 shell input keyevent KEYCODE_ENTER || true
-          adb -s 127.0.0.1:5555 shell input tap 1168 245 || true
-          sleep 2
-          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-year-opened.png || true
-          adb -s 127.0.0.1:5555 shell input text 1990 || true
-          adb -s 127.0.0.1:5555 shell input keyevent KEYCODE_ENTER || true
-          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-fields-filled.png || true
-          adb -s 127.0.0.1:5555 shell input tap 338 350 || true
-          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-checked.png || true
-          adb -s 127.0.0.1:5555 shell input tap 959 867 || true
-          sleep 30
-          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/after-age-confirm.png || true
-          adb -s 127.0.0.1:5555 shell ps -A | grep 'simpsons4_row' >reports/after-age-process.txt || true
-          sleep 50
+          game_foreground() {
+            local pid top
+            pid="$(adb -s 127.0.0.1:5555 shell pidof com.ea.game.simpsons4_row 2>/dev/null | tr -d '\r' || true)"
+            top="$(adb -s 127.0.0.1:5555 shell dumpsys activity activities 2>/dev/null | grep -m1 'topResumedActivity=' || true)"
+            test -n "$pid" && [[ "$top" == *"com.ea.game.simpsons4_row"* ]]
+          }
+          game_menu_seen() {
+            adb -s 127.0.0.1:5555 logcat -d -v brief 2>/dev/null |
+              grep -Eq 'eMenu_COPPAVerification|eMenu_COPPA'
+          }
+          : > reports/guarded-launch-attempts.txt
+          game_alive=0
+          coppa_menu=0
+          for attempt in 1 2 3 4; do
+            adb -s 127.0.0.1:5555 shell am force-stop com.ea.game.simpsons4_row || true
+            adb -s 127.0.0.1:5555 logcat -c || true
+            adb -s 127.0.0.1:5555 shell am start -W \
+              -n com.ea.game.simpsons4_row/com.ea.simpsons.SimpsonsSplashScreen \
+              > "reports/restart-attempt-${attempt}.txt" 2>&1 || true
+            sleep 22
+            adb -s 127.0.0.1:5555 exec-out screencap -p > "reports/game-attempt-${attempt}.png" || true
+            adb -s 127.0.0.1:5555 logcat -d -v time > "reports/logcat-attempt-${attempt}.txt" || true
+            if game_foreground; then
+              game_alive=1
+              echo "ATTEMPT ${attempt}: native TSTO foreground and process alive" | tee -a reports/guarded-launch-attempts.txt
+              if game_menu_seen; then
+                coppa_menu=1
+                echo "ATTEMPT ${attempt}: real age-gate menu in Scorpio logs" | tee -a reports/guarded-launch-attempts.txt
+              else
+                echo "ATTEMPT ${attempt}: alive, no proven age-gate menu" | tee -a reports/guarded-launch-attempts.txt
+              fi
+              break
+            fi
+            echo "ATTEMPT ${attempt}: game exited / not foreground, NO touch events" | tee -a reports/guarded-launch-attempts.txt
+          done
+          if [ "$game_alive" = 1 ]; then
+            adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-restart.png || true
+            (timeout 15 adb -s 127.0.0.1:5555 shell uiautomator dump /sdcard/age-gate.xml \
+              && adb -s 127.0.0.1:5555 pull /sdcard/age-gate.xml reports/age-gate.xml) || true
+            if [ "$coppa_menu" = 1 ] && game_foreground; then
+              # Coordinates taken from the ACTUAL landscape 1648x928 Scorpio
+              # screenshot, not from the 1080x1920 Android launcher.
+              # Observe month/year widgets only. Do not consent to third-party
+              # terms on behalf of the user; a real user must accept them.
+              adb -s 127.0.0.1:5555 shell input tap 740 210 || true
+              sleep 3
+              adb -s 127.0.0.1:5555 exec-out screencap -p >reports/coppa-month-open.png || true
+              if game_foreground; then
+                adb -s 127.0.0.1:5555 shell input tap 1005 210 || true
+                sleep 3
+                adb -s 127.0.0.1:5555 exec-out screencap -p >reports/coppa-year-open.png || true
+              fi
+            fi
+          else
+            echo 'BLOCKED: no foreground game after four native ARM64 attempts' | tee reports/strict-game-blocker.txt
+          fi
+          # No claim of gameplay is allowed without a genuine town GET/POST and save.
+          sleep 8
           adb -s 127.0.0.1:5555 exec-out screencap -p >reports/after-age-80s.png || true
           adb -s 127.0.0.1:5555 logcat -d -v time >reports/game-logcat.txt || true
           grep -Ei 'libscorpio|SIGSEGV|SIGABRT|FATAL|dlcindex|gameassets' \
