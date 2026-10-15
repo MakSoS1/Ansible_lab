@@ -4,9 +4,9 @@
 Never used for the final phone build: the actual single Android APK embeds a
 Chaquopy backend instead. Source server stays on the ephemeral runner.
 """
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
-from flask import Response, abort, send_file
+from flask import Response, abort, send_file, request, g
 
 def main():
     if len(sys.argv)!=3:
@@ -33,6 +33,21 @@ def main():
     import repair_dlc_index
     srv=tsto_server.TheSimpsonsTappedOutLocalServer()
     srv.app.add_url_rule("/proxy/identity/pids//personas", endpoint="local_empty_pid_personas", view_func=lambda: srv.pid_personas(str(srv.user_user_id)))
+    @srv.app.before_request
+    def trace_local_requests():
+        if request.path.startswith("/gameassets/") or request.path.startswith("/proxy/identity/pids/"):
+            g.tsto_started = time.monotonic()
+            print("TSTO_HTTP_BEGIN", request.method, request.path, flush=True)
+
+    @srv.app.after_request
+    def trace_local_response(response):
+        started = getattr(g, "tsto_started", None)
+        if started is not None:
+            print("TSTO_HTTP_END", response.status_code, request.method,
+                  request.path, "content_length", response.content_length,
+                  "handler_ms", round((time.monotonic() - started)*1000, 2),
+                  flush=True)
+        return response
     srv.dlc_dir=str(dlc)
     srv.towns_dir=str(towns)
     old_dl=srv.dlc_download
