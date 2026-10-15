@@ -274,3 +274,36 @@ Conclusion: merely shortening the native URL allocation is **not sufficient**
 to explain the crashes. Do not deploy or distribute a phone APK based on this
 test. No complete single offline Pixel10 APK has passed real gameplay, save
 or offline cold-start tests.
+
+
+## October 15 — missed native game onboarding discovered; actual game GUI DOES render
+
+A re-examination of complete 31.4 GB ARM64 archive run
+[38651681773](https://github.com/MakSoS1/Ansible_lab/actions/runs/38651681773)
+showed a critical distinction between **first and second launches**:
+
+- **First launch** aborted in native Scorpio `GLThread` (~0.24 seconds into
+  `DLCTask`) with Scudo `corrupted chunk header`.
+- **Second launch** after forced restart (with cellular and Wi-Fi explicitly
+  turned off but host DLC still reachable through `adb reverse`) successfully
+  requested game scripts, menus, tutorial resources, and core assets from
+  private localhost archive server, returned to `LoadingTaskList`, and then
+  logged `Show Menu - ID:66 ( eMenu_COPPAVerification )`.
+- The **actual screenshot** `reports/game-restart.png` from
+  [artifact 11935599071](https://github.com/MakSoS1/Ansible_lab/actions/runs/38651681773/artifacts/11935599071)
+  displays native landscape TSTO **"Select Your Date of Birth To Continue"**
+  with Month/Year/checkbox/Confirm. This is an actual *rendered game UI*, **not
+  the Android launcher**. Previous blanket characterization that this run
+  never reached any rendered game screen was incorrect.
+- Backend returned `POST /protoWholeLandToken/...` 200, but **no town
+  GET/POST or saved city state**. The client remained blocked behind age
+  verification, which prior tests never attempted.
+- This game menu milestone does **not** prove Springfield gameplay, tutorial
+  completion, Android 16 compatibility, or standalone offline operation.
+  The app still used a host-side 31.4 GB DLC server, reachable via ADB.
+
+A new strict full-archive workflow in commit `96ad33a2`,
+[run 38790548366](https://github.com/MakSoS1/Ansible_lab/actions/runs/38790548366),
+now captures UI and tests onboarding with a fictional adult CI test persona.
+It still fails acceptance if the actual town never loads or never saves.
+Be careful not to mistake the emulator test persona's DOB/EULA for user consent.
