@@ -172,6 +172,34 @@ jobs:
             >reports/restart.txt 2>&1 || true
           sleep 65
           adb -s 127.0.0.1:5555 exec-out screencap -p >reports/game-restart.png || true
+          # Prior full-archive run 38651681773 reached the *real native game*
+          # date-of-birth onboarding screen after the second launch, but did
+          # not exercise it. Investigate on an isolated CI test persona only.
+          # The selected 1990 test year is NOT the user's personal DOB.
+          (timeout 20 adb -s 127.0.0.1:5555 shell uiautomator dump /sdcard/age-gate.xml \
+            && adb -s 127.0.0.1:5555 pull /sdcard/age-gate.xml reports/age-gate.xml) || true
+          adb -s 127.0.0.1:5555 shell input tap 857 244 || true
+          sleep 2
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-month-opened.png || true
+          # Try filling the fields using Android IME. Actual controls may
+          # be native Scorpio widgets rather than text fields; screenshots
+          # must be manually verified before any gameplay success assertion.
+          adb -s 127.0.0.1:5555 shell input text 1 || true
+          adb -s 127.0.0.1:5555 shell input keyevent KEYCODE_ENTER || true
+          adb -s 127.0.0.1:5555 shell input tap 1168 245 || true
+          sleep 2
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-year-opened.png || true
+          adb -s 127.0.0.1:5555 shell input text 1990 || true
+          adb -s 127.0.0.1:5555 shell input keyevent KEYCODE_ENTER || true
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-fields-filled.png || true
+          adb -s 127.0.0.1:5555 shell input tap 338 350 || true
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/age-checked.png || true
+          adb -s 127.0.0.1:5555 shell input tap 959 867 || true
+          sleep 30
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/after-age-confirm.png || true
+          adb -s 127.0.0.1:5555 shell ps -A | grep 'simpsons4_row' >reports/after-age-process.txt || true
+          sleep 50
+          adb -s 127.0.0.1:5555 exec-out screencap -p >reports/after-age-80s.png || true
           adb -s 127.0.0.1:5555 logcat -d -v time >reports/game-logcat.txt || true
           grep -Ei 'libscorpio|SIGSEGV|SIGABRT|FATAL|dlcindex|gameassets' \
             reports/game-logcat.txt | tail -500 >reports/native-game-summary.txt || true
