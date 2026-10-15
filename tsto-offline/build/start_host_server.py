@@ -31,7 +31,9 @@ def main():
     sys.path.insert(0,str(Path(__file__).resolve().parent))
     import tsto_server
     import repair_dlc_index
+    from transfer_audit import StreamAudit
     srv=tsto_server.TheSimpsonsTappedOutLocalServer()
+    srv.app.wsgi_app=StreamAudit(srv.app.wsgi_app)
     srv.app.add_url_rule("/proxy/identity/pids//personas", endpoint="local_empty_pid_personas", view_func=lambda: srv.pid_personas(str(srv.user_user_id)))
     @srv.app.before_request
     def trace_local_requests():
