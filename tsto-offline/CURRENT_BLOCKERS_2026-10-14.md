@@ -307,3 +307,17 @@ A new strict full-archive workflow in commit `96ad33a2`,
 now captures UI and tests onboarding with a fictional adult CI test persona.
 It still fails acceptance if the actual town never loads or never saves.
 Be careful not to mistake the emulator test persona's DOB/EULA for user consent.
+
+
+## October 15 (later) — previous age automation was a false run
+
+Strict full-archive run [38790548366](https://github.com/MakSoS1/Ansible_lab/actions/runs/38790548366) FAILED. Actual screenshots and logs prove:
+- First launch crashed with Scudo heap corruption in Scorpio GLThread.
+- Second launch crashed with allocator corruption in the Redroid software Vulkan RenderThread.
+- After the crash the emulator returned to Android Launcher. The old test driver mistakenly tapped Google search, launched the browser, and saved those as supposed age-screen screenshots.
+- Zero actual town GET/POST and only a 33-byte blank saved town.
+- Older run 38651681773 did reach the genuine age-gate screen exactly once on its second launch, but this result is not reproducible yet and it did not load Springfield.
+
+Commit fcf4e2c3 fixes **test reliability, not the game**. The full-DLC workflow now retries startup up to four times, captures native logs/screenshots each time, verifies both PID and topResumedActivity belong to the game before touching anything, and requires native COPPA menu logs to probe menu controls. The probe intentionally does NOT consent to any EA legal terms on behalf of the user. Gameplay acceptance still requires real town GET+POST and nonempty persisted city. [Run 38804231391](https://github.com/MakSoS1/Ansible_lab/actions/runs/38804231391) was started with the guarded test.
+
+No verified standalone Pixel 10 Android 16, full archived content, reliable rendered gameplay or saved city yet. Do not redistribute a diagnostic APK as fully playable.
