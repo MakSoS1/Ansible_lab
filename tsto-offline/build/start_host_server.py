@@ -32,6 +32,7 @@ def main():
     import tsto_server
     import repair_dlc_index
     srv=tsto_server.TheSimpsonsTappedOutLocalServer()
+    srv.app.add_url_rule("/proxy/identity/pids//personas", endpoint="local_empty_pid_personas", view_func=lambda: srv.pid_personas(str(srv.user_user_id)))
     srv.dlc_dir=str(dlc)
     srv.towns_dir=str(towns)
     old_dl=srv.dlc_download
