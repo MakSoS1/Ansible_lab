@@ -1,4 +1,4 @@
-name: TSTO ARM64 original-length DLC URL allocator regression (diagnostics only)
+name: TSTO native ARM64 genuine-index-only client diagnostic (no game assets)
 on:
   workflow_dispatch:
   push:
@@ -79,17 +79,61 @@ jobs:
             --out _output/game-ci.apk _output/game-aligned.apk
           "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify -v _output/game-ci.apk
           du -h _output/game-ci.apk | tee reports/size.txt
-      - name: Create synthetic master index ONLY for auth/renderer diagnostics (not game assets)
+      - name: Stage genuine archived master and subindexes only (less than 100 MB, NO game packages)
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p _dlc_stage/dlc
+          mkdir -p _dlc_stage/dlc reports
           python - <<'PY'
-          from zipfile import ZipFile,ZIP_DEFLATED
-          with ZipFile('_dlc_stage/dlc/DLCIndex.zip','w',compression=ZIP_DEFLATED) as z:
-              z.writestr('DLCIndex.xml','<?xml version="1.0" encoding="UTF-8"?><DLCIndex></DLCIndex>')
+          from urllib.request import urlopen, Request
+          import json
+          with urlopen(Request('https://archive.org/metadata/tsto-cdn-content',
+                               headers={'User-Agent':'TSTO-private-index-only-test/1.0'}), timeout=60) as response:
+              files=json.load(response)['files']
+          item=next((f for f in files if f['name']=='cdn/dlc.7z'),None)
+          if item is None: raise SystemExit('Index-only archive unavailable')
+          if int(item['size'])>100_000_000: raise SystemExit('Index-only budget exceeded')
+          with open('reports/index-archive-metadata.txt','w') as report:
+              print('name='+item['name'],file=report)
+              print('size='+str(item['size']),file=report)
+              print('sha1='+item.get('sha1',''),file=report)
           PY
-          echo 'NO GAME ASSETS AVAILABLE IN THIS PROBE; AUTH AND RENDERING DIAGNOSTICS ONLY' > reports/PROBE_ONLY_NO_DLC.txt
+          curl -fLsS --retry 3 --max-time 480 \
+            https://archive.org/download/tsto-cdn-content/cdn/dlc.7z \
+            -o _dlc_indexes.7z
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          rows=dict(line.split('=',1) for line in Path('reports/index-archive-metadata.txt').read_text().splitlines())
+          filename=Path('_dlc_indexes.7z')
+          if filename.stat().st_size!=int(rows['size']):
+              raise SystemExit('Index-only archive length mismatch')
+          if rows['sha1']:
+              with filename.open('rb') as stream:
+                  if hashlib.file_digest(stream,'sha1').hexdigest()!=rows['sha1']:
+                      raise SystemExit('Index-only archive checksum mismatch')
+          PY
+          7z x -y -o_dlc_stage _dlc_indexes.7z >reports/index-extraction.log
+          rm -f _dlc_indexes.7z
+          curl -fLsS --retry 3 --max-time 180 \
+            http://oct2018-4-35-0-uam5h44a.tstodlc.eamobile.com/netstorage/gameasset/direct/simpsons/dlc/DLCIndex.zip \
+            -o _dlc_stage/dlc/DLCIndex.zip
+          python - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          master=Path('_dlc_stage/dlc/DLCIndex.zip')
+          with ZipFile(master) as archive:
+              xmls=[x for x in archive.namelist() if x.lower().endswith('.xml')]
+              assert len(xmls)==1,xmls
+          count=len(list(Path('_dlc_stage/dlc').glob('DLCIndex*.zip')))
+          if count<125: raise SystemExit(f'Incomplete genuine subindex set: {count}')
+          Path('reports/subindex-count.txt').write_text(str(count)+'\n')
+          PY
+          python tsto-offline/build/check_master_index.py \
+            _dlc_stage/dlc/DLCIndex.zip _dlc_stage >reports/index-coverage.txt
+          # Verify real XML while explicitly refusing to interpret this as full-gameplay coverage.
+          echo 'GENUINE DLC MASTER AND SUBINDEX XML ONLY; NO GAME ASSET PACKAGES. NOT A PLAYABLE APK TEST.' \
+            > reports/PROBE_ONLY_NO_DLC.txt
       - name: Start host protocol server without historical assets
         shell: bash
         run: |
