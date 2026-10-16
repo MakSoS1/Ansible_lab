@@ -5,6 +5,7 @@ by the response iterator, including premature client disconnects.
 Only call it for routes that are safe to log (e.g. local gameasset paths).
 """
 import json
+import re
 import time
 
 
@@ -16,7 +17,12 @@ class StreamAudit:
 
     def __call__(self, environ, start_response):
         path = environ.get("PATH_INFO", "")
-        if not path.startswith(self.path_prefix):
+        # Original-length native CDN URL patches use a long /ppp.../
+        # alias before /gameassets/. Exact startswith-only matching silently
+        # missed *all* actual game DLC requests in native ARM64 diagnostics.
+        padded_asset_path = (self.path_prefix == "/gameassets/" and
+                             re.match(r"^/p+/gameassets/", path) is not None)
+        if not (path.startswith(self.path_prefix) or padded_asset_path):
             return self.app(environ, start_response)
         started = time.monotonic()
         state = {"path": path, "method": environ.get("REQUEST_METHOD", "GET"),
