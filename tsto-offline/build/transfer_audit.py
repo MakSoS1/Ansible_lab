@@ -20,17 +20,23 @@ class StreamAudit:
             return self.app(environ, start_response)
         started = time.monotonic()
         state = {"path": path, "method": environ.get("REQUEST_METHOD", "GET"),
-                 "status": None, "expected_bytes": None}
+                 "status": None, "expected_bytes": None,
+                 "request_range": environ.get("HTTP_RANGE"),
+                 "content_range": None, "content_encoding": None}
 
         def audited_start(status, headers, exc_info=None):
             state["status"] = status
             for name, value in headers:
-                if name.lower() == "content-length":
+                lower = name.lower()
+                if lower == "content-length":
                     try:
                         state["expected_bytes"] = int(value)
                     except ValueError:
                         pass
-                    break
+                elif lower == "content-range":
+                    state["content_range"] = value
+                elif lower == "content-encoding":
+                    state["content_encoding"] = value
             return start_response(status, headers, exc_info)
 
         upstream = self.app(environ, audited_start)
@@ -54,7 +60,9 @@ class StreamAudit:
                 finally:
                     expected = state["expected_bytes"]
                     result = dict(state, bytes_sent=sent,
-                                  complete=completed and (expected is None or sent == expected),
+                                  complete=completed and (
+                                      state["method"] == "HEAD" or
+                                      expected is None or sent == expected),
                                   elapsed_ms=round((time.monotonic() - started) * 1000, 1))
                     if failure is not None:
                         result["error"] = failure
