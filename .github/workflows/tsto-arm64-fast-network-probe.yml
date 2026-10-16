@@ -1,4 +1,4 @@
-name: TSTO native ARM64 genuine-index-only client diagnostic (no game assets)
+name: TSTO native ARM64 bounded real DLC bootstrap diagnostic
 on:
   workflow_dispatch:
   push:
@@ -134,7 +134,71 @@ jobs:
           # Verify real XML while explicitly refusing to interpret this as full-gameplay coverage.
           echo 'GENUINE DLC MASTER AND SUBINDEX XML ONLY; NO GAME ASSET PACKAGES. NOT A PLAYABLE APK TEST.' \
             > reports/PROBE_ONLY_NO_DLC.txt
-      - name: Start host protocol server without historical assets
+      - name: Restore ONLY six first-requested gameplay resource groups (bounded 500 MB archive total)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # These archive groups were identified from genuine native-arm64
+          # HTTP 404 requests (run 38872464663), not guessed from DLC names.
+          # No 31-GB historical corpus restore is allowed in this diagnostic.
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import urlopen, Request
+          names=[
+              'cdn/4_69_UntroubledVases_Patch2_O0XTYOZLM6ZN.7z',
+              'cdn/4_69_UntroubledVases_02OYXL5II0UO.7z',
+              'cdn/4_31_Homergeddon_PEQBELL20XW9.7z',
+              'cdn/4_62_FoodWars_K7U9NJ6IH37B.7z',
+              'cdn/4_16_Monorail_Takedown_26T1M9UGIXUU.7z',
+              'cdn/4_6_2r1_XMAS2013_Takedown.7z',
+          ]
+          with urlopen(Request('https://archive.org/metadata/tsto-dlc-cdn-oct2024',
+                               headers={'User-Agent':'TSTO-bounded-bootstrap-diagnostic/1.0'}), timeout=60) as r:
+              metadata=json.load(r)
+          catalog={f['name']:f for f in metadata['files']}
+          items=[{'name':n,'size':int(catalog[n]['size']),
+                  'sha1':catalog[n].get('sha1','')} for n in names]
+          total=sum(x['size'] for x in items)
+          if total>500_000_000:
+              raise SystemExit('Hard budget violation: '+str(total))
+          print('SELECTED_ARCHIVE_BYTES',total)
+          Path('reports/bootstrap-archive-manifest.json').write_text(
+              json.dumps({'total_bytes':total,'archives':items,'purpose':'DIAGNOSTIC ONLY'},indent=2))
+          PY
+          mkdir -p _bootstrap_download
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,subprocess
+          from urllib.parse import quote
+          manifest=json.loads(Path('reports/bootstrap-archive-manifest.json').read_text())
+          for i,item in enumerate(manifest['archives'],1):
+              archive=Path('_bootstrap_download')/'current.7z'
+              archive.unlink(missing_ok=True)
+              url='https://archive.org/download/tsto-dlc-cdn-oct2024/'+quote(item['name'],safe='/')
+              subprocess.run(['curl','-fLsS','--retry','3','--retry-delay','3',
+                              '--connect-timeout','45','--max-time','750','-o',str(archive),url],
+                             check=True,timeout=800)
+              if archive.stat().st_size!=item['size']:
+                  raise SystemExit('Archive length mismatch: '+item['name'])
+              if item['sha1']:
+                  with archive.open('rb') as fh:
+                      digest=hashlib.file_digest(fh,'sha1').hexdigest()
+                  if digest!=item['sha1']:
+                      raise SystemExit('Archive checksum mismatch: '+item['name'])
+              subprocess.run(['7z','x','-y','-aoa','-o_dlc_stage',str(archive)],
+                             stdout=subprocess.DEVNULL,check=True,timeout=350)
+              print('STAGED',i,'of',len(manifest['archives']),item['name'],flush=True)
+              archive.unlink()
+          PY
+          rm -rf _bootstrap_download
+          # Real game DLC packages exist now, but the ENTIRE archive is missing.
+          test -s _dlc_stage/4_69_UntroubledVases_Patch2_O0XTYOZLM6ZN/gamescripts-r497432-LYOXW1QI.zip
+          test -s _dlc_stage/4_69_UntroubledVases_Patch2_O0XTYOZLM6ZN/textpools-en-r497432-LYOXW1QI.zip
+          echo 'PARTIAL GAME ASSETS ONLY: SIX ARCHIVE GROUPS; NOT ALL QUESTS; NO SPRINGFIELD ACCEPTANCE.' \
+            > reports/PROBE_ONLY_NO_DLC.txt
+          du -sh _dlc_stage | tee reports/bootstrap-stage-size.txt
+      - name: Start host protocol server with bounded real resource subset
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -211,7 +275,7 @@ jobs:
           for line in s.splitlines():
               if '"GET /' in line or '"POST /' in line: print(line[:260])
           PY
-          echo 'NO GAMEPLAY OR REAL DLC WAS TESTED. SCREENSHOTS ARE DIAGNOSTIC.' >reports/result.txt
+          echo 'ONLY SIX GAME ASSET GROUPS TESTED; NOT COMPLETE DLC; SCREENSHOTS ARE DIAGNOSTIC.' >reports/result.txt
       - name: Collect native Android diagnostics, without game binaries
         if: always()
         shell: bash
