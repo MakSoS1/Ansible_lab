@@ -34,6 +34,11 @@ def main():
     from transfer_audit import StreamAudit
     srv=tsto_server.TheSimpsonsTappedOutLocalServer()
     srv.app.wsgi_app=StreamAudit(srv.app.wsgi_app)
+    # The legacy client sometimes emits an EMPTY pid in /pids//personas.
+    # Werkzeug's default merge_slashes redirects this to /pids/personas,
+    # which does not match either the explicit route or <pid> upstream.
+    # Preserve the literal legacy URL; redirecting the client is unsafe.
+    srv.app.url_map.merge_slashes = False
     srv.app.add_url_rule("/proxy/identity/pids//personas", endpoint="local_empty_pid_personas", view_func=lambda: srv.pid_personas(str(srv.user_user_id)))
     @srv.app.before_request
     def trace_local_requests():
