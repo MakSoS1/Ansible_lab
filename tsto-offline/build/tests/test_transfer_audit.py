@@ -62,6 +62,14 @@ class StreamAuditTest(unittest.TestCase):
         self.assertEqual(result["content_encoding"], "identity")
         self.assertTrue(result["complete"])
 
+    def test_original_length_padded_native_dlc_url_is_logged(self):
+        padded = "/" + "p" * 56 + "/gameassets/4_69/real-payload.zip"
+        result, status_lines = self.invoke(path=padded)
+        self.assertEqual(status_lines, ["200 OK"])
+        self.assertEqual(result["path"], padded)
+        self.assertEqual(result["bytes_sent"], 5)
+        self.assertTrue(result["complete"])
+
     def test_unrelated_path_does_not_emit_game_dlc_log(self):
         def app(environ, start_response):
             start_response("200 OK", [("Content-Length", "2")])
