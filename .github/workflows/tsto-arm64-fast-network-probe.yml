@@ -87,9 +87,19 @@ jobs:
           python - <<'PY'
           from urllib.request import urlopen, Request
           import json
-          with urlopen(Request('https://archive.org/metadata/tsto-cdn-content',
-                               headers={'User-Agent':'TSTO-private-index-only-test/1.0'}), timeout=60) as response:
-              files=json.load(response)['files']
+          from urllib.error import HTTPError, URLError
+          from time import sleep
+          def retry_json():
+              for attempt in range(1,6):
+                  try:
+                      with urlopen(Request('https://archive.org/metadata/tsto-cdn-content',
+                                           headers={'User-Agent':'TSTO-private-index-only-test/1.0'}), timeout=60) as response:
+                          return json.load(response)
+                  except (HTTPError, URLError, TimeoutError) as error:
+                      print(f'METADATA_RETRY {attempt}: {error}',flush=True)
+                      if attempt==5: raise
+                      sleep(3*attempt)
+          files=retry_json()['files']
           item=next((f for f in files if f['name']=='cdn/dlc.7z'),None)
           if item is None: raise SystemExit('Index-only archive unavailable')
           if int(item['size'])>100_000_000: raise SystemExit('Index-only budget exceeded')
@@ -159,9 +169,19 @@ jobs:
               'cdn/4_18_XMAS2015_Takedown_WQBO2OV3G5ZU.7z',
               'cdn/4_42_HeroesOfSpringfield_5CRHS6IO8JG3.7z',
           ]
-          with urlopen(Request('https://archive.org/metadata/tsto-dlc-cdn-oct2024',
-                               headers={'User-Agent':'TSTO-bounded-bootstrap-diagnostic/1.0'}), timeout=60) as r:
-              metadata=json.load(r)
+          from urllib.error import HTTPError, URLError
+          from time import sleep
+          def retry_json():
+              for attempt in range(1,6):
+                  try:
+                      with urlopen(Request('https://archive.org/metadata/tsto-dlc-cdn-oct2024',
+                                           headers={'User-Agent':'TSTO-bounded-bootstrap-diagnostic/1.0'}), timeout=60) as response:
+                          return json.load(response)
+                  except (HTTPError, URLError, TimeoutError) as error:
+                      print(f'METADATA_RETRY {attempt}: {error}',flush=True)
+                      if attempt==5: raise
+                      sleep(3*attempt)
+          metadata=retry_json()
           catalog={f['name']:f for f in metadata['files']}
           items=[{'name':n,'size':int(catalog[n]['size']),
                   'sha1':catalog[n].get('sha1','')} for n in names]
