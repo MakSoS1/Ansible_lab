@@ -1,4 +1,4 @@
-name: TSTO native ARM64 bounded real DLC bootstrap diagnostic
+name: TSTO native ARM64 second-wave DLC bootstrap diagnostic (2.5GB cap)
 on:
   workflow_dispatch:
   push:
@@ -134,7 +134,7 @@ jobs:
           # Verify real XML while explicitly refusing to interpret this as full-gameplay coverage.
           echo 'GENUINE DLC MASTER AND SUBINDEX XML ONLY; NO GAME ASSET PACKAGES. NOT A PLAYABLE APK TEST.' \
             > reports/PROBE_ONLY_NO_DLC.txt
-      - name: Restore ONLY six first-requested gameplay resource groups (bounded 500 MB archive total)
+      - name: Restore ONLY eleven requested resource groups (hard 2.5GB compressed budget)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -152,6 +152,12 @@ jobs:
               'cdn/4_62_FoodWars_K7U9NJ6IH37B.7z',
               'cdn/4_16_Monorail_Takedown_26T1M9UGIXUU.7z',
               'cdn/4_6_2r1_XMAS2013_Takedown.7z',
+              # Second wave: actual 404s on the previous 407MB-run.
+              'cdn/4_7_2r1_FEB2014_Takedown_c0ac9bee.7z',
+              'cdn/4_67_CharityCase_LXJ0SRBNF13A.7z',
+              'cdn/4_4_0r2_Videos.7z',
+              'cdn/4_18_XMAS2015_Takedown_WQBO2OV3G5ZU.7z',
+              'cdn/4_42_HeroesOfSpringfield_5CRHS6IO8JG3.7z',
           ]
           with urlopen(Request('https://archive.org/metadata/tsto-dlc-cdn-oct2024',
                                headers={'User-Agent':'TSTO-bounded-bootstrap-diagnostic/1.0'}), timeout=60) as r:
@@ -160,7 +166,7 @@ jobs:
           items=[{'name':n,'size':int(catalog[n]['size']),
                   'sha1':catalog[n].get('sha1','')} for n in names]
           total=sum(x['size'] for x in items)
-          if total>500_000_000:
+          if total>2_500_000_000:
               raise SystemExit('Hard budget violation: '+str(total))
           print('SELECTED_ARCHIVE_BYTES',total)
           Path('reports/bootstrap-archive-manifest.json').write_text(
@@ -195,7 +201,7 @@ jobs:
           # Real game DLC packages exist now, but the ENTIRE archive is missing.
           test -s _dlc_stage/4_69_UntroubledVases_Patch2_O0XTYOZLM6ZN/gamescripts-r497432-LYOXW1QI.zip
           test -s _dlc_stage/4_69_UntroubledVases_Patch2_O0XTYOZLM6ZN/textpools-en-r497432-LYOXW1QI.zip
-          echo 'PARTIAL GAME ASSETS ONLY: SIX ARCHIVE GROUPS; NOT ALL QUESTS; NO SPRINGFIELD ACCEPTANCE.' \
+          echo 'PARTIAL GAME ASSETS ONLY: ELEVEN ARCHIVE GROUPS; NOT ALL QUESTS; NO SPRINGFIELD ACCEPTANCE.' \
             > reports/PROBE_ONLY_NO_DLC.txt
           du -sh _dlc_stage | tee reports/bootstrap-stage-size.txt
       - name: Start host protocol server with bounded real resource subset
@@ -275,7 +281,7 @@ jobs:
           for line in s.splitlines():
               if '"GET /' in line or '"POST /' in line: print(line[:260])
           PY
-          echo 'ONLY SIX GAME ASSET GROUPS TESTED; NOT COMPLETE DLC; SCREENSHOTS ARE DIAGNOSTIC.' >reports/result.txt
+          echo 'ONLY ELEVEN GAME ASSET GROUPS TESTED; NOT COMPLETE DLC; SCREENSHOTS ARE DIAGNOSTIC.' >reports/result.txt
       - name: Collect native Android diagnostics, without game binaries
         if: always()
         shell: bash
