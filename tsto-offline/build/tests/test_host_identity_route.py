@@ -7,6 +7,7 @@ class HostIdentityContract(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "start_host_server.py").read_text()
         self.assertIn('"/proxy/identity/pids//personas"', source)
         self.assertIn('srv.pid_personas(str(srv.user_user_id))', source)
+        self.assertIn('srv.app.url_map.merge_slashes = False', source)
 
 if __name__ == "__main__":
     unittest.main()
