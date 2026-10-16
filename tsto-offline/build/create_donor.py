@@ -192,6 +192,12 @@ PY="""def serve(root):
     # Chaquopy, so the DLC path MUST be absolute in the installed Android app.
     srv.dlc_dir = str(data / "dlc")
     srv.towns_dir = str(data / "towns")
+    # The native client can request an empty persona ID. Werkzeug normally
+    # merges /pids//personas and returns 404; match the tested host server.
+    srv.app.url_map.merge_slashes = False
+    srv.app.add_url_rule("/proxy/identity/pids//personas",
+                         endpoint="local_empty_pid_personas",
+                         view_func=lambda: srv.pid_personas(str(srv.user_user_id)))
     # The live master index still references 27 updates absent from the
     # preserved 2024 snapshot. Serve a ZIP retaining only available index
     # entries: this permits loading preserved content but cannot recreate
@@ -211,16 +217,10 @@ PY="""def serve(root):
     def master_index_at_root():
         # The Scorpio master-index network handler expects the uncompressed
         # XML document on this bare assets URL (not ZIP bytes).
-        import zipfile
         from flask import Response
-        index = data / "dlc" / "dlc" / "DLCIndex.zip"
-        if not index.is_file():
+        contents = repair_dlc_index.private_master_xml(data / "dlc")
+        if contents is None:
             return abort(404, description="Required DLCIndex.zip not provisioned")
-        with zipfile.ZipFile(index) as archive:
-            xml_names = [n for n in archive.namelist() if n.lower().endswith(".xml")]
-            if not xml_names:
-                return abort(500, description="Master DLC index has no XML")
-            contents = archive.read(xml_names[0])
         return Response(contents, mimetype="application/xml")
     srv.app.add_url_rule("/gameassets/", endpoint="master_index_at_root",
                          view_func=master_index_at_root)

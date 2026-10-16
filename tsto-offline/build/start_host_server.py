@@ -72,13 +72,11 @@ def main():
     # zipped DLCIndex.zip. Previously the hosted-server control could
     # return a 404 here even though all 151 subindexes were present.
     def master_xml():
-        import zipfile
-        with zipfile.ZipFile(dlc/"dlc"/"DLCIndex.zip") as z:
-            names=[x for x in z.namelist() if x.lower().endswith(".xml")
-                   and not x.startswith("__MACOSX/") and not Path(x).name.startswith("._")]
-            if len(names)!=1:
-                abort(500,"Unexpected master DLC index XML count")
-            return Response(z.read(names[0]),mimetype="application/xml")
+        # Bare root must match the filtered master ZIP served above.
+        xml = repair_dlc_index.private_master_xml(dlc)
+        if xml is None:
+            abort(404, "Missing master DLC index")
+        return Response(xml, mimetype="application/xml")
 
     # Optional address-length-preserving patch: original DLC URL size is
     # 89 bytes. The path prefix pads the localhost URL without changing its

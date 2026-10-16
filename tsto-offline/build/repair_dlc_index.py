@@ -45,3 +45,20 @@ def prepare_private_index(root: Path, log=print):
     if missing:
         log("Missing DLC index files: "+", ".join(missing[:40]))
     return BytesIO(data)
+
+def private_master_xml(root: Path):
+    """Uncompressed XML from the same filtered master ZIP served to Scorpio.
+
+    The bare /gameassets/ route and /gameassets/dlc/DLCIndex.zip must
+    reference the same available subindexes; otherwise startup can request
+    subindexes that the ZIP endpoint deliberately excludes.
+    """
+    master = Path(root) / "dlc" / "DLCIndex.zip"
+    if not master.is_file():
+        return None
+    packed, _, _ = filter_master_index(master, Path(root))
+    with zipfile.ZipFile(BytesIO(packed)) as source:
+        xmls = [n for n in source.namelist() if n.lower().endswith(".xml")]
+        if len(xmls) != 1:
+            raise ValueError("Expected exactly one filtered master XML")
+        return source.read(xmls[0])
