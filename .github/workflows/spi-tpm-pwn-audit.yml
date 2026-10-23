@@ -1,0 +1,75 @@
+name: HITCON SPI TPM pwn - safe archive static audit
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths:
+      - .github/workflows/spi-tpm-pwn-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Download exact HITCON pwn attachment, do not execute
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --proto '=https' --max-redirs 0 \
+            --connect-timeout 15 --max-time 120 --max-filesize 50000000 \
+            'https://ctf2026attach.hitconctf.com/d72ad1da709d0aca3b881f11a651420a/spi-tpm-pwn-db1d27f883a2e5e8.tar.gz' \
+            -o challenge.tar.gz
+          sha256sum challenge.tar.gz
+          file challenge.tar.gz
+          ls -lh challenge.tar.gz
+      - name: Static inspect members and text files, no extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,os,pathlib,re,tarfile
+          from collections import Counter
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'challenge.tar.gz'
+          with tarfile.open(p,'r:gz') as tf:
+              m=tf.getmembers()
+              print('MEMBER_COUNT:',len(m),flush=True)
+              assert len(m)<500, 'too many members'
+              total=sum(x.size for x in m if x.isfile())
+              print('TOTAL_UNCOMPRESSED:',total)
+              assert total<300_000_000,'too large'
+              for ent in m:
+                  pos=pathlib.PurePosixPath(ent.name)
+                  print('\nFILE:',repr(ent.name),'size:',ent.size,'type:',repr(ent.type))
+                  if pos.is_absolute() or '..' in pos.parts:
+                      raise ValueError('unsafe path '+repr(ent.name))
+                  if not(ent.isfile() or ent.isdir()):
+                      print('UNTRUSTED SPECIAL ENTRY, no extraction',ent.linkname)
+                      continue
+                  if not ent.isfile():continue
+                  if ent.size>35_000_000:
+                      print('LARGE BINARY, skipping raw scan')
+                      continue
+                  stream=tf.extractfile(ent)
+                  if stream is None:continue
+                  data=stream.read()
+                  print('SHA256:',hashlib.sha256(data).hexdigest())
+                  small=len(data)<=50000
+                  textkind=pos.suffix.lower() in ('.c','.h','.cc','.cpp','.py','.rs','.md','.yml','.yaml','.txt','.sh','.json','.toml','.conf','.s','.ld','.mk') or pos.name in ('Dockerfile','Makefile','flag','init','run','README')
+                  if small and (textkind or len(data)<=8000):
+                      try:
+                          s=data.decode('utf-8')
+                          if '\0' not in s and sum(c.isprintable() or c in '\r\n\t' for c in s)/max(1,len(s))>.87:
+                              print('BEGIN UNTRUSTED TEXT:',repr(ent.name))
+                              print(s[:50000])
+                              print('END UNTRUSTED TEXT')
+                              continue
+                      except UnicodeError:pass
+                  print('BIN_PREFIX',data[:64].hex())
+                  if ent.size<2_000_000:
+                      printable=re.findall(rb'[\x20-\x7e]{10,}',data)
+                      for word in printable[:35]:
+                          print('STRING',word[:250].decode('ascii','replace'))
+          PY
