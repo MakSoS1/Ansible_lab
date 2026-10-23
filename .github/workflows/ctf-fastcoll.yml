@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 ctf/fastcoll/inspect.py /tmp/ctf-fastcoll/challenge.tar.gz
+          python3 ctf/fastcoll/archive_inspector.py /tmp/ctf-fastcoll/challenge.tar.gz
       - name: Reproduce local 128-bit collision and prove adjacent-seed failure
         shell: bash
         run: |
