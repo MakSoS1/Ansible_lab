@@ -77,13 +77,13 @@ jobs:
           t=time.monotonic();phase=0;buf=b'';nextcmd=0
           commands=[
             b'id',
-            b'/bin/spi_tpm genkey',
-            b'X=$(printf "%04056d" 0)',
-            b'/bin/spi_tpm encrypt 1 1 "$X" >/tmp/max_cipher',
-            b'wc -c /tmp/max_cipher',
-            b'Y=$(cat /tmp/max_cipher)',
-            b'/bin/spi_tpm decrypt "$Y" >/tmp/roundtrip',
-            b'wc -c /tmp/roundtrip',
+            b'spi_tpm genkey',
+            b'X='+b'A'*4056,
+            b'spi_tpm encrypt 1 1 "$X" >/tmp/spi-tpm/c',
+            b'wc -c /tmp/spi-tpm/c',
+            b'Y=$(cat /tmp/spi-tpm/c)',
+            b'spi_tpm decrypt "$Y" >/tmp/spi-tpm/p',
+            b'wc -c /tmp/spi-tpm/p',
             b'echo BOUNDARY_END',
             b'exit'
           ]
@@ -102,7 +102,7 @@ jobs:
                 phase=2;last=time.monotonic()
             if phase==2 and nextcmd<len(commands) and time.monotonic()-last>=.8:
               cmd=commands[nextcmd]
-              assert b'\n' not in cmd and len(cmd)<100
+              assert b'\n' not in cmd and len(cmd)<5000
               print('COMMAND:',cmd.decode(),flush=True)
               os.write(master,cmd+b'\n')
               nextcmd+=1;last=time.monotonic()
