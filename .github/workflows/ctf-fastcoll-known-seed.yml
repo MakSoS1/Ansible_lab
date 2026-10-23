@@ -1,0 +1,82 @@
+name: CTF FastColl constructed collision live test
+
+on:
+  push:
+    branches:
+      - ctf/fastcoll-safe-2026-10-23
+    paths:
+      - .github/workflows/ctf-fastcoll-known-seed.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-submit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Checkout our own audited source, without credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: ctf/fastcoll
+      - name: Construct exact known-seed XXH3-128 collision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ctf/fastcoll/emit_known_seed_payload.py /tmp/fastcoll-known-seed.c --seed 0
+          clang --target=wasm32-unknown-unknown -O2 -nostdlib \
+            -Wl,--no-entry -Wl,--export-memory \
+            -Wl,--initial-memory=131072 -Wl,--max-memory=67108864 \
+            -o /tmp/fastcoll-known-seed.wasm /tmp/fastcoll-known-seed.c
+          file /tmp/fastcoll-known-seed.wasm
+          test "$(stat -c '%s' /tmp/fastcoll-known-seed.wasm)" -lt 1048576
+      - name: Verify exact host ABI in our local Wasmtime harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet \
+            'wasmtime==50.0.1' 'xxhash==3.8.0'
+          python3 ctf/fastcoll/test_wasm_abi.py /tmp/fastcoll-known-seed.wasm
+      - name: Submit the verified two-message collision to remote CTF judge
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='http://fastcoll.chal.hitconctf.com'
+          curl --fail --silent --show-error --max-redirs 0 \
+            --connect-timeout 10 --max-time 30 \
+            --form 'file=@/tmp/fastcoll-known-seed.wasm;type=application/wasm' \
+            "$base/api/jobs" > /tmp/coll-create.json
+          python3 - <<'PY'
+          import json,re
+          d=json.load(open('/tmp/coll-create.json'))
+          jid=d.get('id')
+          assert isinstance(jid,str) and re.fullmatch(r'[A-Za-z0-9_-]{8,64}',jid)
+          open('/tmp/coll-jobid','w').write(jid)
+          print('Remote status:',d.get('status'))
+          PY
+          for attempt in $(seq 1 20); do
+            sleep 1
+            jid="$(cat /tmp/coll-jobid)"
+            curl --fail --silent --show-error --max-redirs 0 \
+              --connect-timeout 10 --max-time 25 \
+              "$base/api/jobs/$jid" > /tmp/coll-result.json
+            if python3 - <<'PY'
+          import json,sys
+          d=json.load(open('/tmp/coll-result.json'))
+          if d.get('status') in ('queued','running'):
+              sys.exit(1)
+          print('REMOTE JUDGE RESULT:',{k:d.get(k) for k in ('status','calls','message')})
+          if d.get('status')=='won':
+              # CTF flags are contest submissions. Do not print them to a public repository's logs.
+              print('REAL FLAG ACQUIRED - redacted from PUBLIC GitHub Actions logs.')
+          else:
+              assert not d.get('flag'), 'Unexpected flag outside win'
+          PY
+            then
+              exit 0
+            fi
+          done
+          echo "Remote job did not finish in the allowed polling window"
+          exit 1
