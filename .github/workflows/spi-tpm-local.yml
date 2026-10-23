@@ -57,44 +57,57 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import subprocess,select,os,time
+          import os,re,select,subprocess,time
           directory=os.environ['RUNNER_TEMP']+'/sandbox-spi'
           args=['docker','run','--rm','--interactive','--network=none',
                 '--read-only','--cap-drop=ALL','--security-opt=no-new-privileges',
                 '--pids-limit=64','--memory=768m','--cpus=2',
                 '--tmpfs','/tmp:rw,nosuid,nodev,mode=1777,size=64m',
                 '-v',directory+':/opt/spi-tpm:ro',
-                '-e','VM_TIMEOUT=65','spi-tpm-sandbox:local']
-          print('container isolated: network=none, read-only, no privileges, fake flag',flush=True)
-          p=subprocess.Popen(args, stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
-          start=time.monotonic()
-          next_input=None;received=b''
-          while time.monotonic()-start<53 and p.poll() is None:
-              ready,_,_=select.select([p.stdout],[],[],1)
+                '-e','VM_TIMEOUT=50','spi-tpm-sandbox:local']
+          print('isolated: no network, read-only, fake flag',flush=True)
+          p=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
+          start=time.monotonic();transcript=b'';stage=0;used_cipher=None
+          def send(cmd):
+              assert len(cmd)<12000 and re.fullmatch('[a-zA-Z0-9 ]+',cmd)
+              print('CLIENT >>> '+cmd,flush=True)
+              p.stdin.write((cmd+'\n').encode());p.stdin.flush()
+          while time.monotonic()-start<40 and p.poll() is None:
+              ready,_,_=select.select([p.stdout],[],[],0.5)
               if ready:
-                  data=os.read(p.stdout.fileno(),4096)
+                  data=os.read(p.stdout.fileno(),16000)
                   if not data:break
-                  received+=data
-                  print(data.decode('utf-8','replace')[:10000],end='',flush=True)
-                  if b'ready' in received and next_input is None:
-                      next_input=time.monotonic()+1
-              if next_input is not None and time.monotonic()>=next_input:
-                  for cmd in [b'budget\n',b'get_flag\n',b'budget\n',b'genkey\n',
-                              b'encrypt 0 1 41424344\n',b'budget\n',b'quit\n']:
-                      print('CLIENT SEND:',cmd.decode().strip(),flush=True)
-                      p.stdin.write(cmd);p.stdin.flush();time.sleep(.5)
-                  next_input=None
-                  break
-          end=time.monotonic()+12
-          while p.poll() is None and time.monotonic()<end:
-              ready,_,_=select.select([p.stdout],[],[],1)
+                  transcript+=data
+                  print(data.decode('utf8','replace'),end='',flush=True)
+              if stage==0 and b'ready' in transcript:
+                  send('budget');send('get_flag');send('genkey');stage=1
+              if stage==1:
+                  m=re.search(rb'(?m)^key ([0-9]{1,5})\s*$',transcript)
+                  if m:
+                      kid=int(m.group(1));assert 1<=kid<=8
+                      send(f'encrypt {kid} 1 41424344')
+                      stage=2
+              if stage==2:
+                  m=re.search(rb'(?m)^ciphertext ([0-9a-fA-F]{80,8000})\s*$',transcript)
+                  if m:
+                      used_cipher=m.group(1).decode('ascii')
+                      send('decrypt '+used_cipher)
+                      stage=3
+              if stage==3:
+                  if b'plaintext ' in transcript or b'error key' in transcript:
+                      send('budget');send('quit');stage=4
+              if stage==4:break
+          for unused in range(25):
+              if p.poll() is not None:break
+              ready,_,_=select.select([p.stdout],[],[],0.2)
               if ready:
-                  data=os.read(p.stdout.fileno(),4096)
+                  data=os.read(p.stdout.fileno(),8000)
                   if not data:break
-                  print(data.decode('utf-8','replace')[:12000],end='',flush=True)
+                  transcript+=data
+                  print(data.decode('utf8','replace'),end='',flush=True)
           if p.poll() is None:p.kill()
-          try: p.wait(timeout=5)
-          except: pass
-          print('\nExit',p.returncode,'total seconds',time.monotonic()-start)
-          assert b'ready' in received, 'guest never became ready'
-          PY
+          try:p.wait(timeout=6)
+          except:pass
+          print('STAGE',stage,'EXIT',p.returncode,'DURATION',round(time.monotonic()-start,2),flush=True)
+          assert stage>=3, 'did not complete protocol test'
+          PYY
