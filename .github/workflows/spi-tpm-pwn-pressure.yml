@@ -1,0 +1,80 @@
+name: SPI TPM pwn - offline serial pressure and DMA timeout test
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-pressure.yml, ctf/spi-tpm-pwn-2026/pressure_probe.c]
+permissions:
+  contents: read
+jobs:
+  pressure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build own freestanding test and verified offline challenge sandbox
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import pathlib,subprocess,textwrap,hashlib,os
+          b=pathlib.Path('.github/workflows/spi-tpm-pwn-race-probe.yml').read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='4fb55b2a7c27c6b0a5a4b0144eec58d2abc7e2cf'
+          lines=b.decode().splitlines(keepends=True);blocks=[];i=0
+          while i<len(lines):
+            if lines[i].rstrip()=='        run: |':
+              i+=1;acc=[]
+              while i<len(lines) and (lines[i].startswith('          ') or not lines[i].strip()):acc.append(lines[i]);i+=1
+              blocks.append(textwrap.dedent(''.join(acc)))
+            else:i+=1
+          assert len(blocks)==4
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);pathlib.Path('output').mkdir()
+          helpers=pathlib.Path('ctf/spi-tpm-pwn-2026/raw_probe.c').read_text().split('static void worker(')[0]
+          src=root/'pressure.c';src.write_text(helpers+pathlib.Path('ctf/spi-tpm-pwn-2026/pressure_probe.c').read_text())
+          subprocess.run(['clang','--target=aarch64-linux-gnu','-fuse-ld=lld','-nostdlib','-static','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-Wl,-e,_start,-s',str(src),'-o',str(root/'payload')],check=True,timeout=20)
+          for idx in (0,2):subprocess.run(['bash','-euo','pipefail','-c',blocks[idx]],check=True,timeout=150)
+          PY
+      - name: Bound console pressure and measure guest ioctl completion
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import base64,os,pathlib,subprocess,select,time
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);name='spi-pressure-'+os.environ['GITHUB_RUN_ID']
+          args=['docker','run','--name',name,'--rm','-i','--network=none','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--pids-limit=96','--memory=1g','--cpus=2','--tmpfs=/tmp:rw,nosuid,nodev,mode=1777,size=100m','-v',str(root/'guest')+':/opt/guest:ro','-e','VM_TIMEOUT=70','spi-pwn-probe:local']
+          p=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
+          start=time.monotonic();buf=b'';phase=0;pauses=0;nextpause=0;total=0
+          log=pathlib.Path('output/pressure.log').open('wb')
+          try:
+            while time.monotonic()-start<65:
+              ready,_,_=select.select([p.stdout],[],[],.2)
+              if not ready:
+                if p.poll() is not None:break
+                continue
+              data=os.read(p.stdout.fileno(),65536)
+              if not data:break
+              total+=len(data)
+              clean=data.replace(b'Z',b'');buf+=clean;log.write(clean);log.flush()
+              if clean:print(clean.decode('utf8','replace'),end='',flush=True)
+              if phase==0 and b'Base64 payload' in buf:
+                p.stdin.write(base64.b64encode((root/'payload').read_bytes())+b'\n');p.stdin.flush();phase=1
+              elif phase==1 and b'# ' in buf:
+                p.stdin.write(b'/home/spi-tpm/payload\n');p.stdin.flush();phase=2
+              if b'BACKPRESSURE_READY' in buf and pauses<8 and time.monotonic()>nextpause and b'ZZZZ' in data:
+                print('LOCAL_READ_PAUSE',pauses,flush=True);time.sleep(.8);pauses+=1;nextpause=time.monotonic()+.15
+              if b'PROBE_COMPLETE' in buf:break
+              if total>20000000:raise RuntimeError('bounded output limit exceeded')
+          finally:
+            log.close()
+            subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
+            if p.poll() is None:p.kill()
+            p.wait()
+          print('TOTAL_CONSOLE_BYTES',total,'PAUSES',pauses)
+          assert b'PROBE_COMPLETE' in buf,'bounded local experiment did not finish'
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spi-pwn-pressure-observations
+          path: output/
+          retention-days: 2
+          if-no-files-found: error
