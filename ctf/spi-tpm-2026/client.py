@@ -188,7 +188,7 @@ def main() -> int:
                 raise ValueError("repeated nonce reduces independent sample count")
             result={"samples":sample_list, "flag_hex": result.split()[2],
                     "key_id":sealed.key_id, "flag_length":sealed.plaintext_length}
-            args.collect_samples.write_text(json.dumps(result,indent=2)+"\\n",encoding="utf-8")
+            args.collect_samples.write_text(json.dumps(result,indent=2),encoding="utf-8")
             print("Saved verified fingerprint samples:",len(sample_list))
             print("Saved sealed flag with cost:",sealed.cost)
         ch.command("quit")
