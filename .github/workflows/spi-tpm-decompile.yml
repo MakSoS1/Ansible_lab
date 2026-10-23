@@ -1,0 +1,149 @@
+name: HITCON 2026 SPI TPM - decompile verified firmware and service
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths:
+      - .github/workflows/spi-tpm-decompile.yml
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Verify archive and extract only four selected ELF files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsS --proto '=https' --max-redirs 0 --connect-timeout 15 --max-time 120 --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' -o challenge.tar.gz
+          echo 'e15a21887cc925818a5bdb0e6b669028bc30c94bbfc1fe0a06f4c5a4c543ad94  challenge.tar.gz' | sha256sum -c -
+          python3 - <<'PY'
+          import tarfile,pathlib,os
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'elffiles';out.mkdir()
+          allowed={'libspi_tpm_firmware.so','spi-tpm-service','spi_tpm_client.ko','spi_tpm_dma.ko'}
+          with tarfile.open(pathlib.Path(os.environ['RUNNER_TEMP'])/'challenge.tar.gz') as tar:
+              for entry in tar:
+                  if pathlib.PurePosixPath(entry.name).name in allowed:
+                      assert entry.isfile() and entry.size<800000
+                      (out/pathlib.PurePosixPath(entry.name).name).write_bytes(tar.extractfile(entry).read())
+          assert len(list(out.iterdir()))==4
+          PY
+      - name: Download SHA256-pinned official Ghidra distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL --proto '=https' --proto-redir '=https' \
+            --connect-timeout 12 --retry 2 --max-time 300 --max-filesize 650000000 \
+            'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.3_build/ghidra_12.1.3_PUBLIC_20260817.zip' -o ghidra.zip
+          echo '93a5d11a9ad510622acaaf908c556a7b9b764d338e78a7567f3689bf5081fd54  ghidra.zip' | sha256sum -c -
+          unzip -q ghidra.zip
+          java -version
+      - name: Prepare own read-only Ghidra analysis script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/DumpRelevant.py" <<'PY'
+          # Ghidra Jython script: decompiles only the public CTF binaries.
+          from ghidra.app.decompiler import DecompInterface
+          from ghidra.program.model.symbol import Reference
+          pname=currentProgram.getName()
+          print("=== DECOMPILER TARGET ===", pname)
+          d=DecompInterface()
+          d.openProgram(currentProgram)
+          listing=currentProgram.getListing()
+          functions=currentProgram.getFunctionManager()
+          selected={}
+          def pick(f,why):
+              if f is None: return
+              addr=str(f.getEntryPoint())
+              if addr not in selected: selected[addr]=[f, why]
+          if pname.endswith('.so'):
+              for f in functions.getFunctions(True):
+                  addr=f.getEntryPoint().getOffset()
+                  if 0x1200<=addr<=0x3fff: pick(f,'firmware function')
+          elif pname.endswith('.ko'):
+              for f in functions.getFunctions(True):
+                  if 'spi_tpm' in f.getName(): pick(f,'named driver function')
+          else:
+              needles=['SPI-TPM reverse service','get_flag','encrypt flag','gen_new_key',
+                       'commands: get_flag','budget %lu','error syntax','plaintext ','ciphertext ',
+                       'genkey','encrypt','decrypt','budget ']
+              count=0
+              for data in listing.getDefinedData(True):
+                  try: value=str(data.getValue())
+                  except: continue
+                  if not any(x in value for x in needles): continue
+                  count+=1
+                  if count>100: break
+                  print('RELEVANT STRING',str(data.getAddress()),repr(value[:190]))
+                  refs=getReferencesTo(data.getAddress())
+                  for ref in refs:
+                      pick(getFunctionContaining(ref.getFromAddress()),'xref '+repr(value[:40]))
+              print('Selected candidate functions', len(selected))
+          n=0
+          for k in sorted(selected):
+              f,why=selected[k]
+              n+=1
+              if n>28: break
+              result=d.decompileFunction(f,30,monitor)
+              print('\n<<< FUNCTION',str(f.getName()),str(f.getEntryPoint()),why,'>>>' )
+              if result.decompileCompleted() and result.getDecompiledFunction() is not None:
+                  s=result.getDecompiledFunction().getC()
+                  print(s[:28000])
+                  if len(s)>28000: print('<<< FUNCTION OUTPUT TRUNCATED >>>')
+              else:
+                  print("FAILED",str(result.getErrorMessage()))
+          d.dispose()
+          PY
+          find "$RUNNER_TEMP" -maxdepth 2 -name 'analyzeHeadless' -type f -print
+      - name: Decompile firmware x86-64
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          GHIDRA_ROOT="$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -n 1)"
+          mkdir -p "$RUNNER_TEMP/ghidra_projects"
+          "$GHIDRA_ROOT/support/analyzeHeadless" "$RUNNER_TEMP/ghidra_projects" firmware \
+            -import "$RUNNER_TEMP/elffiles/libspi_tpm_firmware.so" -analysisTimeoutPerFile 90 \
+            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.py -deleteProject
+      - name: Decompile kernel client driver ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          GHIDRA_ROOT="$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -n 1)"
+          "$GHIDRA_ROOT/support/analyzeHeadless" "$RUNNER_TEMP/ghidra_projects" module \
+            -import "$RUNNER_TEMP/elffiles/spi_tpm_client.ko" -analysisTimeoutPerFile 90 \
+            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.py -deleteProject
+      - name: Decompile ARM64 service main and command handlers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          GHIDRA_ROOT="$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -n 1)"
+          "$GHIDRA_ROOT/support/analyzeHeadless" "$RUNNER_TEMP/ghidra_projects" service \
+            -import "$RUNNER_TEMP/elffiles/spi-tpm-service" -analysisTimeoutPerFile 180 \
+            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.py -deleteProject
+      - name: Diagnose remote reachability without sending commands
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import time,socket
+          host='spi-tpm-rev.chal.hitconctf.com'
+          print('DNS')
+          try: print([(x[0],x[4]) for x in socket.getaddrinfo(host,1337,proto=socket.IPPROTO_TCP)])
+          except Exception as e: print('DNS fail',str(e))
+          t=time.monotonic()
+          try:
+              with socket.create_connection((host,1337),timeout=7) as s:
+                  print('TCP connected after %.2fs'%(time.monotonic()-t))
+                  s.settimeout(18)
+                  print('REMOTE BANNER:',repr(s.recv(2000)))
+          except Exception as e: print('TCP/READ problem',type(e).__name__,str(e),'time',time.monotonic()-t)
+          PY
