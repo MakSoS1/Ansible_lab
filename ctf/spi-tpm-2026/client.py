@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import socket
 import struct
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 HOST = "spi-tpm-rev.chal.hitconctf.com"
 PORT = 1337
@@ -132,6 +134,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--connect-timeout", type=float, default=9.0)
     parser.add_argument("--pow-timeout", type=float, default=285.0)
+    parser.add_argument("--collect-samples", type=Path, help="Store 27 sample fingerprints in a file")
     args = parser.parse_args()
     if not 1 <= args.connect_timeout <= 30 or not 10 <= args.pow_timeout <= 290:
         parser.error("timeouts outside safe ranges")
@@ -167,6 +170,27 @@ def main() -> int:
         print("ciphertext_hex:", sealed.ciphertext.hex())
         print("decryption_budget_needed:", sealed.cost * ((sealed.plaintext_length + 3) // 4 + 256))
         print("original_stp1_hex:", result.split()[2])
+        if args.collect_samples:
+            if sealed.key_id != 1:
+                raise ValueError("unexpected flag key ID")
+            sample_list=[{"nonce":sealed.nonce,"fingerprint":sealed.key_fingerprint}]
+            for i in range(26):
+                ch.command("encrypt 1 1 41")
+                response=ch.line()
+                if not re.fullmatch(r"ciphertext [0-9a-fA-F]{82,256}",response):
+                    raise ValueError(f"unexpected encrypt response #{i}: {response[:200]}")
+                env=parse_envelope("flag 1 "+response.split()[1])
+                if env.cost != 1 or env.plaintext_length != 1:
+                    raise ValueError("unexpected cost or length in chosen-plaintext ciphertext")
+                sample_list.append({"nonce":env.nonce,"fingerprint":env.key_fingerprint})
+                print(f"fingerprint sample {i+1}/26: {env.nonce:#010x}",flush=True)
+            if len({item["nonce"] for item in sample_list}) != len(sample_list):
+                raise ValueError("repeated nonce reduces independent sample count")
+            result={"samples":sample_list, "flag_hex": result.split()[2],
+                    "key_id":sealed.key_id, "flag_length":sealed.plaintext_length}
+            args.collect_samples.write_text(json.dumps(result,indent=2)+"\\n",encoding="utf-8")
+            print("Saved verified fingerprint samples:",len(sample_list))
+            print("Saved sealed flag with cost:",sealed.cost)
         ch.command("quit")
     return 0
 
