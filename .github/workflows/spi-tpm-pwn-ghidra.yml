@@ -1,0 +1,126 @@
+name: HITCON SPI TPM pwn - headless ARM64 decompilation
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-ghidra.yml]
+permissions:
+  contents: read
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Verify challenge archive and unpack only selected ELF to temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --proto '=https' --max-redirs 0 --max-time 105 --max-filesize 50000000 \
+            'https://ctf2026attach.hitconctf.com/d72ad1da709d0aca3b881f11a651420a/spi-tpm-pwn-db1d27f883a2e5e8.tar.gz' \
+            -o "$RUNNER_TEMP/challenge.tar.gz"
+          echo "db1d27f883a2e5e8f73c2b1c6b4b77e0ebfe14642676cce6cadfca4c9d9e173d  $RUNNER_TEMP/challenge.tar.gz" | sha256sum -c -
+          python3 - <<'PY'
+          import gzip,tarfile,os,pathlib,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          out=t/'elf';out.mkdir()
+          with tarfile.open(t/'challenge.tar.gz') as tf:
+              ent=tf.getmember('spi-tpm-pwn/src/initramfs.cpio.gz')
+              assert ent.isfile() and ent.size==1164830
+              data=tf.extractfile(ent).read()
+          assert hashlib.sha256(data).hexdigest()=='6a680f86b790bb592229da80feab14baf723b3dc5a0ebcdc77d7bb82aa13356a'
+          payload=gzip.decompress(data)
+          assert len(payload)<4000000
+          needed={'bin/spi_tpm','bin/spi_tpm_unpriv','lib/modules/spi_tpm_client.ko','lib/modules/spi_tpm_dma.ko'}
+          off=0
+          while off<len(payload):
+              head=payload[off:off+110]
+              if len(head)<110 or head[:6] not in (b'070701',b'070702'):break
+              n=[int(head[6+i*8:14+i*8],16) for i in range(13)]
+              size,name_size,mode=n[6],n[11],n[1]
+              assert size<2000000 and name_size<1000
+              off+=110;name=payload[off:off+name_size].rstrip(b'\0').decode()
+              off=(off+name_size+3)&~3
+              data=payload[off:off+size]
+              off=(off+size+3)&~3
+              if name in needed:
+                  print(name,'SHA256',hashlib.sha256(data).hexdigest())
+                  (out/pathlib.PurePosixPath(name).name).write_bytes(data)
+              if name=='TRAILER!!!':break
+          assert len(list(out.iterdir()))==4
+          PY
+      - name: Install verified official Ghidra and packaged PyGhidra
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --retry 2 \
+            --max-time 300 --max-filesize 650000000 \
+            'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.3_build/ghidra_12.1.3_PUBLIC_20260817.zip' \
+            -o ghidra.zip
+          echo '93a5d11a9ad510622acaaf908c556a7b9b764d338e78a7567f3689bf5081fd54  ghidra.zip' | sha256sum -c -
+          unzip -q ghidra.zip
+          GHIDRA_ROOT="$(find "$RUNNER_TEMP" -maxdepth 1 -mindepth 1 -type d -name 'ghidra_*' | head -1)"
+          echo "GHIDRA_INSTALL_DIR=$GHIDRA_ROOT" >> "$GITHUB_ENV"
+          python3 -m pip install -q pyghidra==3.2.0
+      - name: Cross-reference sensitive code and ioctl handlers without binary execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/decompile_target.py" <<'PY'
+          import os,sys,traceback
+          from pathlib import Path
+          import pyghidra
+          pyghidra.start(install_dir=Path(os.environ['GHIDRA_INSTALL_DIR']))
+          from ghidra.app.decompiler import DecompInterface
+          from ghidra.util.task import ConsoleTaskMonitor
+          base=Path(os.environ['RUNNER_TEMP'])/'elf'
+          for name in ['spi_tpm_unpriv','spi_tpm','spi_tpm_client.ko','spi_tpm_dma.ko']:
+              print('=== ELF',name,flush=True)
+              with pyghidra.open_program(base/name,project_location=Path(os.environ['RUNNER_TEMP'])/'projects',
+                                         project_name='decomp_'+name.replace('.','_'),analyze=True) as api:
+                  pg=api.getCurrentProgram()
+                  fm=pg.getFunctionManager()
+                  choices={}
+                  def add(f,r):
+                      if f is not None:choices[str(f.getEntryPoint())]=(f,r)
+                  patterns=['/dev/spi-tpm0','root privileges','PR_SET_NO_NEW_PRIVS','privilege drop','/home/spi-tpm',
+                            'setresuid','setresgid','usage:','selftest','command [args...]','/flag']
+                  if name.endswith('.ko'):
+                      for f in fm.getFunctions(True):
+                          n=str(f.getName())
+                          if any(p in n for p in ['spi_sync_transfer','spi_tpm_ioctl','spi_tpm_crypt_user_ioctl',
+                                                 'spi_tpm_probe','spi_tpm_dma_prep_slave_sg',
+                                                 'spi_tpm_dma_irq','spi_tpm_dma_start_next_locked',
+                                                 'spi_tpm_dma_write','spi_tpm_dma_config']):
+                              add(f,'named kernel function')
+                  else:
+                      table=pg.getSymbolTable()
+                      try:add(fm.getFunctionAt(pg.getEntryPoint()),'ELF entry')
+                      except:pass
+                      count=0
+                      for d in pg.getListing().getDefinedData(True):
+                          value=d.getValue()
+                          if value is None:continue
+                          s=str(value)
+                          if not any(pattern in s for pattern in patterns):continue
+                          print('STRING',str(d.getAddress()),s[:190],flush=True)
+                          for ref in pg.getReferenceManager().getReferencesTo(d.getAddress()):
+                              add(fm.getFunctionContaining(ref.getFromAddress()),'xref '+s[:70])
+                          count+=1
+                          if count>=140:break
+                  print('SELECTED FUNCTIONS:',len(choices),flush=True)
+                  decomp=DecompInterface();decomp.openProgram(pg)
+                  for index,(address,(f,reason)) in enumerate(sorted(choices.items())):
+                      if index>=40:break
+                      try:
+                          res=decomp.decompileFunction(f,35,ConsoleTaskMonitor())
+                          print('===== FUNCTION',name,address,str(f.getName()),reason,'=====',flush=True)
+                          if res.decompileCompleted() and res.getDecompiledFunction():
+                              code=res.getDecompiledFunction().getC()
+                              print(code[:29000],flush=True)
+                          else:print('ERROR:',res.getErrorMessage(),flush=True)
+                      except Exception as exc:print('DECOMPILATION ERROR:',type(exc).__name__,str(exc),flush=True)
+                  decomp.dispose()
+          PY
+          python3 "$RUNNER_TEMP/decompile_target.py"
