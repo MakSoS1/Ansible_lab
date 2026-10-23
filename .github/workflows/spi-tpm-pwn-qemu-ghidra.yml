@@ -1,4 +1,4 @@
-name: HITCON SPI TPM pwn - reverse custom QEMU DMA backend
+name: HITCON SPI TPM pwn - reverse QEMU DMA (correct PIE rebasing)
 on:
   push:
     branches: [ctf/spi-tpm-pwn-2026]
@@ -62,9 +62,9 @@ jobs:
             choices={}
             for f in fm.getFunctions(True):
               addr=f.getEntryPoint().getOffset()
-              if 0x2ade00<=addr<=0x2b2300:
+              if 0x3ae000<=addr<=0x3b2300:
                 choices[addr]=f
-            for addr in [0x2ae380,0x2ae800,0x2aeb70,0x2af000,0x2b1309]:
+            for addr in [0x3ae380,0x3ae800,0x3aeb70,0x3af000,0x3b1309]:
               f=fm.getFunctionContaining(api.toAddr(addr))
               if f is not None:
                 choices[f.getEntryPoint().getOffset()]=f
