@@ -1,0 +1,114 @@
+name: HITCON SPI TPM - CPython Ghidra decompiler (isolated)
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths:
+      - .github/workflows/spi-tpm-pyghidra.yml
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Download challenge, authenticate by SHA256 and copy only ELF files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsS --proto '=https' --max-redirs 0 --connect-timeout 12 --max-time 100 --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' -o challenge.tar.gz
+          echo 'e15a21887cc925818a5bdb0e6b669028bc30c94bbfc1fe0a06f4c5a4c543ad94  challenge.tar.gz' | sha256sum -c -
+          python3 - <<'PY'
+          import tarfile,pathlib,os
+          base=pathlib.Path(os.environ['RUNNER_TEMP']);out=base/'binaries';out.mkdir()
+          names={'libspi_tpm_firmware.so','spi-tpm-service','spi_tpm_client.ko','spi_tpm_dma.ko'}
+          with tarfile.open(base/'challenge.tar.gz') as tar:
+              for e in tar:
+                  if pathlib.PurePosixPath(e.name).name in names:
+                      assert e.isfile() and e.size<900000
+                      (out/pathlib.PurePosixPath(e.name).name).write_bytes(tar.extractfile(e).read())
+          assert len(list(out.iterdir())) == 4
+          PY
+      - name: Download official verified Ghidra release (no challenge binaries executed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 12 \
+            --retry 2 --max-time 300 --max-filesize 650000000 \
+            'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.3_build/ghidra_12.1.3_PUBLIC_20260817.zip' \
+            -o ghidra.zip
+          echo '93a5d11a9ad510622acaaf908c556a7b9b764d338e78a7567f3689bf5081fd54  ghidra.zip' | sha256sum -c -
+          unzip -q ghidra.zip
+          GHIDRA_ROOT="$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
+          echo "GHIDRA_INSTALL_DIR=$GHIDRA_ROOT" >> "$GITHUB_ENV"
+          python3 -m pip install --quiet pyghidra==3.1.1
+      - name: Print decompiler output and find service command handlers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/inspect.py" <<'PY'
+          import os,pyghidra,sys,traceback
+          from pathlib import Path
+          pyghidra.start(install_dir=Path(os.environ['GHIDRA_INSTALL_DIR']))
+          from ghidra.app.decompiler import DecompInterface
+          from ghidra.util.task import ConsoleTaskMonitor
+          base=Path(os.environ['RUNNER_TEMP'])/'binaries'
+          names=['libspi_tpm_firmware.so','spi_tpm_client.ko','spi_tpm_dma.ko','spi-tpm-service']
+          searchstrings=['SPI-TPM reverse service','get_flag','encrypt flag','gen_new_key',
+                        'commands: get_flag','budget %lu','error syntax',
+                        'plaintext ','ciphertext ','genkey','decrypt','budget %lu queries']
+          for name in names:
+              print('\n====== TARGET',name,'======',flush=True)
+              with pyghidra.open_program(base/name,project_location=Path(os.environ['RUNNER_TEMP'])/'projects',
+                                         project_name='target_'+name.replace('.','_').replace('-','_'),
+                                         analyze=True) as api:
+                  program=api.getCurrentProgram()
+                  fm=program.getFunctionManager()
+                  listing=program.getListing()
+                  choices={}
+                  def take(f, why):
+                      if f is not None: choices[str(f.getEntryPoint())]=(f,why)
+                  if name.endswith('.so'):
+                      for f in fm.getFunctions(True):
+                          if 0x1200<=f.getEntryPoint().getOffset()<=0x3fff:
+                              take(f,'firmware')
+                  elif name.endswith('.ko'):
+                      for f in fm.getFunctions(True):
+                          if 'spi_tpm' in str(f.getName()): take(f,'driver')
+                  else:
+                      matchcount=0
+                      for data in listing.getDefinedData(True):
+                          value=data.getValue()
+                          if value is None: continue
+                          s=str(value)
+                          if not any(needle in s for needle in searchstrings): continue
+                          matchcount+=1
+                          print('STRING',data.getAddress(),s[:140],flush=True)
+                          for ref in program.getReferenceManager().getReferencesTo(data.getAddress()):
+                              take(fm.getFunctionContaining(ref.getFromAddress()),'xref string '+s[:70])
+                          if matchcount>=100: break
+                      try: take(fm.getFunctionAt(program.getSymbolTable().getExternalEntryPointIterator().next()),'entry')
+                      except: pass
+                  print('selected functions',len(choices),flush=True)
+                  d=DecompInterface()
+                  assert d.openProgram(program)
+                  try:
+                      for index,(address,(f,why)) in enumerate(sorted(choices.items())):
+                          if index>=55: break
+                          print('\n===== C FUNCTION',name,address,f.getName(),why,'=====',flush=True)
+                          result=d.decompileFunction(f,30,ConsoleTaskMonitor())
+                          if result.decompileCompleted() and result.getDecompiledFunction():
+                              c=result.getDecompiledFunction().getC()
+                              print(c[:23000],flush=True)
+                              if len(c)>23000: print('TRUNCATED',len(c),flush=True)
+                          else: print('ERROR',result.getErrorMessage(),flush=True)
+                  finally: d.dispose()
+          PY
+          python3 "$RUNNER_TEMP/inspect.py"
