@@ -1,0 +1,75 @@
+name: HITCON SPI TPM - ARM64 secure remote capture
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths: [.github/workflows/spi-tpm-arm-capture.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Collect 27 independent fingerprints from official SPI TPM over TCP and valid scrypt PoW
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u ctf/spi-tpm-2026/client.py \
+            --connect-timeout 15 --pow-timeout 275 \
+            --collect-samples "$RUNNER_TEMP/observations.json"
+          python3 -m json.tool "$RUNNER_TEMP/observations.json" >/dev/null
+
+      - name: RSA-OAEP-SHA256 encrypt observations so public actions log exposes no useful secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,os,pathlib,subprocess
+          data=pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("observations.json").read_bytes()
+          assert 100<len(data)<20000
+          pub="ctf/spi-tpm-2026/result-recipient.pem"
+          print("ENCRYPTED_OBSERVATIONS_BEGIN")
+          for idx,offset in enumerate(range(0,len(data),220)):
+              block=data[offset:offset+220]
+              r=subprocess.run(["openssl","pkeyutl","-encrypt","-pubin","-inkey",pub,
+                                 "-pkeyopt","rsa_padding_mode:oaep",
+                                 "-pkeyopt","rsa_oaep_md:sha256"],
+                               input=block,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)
+              print("RSA_CHUNK_%03d=%s"%(idx,base64.b64encode(r.stdout).decode()))
+          print("ENCRYPTED_OBSERVATIONS_END")
+          PY
+
+      - name: Install audited open-source fpylll algebra libraries
+        shell: bash
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check fpylll==0.6.4 cysignals==1.12.5
+
+      - name: Recover and validate both 64-bit master key seeds with no plaintext log
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u ctf/spi-tpm-2026/recover_experimental.py \
+            --json "$RUNNER_TEMP/observations.json" \
+            --radius 3.5 --out "$RUNNER_TEMP/master_seeds.json"
+          test -s "$RUNNER_TEMP/master_seeds.json"
+          chmod 600 "$RUNNER_TEMP/master_seeds.json"
+
+      - name: RSA-encrypt recovered seeds separately before returning results
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ENCRYPTED_SEEDS_BEGIN"
+          openssl pkeyutl -encrypt -pubin \
+            -inkey ctf/spi-tpm-2026/result-recipient.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in "$RUNNER_TEMP/master_seeds.json" -out "$RUNNER_TEMP/seeds.rsa"
+          base64 -w0 "$RUNNER_TEMP/seeds.rsa"
+          echo
+          echo "ENCRYPTED_SEEDS_END"
+          shred -u "$RUNNER_TEMP/master_seeds.json"
