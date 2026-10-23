@@ -1,0 +1,71 @@
+name: CTF FastColl live judge ABI probe
+
+on:
+  push:
+    branches:
+      - ctf/fastcoll-safe-2026-10-23
+    paths:
+      - .github/workflows/ctf-fastcoll-live-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout with no persistent credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: ctf/fastcoll
+      - name: Build our own reviewed WebAssembly ABI probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang --target=wasm32-unknown-unknown -O2 -nostdlib \
+            -Wl,--no-entry -Wl,--export-memory \
+            -Wl,--initial-memory=131072 -Wl,--max-memory=67108864 \
+            -o /tmp/fastcoll-probe.wasm ctf/fastcoll/wasm_probe.c
+          file /tmp/fastcoll-probe.wasm
+          test "$(stat -c '%s' /tmp/fastcoll-probe.wasm)" -lt 1048576
+      - name: Submit a two-call nonwinning test and poll exact challenge host
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="http://fastcoll.chal.hitconctf.com"
+          curl --fail --silent --show-error --max-redirs 0 \
+            --connect-timeout 10 --max-time 30 \
+            --form 'file=@/tmp/fastcoll-probe.wasm;type=application/wasm' \
+            "$url/api/jobs" > /tmp/fastcoll-create.json
+          python3 - <<'PY'
+          import json,re
+          d=json.load(open('/tmp/fastcoll-create.json'))
+          jid=d.get('id')
+          assert isinstance(jid,str) and re.fullmatch(r'[A-Za-z0-9_-]{8,64}',jid), "Bad job id"
+          open('/tmp/fastcoll-jobid','w').write(jid)
+          print('Submitted to remote judge, status:',d.get('status'))
+          PY
+          for attempt in $(seq 1 15); do
+            sleep 1
+            jid="$(cat /tmp/fastcoll-jobid)"
+            curl --fail --silent --show-error --max-redirs 0 \
+              --connect-timeout 10 --max-time 25 \
+              "$url/api/jobs/$jid" > /tmp/fastcoll-result.json
+            if python3 - <<'PY'
+          import json,sys
+          d=json.load(open('/tmp/fastcoll-result.json'))
+          if d.get('status') in {'queued','running'}:
+              sys.exit(1)
+          print({k:d.get(k) for k in ('status','calls','message')})
+          if 'flag' in d:
+              print('Unexpected winning response: flag available; redacted from public CI log.')
+          PY
+            then
+              exit 0
+            fi
+          done
+          echo "Job remained queued/running after poll window"
+          exit 1
