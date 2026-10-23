@@ -1,6 +1,6 @@
 # HITCON CTF 2026 — FastColl: audited research
 
-**State:** source audited; a 256-byte same-seed XXH3-128 collision was independently reproduced; **the remote challenge is NOT solved**. No real flag has been obtained.
+**State (23 Oct 2026):** source audited, both a same-seed and a FULL 128-bit adjacent-*known*-seed collision reproduced; a correct WASM guest was verified in Wasmtime and tested against the live CTF server, but **the remote challenge is NOT solved**. No real flag has been obtained.
 
 Do **not** submit hitcon{TEST_ME} as the flag: this string is a local-only development secret shipped inside the public challenge archive.
 
@@ -60,7 +60,7 @@ Even if XXH3-128 results across calls were independent and uniformly random (an 
 
     p ~ n(n-1) / (2 * 2^128) = 1.469e-27.
 
-The seed counter and full-digest check make both FastColl-on-MD5 and naive brute force inappropriate. An actual solution must construct a **cross-seed** 128-bit collision or discover another demonstrable vulnerability in the judge. This has **not** yet been done.
+The seed counter and full-digest check make both FastColl-on-MD5 and naive brute force inappropriate. A known-seed **cross-seed** collision has now been constructed algebraically (below), but the remote service uses an independent uniformly random *unknown* 64-bit C for every upload. To solve the actual challenge one must either derive C inside the guest efficiently or find a seed-oblivious cross-seed collision / other demonstrable judge vulnerability. Neither is currently established.
 
 ## Safe test infrastructure
 
@@ -68,7 +68,10 @@ The seed counter and full-digest check make both FastColl-on-MD5 and naive brute
 - The workflow .github/workflows/ctf-fastcoll.yml uses a fresh GitHub-hosted ubuntu-24.04 runner, a pinned checkout action and contents:read permission only, with persist-credentials:false.
 - Downloads the fixed HTTPS attachment URL with no redirect following and bounded size, verifies SHA-256, and inspects source using the bounded stdlib-only archive_inspector.py. No files are extracted, imported or executed.
 - Runs the independent test_known_collision.py offline. The test deliberately asserts that the same-seed pair fails across consecutive seeds.
-- No request is sent to the remote HTTP judge, no non-solver Wasm payload is submitted, and no genuine flag is published.
+- The offline unit tests ran without any uploads. Afterwards we separately submitted our own reviewed minimal ABI module and our self-generated known-seed collision payload to the **exact contest host**, using a bounded rate and handling HTTP 429 (service busy). Neither submission produced a win. No challenge-provided code was executed by these workflows.
+- Test run for live ABI: https://github.com/MakSoS1/Ansible_lab/actions/runs/39975643457
+- Full known-seed collision local + live test: https://github.com/MakSoS1/Ansible_lab/actions/runs/39978308271
+- We did not print a real flag (none was returned) or any GitHub credentials in the public logs.
 
 ## Outcomes
 
@@ -79,7 +82,45 @@ The seed counter and full-digest check make both FastColl-on-MD5 and naive brute
 | Suspicious agent instructions in source treated as instructions | No |
 | Real hash algorithm identified | XXH3-128 |
 | Weak-key 256-byte full-width collision confirmed under same seed | Yes |
-| That pair works at seeds C, C+1 | **No** |
+| Published same-seed pair works at seeds C, C+1 | **No** |
+| Our new algebraic construction for *known* C, C+1 | **Yes**, for full 128 bits |
+| Compiled guest wins under known C in Wasmtime harness | **Yes** (2 calls) |
+| The same compiled guest wins for an unrelated seed | **No** |
+| Remote service accepted generated guest | **Yes**, 2 calls, `no_collision` |
 | Authentic remote CTF flag obtained | **No** |
 
 All observations distinguish verified facts from conjecture. A test fixture is not a solve.
+
+## New: full-width collision for ANY TWO **KNOWN** adjacent seeds
+
+The local algorithm in forge_known_seed.py constructs 1024-byte messages A(s), B(s+1) which have identical complete 128-bit XXH3 digests at seed s and seed (s+1) mod 2^64, respectively. The messages have different SHA-256 fingerprints, so they satisfy every *mathematical collision predicate* of runner.py for this s. They are NOT suitable for an unknown s without further analysis.
+
+For each of the 16 64-byte input stripes, set the 64-bit message lane initially to the derived keyed-secret lane for that stripe. The 512-bit accumulator update consists of raw lane additions plus unsigned 32-by-32 multiplication of keyed XOR halves. With an input equal to its current secret word, the product vanishes. On regular stripes 0 and 1, select data modifications which preserve zero products while allowing an arbitrary 64-bit *additive* change to the accumulator of the neighboring lane, using the high 32 bits of a word and the low 32 bits of a different stripe's word.
+
+Set accumulator targets to the finalizer's corresponding seeded secret words, alternating offsets 11 and 117. Then all four folded 64-by-64 products in each 64-bit merge have a zero operand. Both 64-bit output halves reduce to constants depending only on message length rather than seed. At length 1024 the combined digest is:
+
+    dbfd52f5f5a41471dbbb3ad8d9bd8268
+
+Therefore any two *known* seeds can be assigned distinct 1024-byte messages hashing to that value. These are reproducible complete 128-bit cross-seed collisions, not truncated collisions or an MD5 demonstration. This was tested at s = 0, 1, 123, 0x0123456789abcdef, 0xffffffffffffffff, including 64-bit wraparound.
+
+Reproduce:
+
+    python3 ctf/fastcoll/forge_known_seed.py
+    python3 ctf/fastcoll/emit_known_seed_payload.py /tmp/fastcoll-known.c --seed 0
+    clang --target=wasm32-unknown-unknown -O2 -nostdlib \
+      -Wl,--no-entry -Wl,--export-memory \
+      -Wl,--initial-memory=131072 -Wl,--max-memory=67108864 \
+      -o /tmp/fastcoll-known.wasm /tmp/fastcoll-known.c
+    python3 -m pip install 'wasmtime==50.0.1' 'xxhash==3.8.0'
+    python3 ctf/fastcoll/test_wasm_abi.py /tmp/fastcoll-known.wasm
+
+On the exact ABI-equivalent Wasmtime harness:
+
+    Known seed (0, 1):  {'seed': '0x0000000000000000', 'calls': 2, 'won': True}
+    Different seeded deployment (123, 124): {'seed': '0x000000000000007b', 'calls': 2, 'won': False}
+
+The live judge on http://fastcoll.chal.hitconctf.com/ accepted the compiled module after an HTTP 429 backoff and returned:
+
+    {'status': 'no_collision', 'calls': 2, 'message': 'No collision found'}
+
+**The actual CTF flag has not been recovered.** A task's completed GitHub Actions run should never be confused with completion of the challenge.
