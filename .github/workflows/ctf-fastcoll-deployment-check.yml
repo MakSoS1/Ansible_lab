@@ -1,0 +1,27 @@
+name: CTF FastColl bounded deployment check
+
+on:
+  push:
+    branches: [ctf/fastcoll-safe-2026-10-23]
+    paths:
+      - .github/workflows/ctf-fastcoll-deployment-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: ctf/fastcoll/research
+      - name: Verify probe source and make bounded GETs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ctf/fastcoll/research/deployment_probe.py
+          python3 ctf/fastcoll/research/deployment_probe.py
