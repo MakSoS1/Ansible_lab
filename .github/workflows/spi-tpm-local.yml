@@ -69,7 +69,7 @@ jobs:
           p=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
           start=time.monotonic();transcript=b'';stage=0;used_cipher=None
           def send(cmd):
-              assert len(cmd)<12000 and re.fullmatch('[a-zA-Z0-9 ]+',cmd)
+              assert len(cmd)<12000 and re.fullmatch('[a-zA-Z0-9_ ]+',cmd)
               print('CLIENT >>> '+cmd,flush=True)
               p.stdin.write((cmd+'\n').encode());p.stdin.flush()
           while time.monotonic()-start<40 and p.poll() is None:
@@ -110,4 +110,4 @@ jobs:
           except:pass
           print('STAGE',stage,'EXIT',p.returncode,'DURATION',round(time.monotonic()-start,2),flush=True)
           assert stage>=3, 'did not complete protocol test'
-          PYY
+          PY
