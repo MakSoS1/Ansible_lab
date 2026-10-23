@@ -1,0 +1,43 @@
+name: CTF FastColl safe archive inspection
+
+on:
+  push:
+    branches:
+      - ctf/fastcoll-safe-2026-10-23
+    paths:
+      - ctf/fastcoll/**
+      - .github/workflows/ctf-fastcoll.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Download fixed HTTPS archive with bounds and no redirects
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ctf-fastcoll
+          curl --fail --silent --show-error \
+            --proto '=https' \
+            --max-redirs 0 \
+            --connect-timeout 12 \
+            --max-time 90 \
+            --max-filesize 10485760 \
+            -o /tmp/ctf-fastcoll/challenge.tar.gz \
+            'https://ctf2026attach.hitconctf.com/2db03954193dce13908ebdb5e5b61a01/fastcoll-a3b7ecfda96b58c1.tar.gz'
+          file /tmp/ctf-fastcoll/challenge.tar.gz
+          sha256sum /tmp/ctf-fastcoll/challenge.tar.gz
+      - name: Bounded static inspection (no extraction or execution)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ctf/fastcoll/inspect.py /tmp/ctf-fastcoll/challenge.tar.gz
