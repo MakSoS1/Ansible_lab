@@ -141,16 +141,18 @@ def main() -> int:
 
     print(f"Connecting ONLY to {HOST}:{PORT}", flush=True)
     with socket.create_connection((HOST, PORT), timeout=args.connect_timeout) as sock:
-        sock.settimeout(320)
+        sock.settimeout(42)
         ch = Channel(sock)
         greeting = ch.line()
         if greeting == "proof-of-work scrypt":
+            sock.settimeout(320)
             print("Authentic-looking scrypt PoW handshake detected")
             nonce = solve_scrypt_pow(ch, args.pow_timeout)
             print("PoW accepted with decimal nonce", nonce)
             greeting = ch.line()
         if greeting != "SPI-TPM reverse service":
             raise ValueError("unexpected server greeting: " + greeting[:200])
+        sock.settimeout(320)
         opening = [ch.line(), ch.line(), ch.line()]
         if not (re.fullmatch(r"budget [0-9]+", opening[0])
                 and re.fullmatch(r"queries [0-9]+", opening[1])
