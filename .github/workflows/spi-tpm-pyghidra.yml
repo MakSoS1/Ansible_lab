@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > "$RUNNER_TEMP/inspect.py" <<'PY'
+          cat > "$RUNNER_TEMP/ghidra_review.py" <<'PY'
           import os,pyghidra,sys,traceback
           from pathlib import Path
           pyghidra.start(install_dir=Path(os.environ['GHIDRA_INSTALL_DIR']))
@@ -111,4 +111,4 @@ jobs:
                           else: print('ERROR',result.getErrorMessage(),flush=True)
                   finally: d.dispose()
           PY
-          python3 "$RUNNER_TEMP/inspect.py"
+          python3 "$RUNNER_TEMP/ghidra_review.py"
