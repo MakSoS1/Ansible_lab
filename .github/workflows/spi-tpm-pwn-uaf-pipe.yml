@@ -1,0 +1,44 @@
+name: SPI TPM pwn - stale DMA pipe-ring confirmation
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-uaf-pipe.yml, ctf/spi-tpm-pwn-2026/uaf_pipe_probe.c]
+permissions:
+  contents: read
+jobs:
+  uaf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Use hash-verified offline setup and own freestanding payload
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import pathlib,subprocess,textwrap,hashlib,os
+          b=pathlib.Path('.github/workflows/spi-tpm-pwn-pressure-fifo.yml').read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='1d9c47e5810241ee216076e10d715554225531e7'
+          lines=b.decode().splitlines(keepends=True);i=0;blocks=[]
+          while i<len(lines):
+            if lines[i].rstrip()=='        run: |':
+              i+=1;acc=[]
+              while i<len(lines) and (lines[i].startswith('          ') or not lines[i].strip()):acc.append(lines[i]);i+=1
+              blocks.append(textwrap.dedent(''.join(acc)))
+            else:i+=1
+          assert len(blocks)==2
+          subprocess.run(['bash','-euo','pipefail','-c',blocks[0]],check=True,timeout=230)
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          helpers=pathlib.Path('ctf/spi-tpm-pwn-2026/raw_probe.c').read_text().split('static void worker(')[0]
+          src=root/'pipe.c';src.write_text(helpers+pathlib.Path('ctf/spi-tpm-pwn-2026/uaf_pipe_probe.c').read_text())
+          subprocess.run(['clang','--target=aarch64-linux-gnu','-fuse-ld=lld','-nostdlib','-static','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-Wl,-e,_start,-s',str(src),'-o',str(root/'payload')],check=True,timeout=20)
+          subprocess.run(['bash','-euo','pipefail','-c',blocks[1]],check=True,timeout=90)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spi-pwn-uaf-pipe-observations
+          path: output/
+          retention-days: 2
+          if-no-files-found: error
