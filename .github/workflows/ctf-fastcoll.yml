@@ -1,4 +1,4 @@
-name: CTF FastColl safe archive inspection
+name: CTF FastColl audited source and collision tests
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  inspect-and-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -34,10 +34,15 @@ jobs:
             --max-filesize 10485760 \
             -o /tmp/ctf-fastcoll/challenge.tar.gz \
             'https://ctf2026attach.hitconctf.com/2db03954193dce13908ebdb5e5b61a01/fastcoll-a3b7ecfda96b58c1.tar.gz'
+          echo 'a3b7ecfda96b58c1347e3c05c5259de80b7b228e7d14c63a402f840e55f44aa6  /tmp/ctf-fastcoll/challenge.tar.gz' | sha256sum --check --
           file /tmp/ctf-fastcoll/challenge.tar.gz
-          sha256sum /tmp/ctf-fastcoll/challenge.tar.gz
       - name: Bounded static inspection (no extraction or execution)
         shell: bash
         run: |
           set -euo pipefail
           python3 ctf/fastcoll/inspect.py /tmp/ctf-fastcoll/challenge.tar.gz
+      - name: Reproduce local 128-bit collision and prove adjacent-seed failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ctf/fastcoll/test_known_collision.py
