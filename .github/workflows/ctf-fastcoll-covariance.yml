@@ -1,0 +1,60 @@
+name: CTF FastColl negative counter-covariance experiments
+
+on:
+  push:
+    branches: [ctf/fastcoll-safe-2026-10-23]
+    paths:
+      - ctf/fastcoll/research/counter_covariance.c
+      - .github/workflows/ctf-fastcoll-covariance.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: ctf/fastcoll/research
+      - name: Compile independently written offline experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum ctf/fastcoll/research/counter_covariance.c
+          cc -O3 -Wall -Wextra -Werror \
+            ctf/fastcoll/research/counter_covariance.c \
+            -Wl,-l:libxxhash.so.0 -o /tmp/fastcoll-covariance
+      - name: Positive control must find known-seed full-width collisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/fastcoll-covariance 0 100 0 16 | tee /tmp/fastcoll-positive.log
+          grep -F 'i=0 j=1 digest=dbfd52f5f5a41471dbbb3ad8d9bd8268' /tmp/fastcoll-positive.log
+      - name: Test 33 million correlated-message candidates offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cases=0
+          for seed in 0x1 0x8000000000000000 0x123456789abcdef0 0xfedcba9876543210; do
+            for stripes in 4 15; do
+              for mode in 0 1 2 3; do
+                echo "OFFSET=$seed STRIPES=$stripes MODE=$mode"
+                result=$(/tmp/fastcoll-covariance "$seed" 1000000 "$mode" "$stripes")
+                printf '%s\n' "$result"
+                grep -F 'processed=1000000 collisions=0' <<< "$result"
+                cases=$((cases+1))
+              done
+            done
+          done
+          result=$(/tmp/fastcoll-covariance 0xffffffffffffffff 1000000 0 16)
+          printf '%s\n' "$result"
+          grep -F 'processed=1000000 collisions=0' <<< "$result"
+          cases=$((cases+1))
+          test "$cases" = 33
+          echo 'RESEARCH RESULT: no full-width collision in these 33 million candidates.'
+          echo 'This is a finite negative experiment, NOT a proof of security.'
+          echo 'No request was sent to the CTF server. No real flag was recovered.'
