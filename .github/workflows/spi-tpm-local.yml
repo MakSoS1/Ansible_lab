@@ -40,15 +40,13 @@ jobs:
           (dest/'flag').write_text('hitcon{LOCAL_FAKE_FLAG_FOR_TESTS}\n')
           (dest/'flag').chmod(0o644)
           PY
-      - name: Build our own trusted Ubuntu sandbox image (not contest Dockerfile)
+      - name: Build our own official Arch sandbox image with signed packages (not contest Dockerfile)
         shell: bash
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/Dockerfile" <<'DOCKER'
-          FROM ubuntu:24.04
-          RUN apt-get update && apt-get install -y --no-install-recommends \
-              bash coreutils findutils gzip cpio libfdt1 libglib2.0-0t64 && \
-              rm -rf /var/lib/apt/lists/*
+          FROM archlinux:base
+          RUN pacman -Syu --noconfirm --needed cpio dtc && pacman -Scc --noconfirm
           USER 1000:1000
           WORKDIR /opt/spi-tpm
           ENTRYPOINT ["/bin/bash", "/opt/spi-tpm/run.sh"]
@@ -98,4 +96,5 @@ jobs:
           try: p.wait(timeout=5)
           except: pass
           print('\nExit',p.returncode,'total seconds',time.monotonic()-start)
+          assert p.returncode in (0,1), 'abnormal guest exit'
           PY
