@@ -77,12 +77,15 @@ jobs:
                       if f is not None: choices[str(f.getEntryPoint())]=(f,why)
                   if name.endswith('.so'):
                       for f in fm.getFunctions(True):
-                          if 0x1200<=f.getEntryPoint().getOffset()<=0x3fff:
+                          if 0x101200<=f.getEntryPoint().getOffset()<=0x103fff:
                               take(f,'firmware')
                   elif name.endswith('.ko'):
                       for f in fm.getFunctions(True):
                           if 'spi_tpm' in str(f.getName()): take(f,'driver')
                   else:
+                      for address in (0x109dc0,0x109e80,0x109f80,0x109020,0x109110,0x1091e8):
+                          f=fm.getFunctionAt(api.toAddr(address))
+                          take(f,'service helper '+hex(address))
                       matchcount=0
                       for data in listing.getDefinedData(True):
                           value=data.getValue()
