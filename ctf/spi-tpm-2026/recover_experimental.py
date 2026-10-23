@@ -9,6 +9,7 @@ the nonlinear xy condition as filter.
 """
 import argparse
 import json
+import os
 import math
 import random
 import time
@@ -118,7 +119,7 @@ def recover(observations, radii=(2.4,2.6,2.8,3.0,3.2,3.4)):
         if z != (x*y)%P: return False
         if all((a*x+b*y+c*z)%P>>118 == leakage(nonce,fp)
                for (nonce,fp),(a,b,c) in zip(observations, coefficients)):
-            print("FOUND",hex(x),hex(y),"after",hits,
+            print("FOUND verified candidate after",hits,
                   "candidates",likely,"secs",round(time.monotonic()-t0,3),flush=True)
             found.append((x,y))
             return True
@@ -144,6 +145,7 @@ def main():
     p.add_argument("--synthetic",action="store_true")
     p.add_argument("--json",type=Path)
     p.add_argument("--radius",type=float,default=3.0)
+    p.add_argument("--out",type=Path,help="Write recovered key JSON privately; do not log keys")
     a=p.parse_args()
     if a.synthetic == bool(a.json):
         p.error("choose either --synthetic or --json")
@@ -157,7 +159,12 @@ def main():
         ob=[(int(x['nonce']),int(x['fingerprint'])) for x in raw['samples']]
         expected=None
     answer=recover(ob, radii=(a.radius,))
-    print("ANSWER",answer,flush=True)
+    print("ANSWER", "validated" if answer is not None else "no candidate",flush=True)
+    if answer is not None and a.out is not None:
+        fd=os.open(a.out,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+        with os.fdopen(fd,"w",encoding="utf8") as file:
+            json.dump({"key0":str(answer[0]),"key1":str(answer[1])},file)
+        print("RECOVERED KEYS SAVED ONLY TO RUNNER TEMPORARY FILE",flush=True)
     if expected is not None:
         assert answer == expected, "FAILED TO RECOVER KNOWN SYNTHETIC SEED"
 
