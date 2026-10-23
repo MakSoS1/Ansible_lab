@@ -1,0 +1,30 @@
+name: HITCON SPI TPM - synthetic lattice proof
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths:
+      - .github/workflows/spi-tpm-recover-test.yml
+      - ctf/spi-tpm-2026/recover_experimental.py
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install vetted number theory dependencies for independent recovery code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check fpylll==0.6.4 cysignals==1.12.5
+      - name: Synthetic-key recovery via 27 constrained 9-bit fingerprint leaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u ctf/spi-tpm-2026/recover_experimental.py --synthetic --radius 3.0
