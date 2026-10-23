@@ -1,0 +1,101 @@
+name: HITCON SPI TPM - sandbox local guest protocol
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths: [.github/workflows/spi-tpm-local.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  emulation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Fetch only SHA256-verified contest payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --proto '=https' --max-redirs 0 --max-time 120 \
+            --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' \
+            -o "$RUNNER_TEMP/challenge.tar.gz"
+          echo "e15a21887cc925818a5bdb0e6b669028bc30c94bbfc1fe0a06f4c5a4c543ad94  $RUNNER_TEMP/challenge.tar.gz" | sha256sum -c -
+          python3 - <<'PY'
+          import tarfile,pathlib,os
+          base=pathlib.Path(os.environ['RUNNER_TEMP'])
+          dest=base/'sandbox-spi';dest.mkdir(mode=0o755)
+          wanted=['run.sh','src/qemu-system-aarch64','src/Image','src/initramfs.cpio.gz','src/libspi_tpm_firmware.so']
+          with tarfile.open(base/'challenge.tar.gz') as tf:
+              for target in wanted:
+                  m=tf.getmember('spi-tpm-rev/'+target)
+                  assert m.isfile() and 0<m.size<18000000
+                  p=dest/target;p.parent.mkdir(parents=True,exist_ok=True)
+                  p.write_bytes(tf.extractfile(m).read())
+                  p.chmod(0o755 if target in ('run.sh','src/qemu-system-aarch64') else 0o644)
+          # run.sh expects all binary assets in same directory
+          for target in ['qemu-system-aarch64','Image','initramfs.cpio.gz','libspi_tpm_firmware.so']:
+              (dest/target).symlink_to('src/'+target)
+          (dest/'flag').write_text('hitcon{LOCAL_FAKE_FLAG_FOR_TESTS}\n')
+          (dest/'flag').chmod(0o644)
+          PY
+      - name: Build our own trusted Ubuntu sandbox image (not contest Dockerfile)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/Dockerfile" <<'DOCKER'
+          FROM ubuntu:24.04
+          RUN apt-get update && apt-get install -y --no-install-recommends \
+              bash coreutils findutils gzip cpio libfdt1 libglib2.0-0t64 && \
+              rm -rf /var/lib/apt/lists/*
+          USER 1000:1000
+          WORKDIR /opt/spi-tpm
+          ENTRYPOINT ["/bin/bash", "/opt/spi-tpm/run.sh"]
+          DOCKER
+          docker build --pull -q -t spi-tpm-sandbox:local -f "$RUNNER_TEMP/Dockerfile" "$RUNNER_TEMP"
+      - name: Run supplied ARM64 guest ONLY inside Docker with network completely disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess,select,os,time
+          directory=os.environ['RUNNER_TEMP']+'/sandbox-spi'
+          args=['docker','run','--rm','--interactive','--network=none',
+                '--read-only','--cap-drop=ALL','--security-opt=no-new-privileges',
+                '--pids-limit=64','--memory=768m','--cpus=2',
+                '--tmpfs','/tmp:rw,nosuid,nodev,mode=1777,size=64m',
+                '-v',directory+':/opt/spi-tpm:ro',
+                '-e','VM_TIMEOUT=100','spi-tpm-sandbox:local']
+          print('container isolated: network=none, read-only, no privileges, fake flag',flush=True)
+          p=subprocess.Popen(args, stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
+          start=time.monotonic()
+          next_input=None;received=b''
+          while time.monotonic()-start<95 and p.poll() is None:
+              ready,_,_=select.select([p.stdout],[],[],1)
+              if ready:
+                  data=os.read(p.stdout.fileno(),4096)
+                  if not data:break
+                  received+=data
+                  print(data.decode('utf-8','replace')[:10000],end='',flush=True)
+                  if b'commands:' in received and next_input is None:
+                      next_input=time.monotonic()+1
+              if next_input is not None and time.monotonic()>=next_input:
+                  for cmd in [b'budget\n',b'get_flag\n',b'budget\n',b'genkey\n',
+                              b'encrypt 0 1 41424344\n',b'budget\n',b'quit\n']:
+                      print('CLIENT SEND:',cmd.decode().strip(),flush=True)
+                      p.stdin.write(cmd);p.stdin.flush();time.sleep(.5)
+                  next_input=None
+                  break
+          end=time.monotonic()+12
+          while p.poll() is None and time.monotonic()<end:
+              ready,_,_=select.select([p.stdout],[],[],1)
+              if ready:
+                  data=os.read(p.stdout.fileno(),4096)
+                  if not data:break
+                  print(data.decode('utf-8','replace')[:12000],end='',flush=True)
+          if p.poll() is None:p.kill()
+          try: p.wait(timeout=5)
+          except: pass
+          print('\nExit',p.returncode,'total seconds',time.monotonic()-start)
+          PY
