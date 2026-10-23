@@ -48,7 +48,7 @@ jobs:
           unzip -q ghidra.zip
           GHIDRA_ROOT="$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -1)"
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_ROOT" >> "$GITHUB_ENV"
-          python3 -m pip install --quiet pyghidra==3.1.1
+          python3 -m pip install --quiet pyghidra==3.2.0
       - name: Print decompiler output and find service command handlers
         shell: bash
         run: |
