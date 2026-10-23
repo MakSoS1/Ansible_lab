@@ -8,12 +8,12 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Execute the four reviewed local probe steps without optional kallsyms recovery
+      - name: Execute reviewed bounded local DMA experiment
         shell: bash
         run: |
           python3 -u - <<'PY'
@@ -31,9 +31,11 @@ jobs:
             else:i+=1
           assert len(blocks)==4
           blocks[1]=blocks[1].split('python3 -m pip install')[0]
+          blocks[1]=blocks[1].replace('sudo apt-get update -qq','sudo timeout 35 apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 update -qq || true')
+          blocks[1]=blocks[1].replace('sudo apt-get install','sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=15 install')
           for idx,code in enumerate(blocks):
             print('=== REVIEWED LOCAL PROBE STEP',idx+1,'===',flush=True)
-            subprocess.run(['bash','-euo','pipefail','-c',code],check=True,timeout=180)
+            subprocess.run(['bash','-euo','pipefail','-c',code],check=True,timeout=210)
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
