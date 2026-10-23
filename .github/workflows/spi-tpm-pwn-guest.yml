@@ -76,9 +76,13 @@ jobs:
           os.close(slave)
           t=time.monotonic();phase=0;buf=b'';nextcmd=0
           commands=[
-            b'id',b'ls -la /flag /dev/spi-tpm0 /home/spi-tpm',
-            b'cat /flag',b'cat /proc/self/status',
-            b'cat /proc/modules',b'/bin/spi_tpm selftest',
+            b'id',b'ls -la /proc/$$/fd',
+            b'cat /proc/$$/fdinfo/3',
+            b'/bin/busybox readlink /proc/$$/fd/3',
+            b'ls -la /dev/spi-tpm0 /flag /home/spi-tpm /tmp',
+            b'env',b'cat /proc/cmdline',
+            b'cat /proc/sys/kernel/kptr_restrict',
+            b'cat /proc/sys/kernel/perf_event_paranoid',
             b'echo TEST_END',b'exit'
           ]
           last=time.monotonic()
