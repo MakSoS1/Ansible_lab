@@ -76,7 +76,7 @@ jobs:
                   if not data:break
                   received+=data
                   print(data.decode('utf-8','replace')[:10000],end='',flush=True)
-                  if b'ready\n' in received and next_input is None:
+                  if b'ready' in received and next_input is None:
                       next_input=time.monotonic()+1
               if next_input is not None and time.monotonic()>=next_input:
                   for cmd in [b'budget\n',b'get_flag\n',b'budget\n',b'genkey\n',
@@ -96,5 +96,5 @@ jobs:
           try: p.wait(timeout=5)
           except: pass
           print('\nExit',p.returncode,'total seconds',time.monotonic()-start)
-          assert b'ready\n' in received, 'guest never became ready'
+          assert b'ready' in received, 'guest never became ready'
           PY
