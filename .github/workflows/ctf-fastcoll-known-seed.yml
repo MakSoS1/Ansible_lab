@@ -44,10 +44,30 @@ jobs:
         run: |
           set -euo pipefail
           base='http://fastcoll.chal.hitconctf.com'
-          curl --fail --silent --show-error --max-redirs 0 \
-            --connect-timeout 10 --max-time 30 \
-            --form 'file=@/tmp/fastcoll-known-seed.wasm;type=application/wasm' \
-            "$base/api/jobs" > /tmp/coll-create.json
+          # This is a busy CTF service: no concurrent uploads, at most four attempts.
+          response_code=0
+          for attempt in 1 2 3 4; do
+            response_code="$(curl --silent --show-error --max-redirs 0 \
+              --connect-timeout 10 --max-time 30 --output /tmp/coll-create.json \
+              --write-out '%{http_code}' \
+              --form 'file=@/tmp/fastcoll-known-seed.wasm;type=application/wasm' \
+              "$base/api/jobs")"
+            if [ "$response_code" = 202 ]; then
+              break
+            fi
+            if [ "$response_code" != 429 ]; then
+              echo "Unexpected HTTP code $response_code"
+              exit 1
+            fi
+            if [ "$attempt" != 4 ]; then
+              echo "CTF slots full (HTTP 429), pausing 40 seconds; attempt $attempt/4"
+              sleep 40
+            fi
+          done
+          if [ "$response_code" = 429 ]; then
+            echo "Remote service busy after limited retries; no submission accepted."
+            exit 0
+          fi
           python3 - <<'PY'
           import json,re
           d=json.load(open('/tmp/coll-create.json'))
