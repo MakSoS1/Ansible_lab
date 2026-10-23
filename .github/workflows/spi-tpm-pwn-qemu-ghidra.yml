@@ -1,0 +1,96 @@
+name: HITCON SPI TPM pwn - reverse custom QEMU DMA backend
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-qemu-ghidra.yml]
+permissions:
+  contents: read
+jobs:
+  reverse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env: {PYTHONUNBUFFERED: "1"}
+    steps:
+      - name: Fetch only pinned competition binary, never run QEMU on runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --proto '=https' --max-redirs 0 --max-time 100 --max-filesize 50000000 \
+            'https://ctf2026attach.hitconctf.com/d72ad1da709d0aca3b881f11a651420a/spi-tpm-pwn-db1d27f883a2e5e8.tar.gz' \
+            -o "$RUNNER_TEMP/ctf.tar.gz"
+          echo "db1d27f883a2e5e8f73c2b1c6b4b77e0ebfe14642676cce6cadfca4c9d9e173d  $RUNNER_TEMP/ctf.tar.gz" | sha256sum -c -
+          python3 - <<'PY'
+          import os,pathlib,hashlib,tarfile
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          with tarfile.open(t/'ctf.tar.gz') as f:
+            m=f.getmember('spi-tpm-pwn/src/qemu-system-aarch64')
+            assert m.isfile() and m.size==11527272
+            b=f.extractfile(m).read()
+          assert hashlib.sha256(b).hexdigest()=='6291b5b075f7e0cedcff4e46cb135f0b8d6e93d94c5973784c034c16eba662bb'
+          (t/'qemu-exact').write_bytes(b)
+          PY
+      - name: Get verified official Ghidra and Python bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 12 --retry 2 --max-time 300 --max-filesize 650000000 \
+            'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.3_build/ghidra_12.1.3_PUBLIC_20260817.zip' \
+            -o ghidra.zip
+          echo '93a5d11a9ad510622acaaf908c556a7b9b764d338e78a7567f3689bf5081fd54  ghidra.zip' | sha256sum -c -
+          unzip -q ghidra.zip
+          GHIDRA_ROOT="$(find "$RUNNER_TEMP" -maxdepth 1 -mindepth 1 -type d -name 'ghidra_*' | head -1)"
+          echo "GHIDRA_INSTALL_DIR=$GHIDRA_ROOT" >> "$GITHUB_ENV"
+          python3 -m pip install -q pyghidra==3.2.0
+      - name: Decompile QEMU custom DMA/SRAM/SPI implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          cat > "$RUNNER_TEMP/reverse_qemu.py" <<'PY'
+          import os
+          from pathlib import Path
+          import pyghidra
+          pyghidra.start(install_dir=Path(os.environ['GHIDRA_INSTALL_DIR']))
+          from ghidra.app.decompiler import DecompInterface
+          from ghidra.util.task import ConsoleTaskMonitor
+          t=Path(os.environ['RUNNER_TEMP'])
+          with pyghidra.open_program(t/'qemu-exact',project_location=t/'ghidra-project',
+                                     project_name='qemu-dma',analyze=True) as api:
+            pg=api.getCurrentProgram()
+            fm=pg.getFunctionManager()
+            choices={}
+            for f in fm.getFunctions(True):
+              addr=f.getEntryPoint().getOffset()
+              if 0x2ade00<=addr<=0x2b2300:
+                choices[addr]=f
+            for addr in [0x2ae380,0x2ae800,0x2aeb70,0x2af000,0x2b1309]:
+              f=fm.getFunctionContaining(api.toAddr(addr))
+              if f is not None:
+                choices[f.getEntryPoint().getOffset()]=f
+            print('selected',len(choices),'functions',flush=True)
+            d=DecompInterface();d.openProgram(pg)
+            out=Path('output/spi_tpm_dma_qemu_decomp.txt')
+            with out.open('w',encoding='utf8') as fd:
+              for addr,f in sorted(choices.items()):
+                print('START',hex(addr),str(f.getName()),flush=True)
+                fd.write('\n===== QEMU '+hex(addr)+' '+str(f.getName())+' =====\n')
+                try:
+                  res=d.decompileFunction(f,35,ConsoleTaskMonitor())
+                  if res.decompileCompleted() and res.getDecompiledFunction() is not None:
+                    c=res.getDecompiledFunction().getC()
+                    fd.write(c[:36000]+'\n')
+                    if len(c)>36000:fd.write('\nTRUNCATED function, length '+str(len(c))+'\n')
+                  else:fd.write('FAILED: '+str(res.getErrorMessage())+'\n')
+                except Exception as exc:fd.write('EXCEPTION: '+type(exc).__name__+': '+str(exc)+'\n')
+            d.dispose()
+            print('Written',out.stat().st_size,'bytes',flush=True)
+          PY
+          python3 "$RUNNER_TEMP/reverse_qemu.py"
+      - name: Publish only derived static pseudocode (no contest flags)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spi-tpm-qemu-dma-static-decomp
+          path: output/spi_tpm_dma_qemu_decomp.txt
+          retention-days: 2
+          if-no-files-found: error
