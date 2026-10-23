@@ -1,0 +1,31 @@
+name: HITCON SPI TPM - verified disassembly of encrypt path
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths: [.github/workflows/spi-tpm-asm.yml]
+permissions:
+  contents: read
+jobs:
+  asm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --proto '=https' --max-redirs 0 --max-time 100 --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' \
+            -o "$RUNNER_TEMP/challenge.tar.gz"
+          echo "e15a21887cc925818a5bdb0e6b669028bc30c94bbfc1fe0a06f4c5a4c543ad94  $RUNNER_TEMP/challenge.tar.gz" | sha256sum -c -
+          python3 - <<'PY'
+          import tarfile,os,pathlib
+          base=pathlib.Path(os.environ['RUNNER_TEMP'])
+          with tarfile.open(base/'challenge.tar.gz') as tf:
+            item=tf.getmember('spi-tpm-rev/src/libspi_tpm_firmware.so')
+            (base/'firmware.so').write_bytes(tf.extractfile(item).read())
+          PY
+          echo '=== ENCRYPT data input, 0x27d0:0x2a90 ==='
+          objdump -d -M intel --no-show-raw-insn --start-address=0x27d0 --stop-address=0x2aa0 "$RUNNER_TEMP/firmware.so"
+          echo '=== DECRYPT data input, 0x2e30:0x2fa0 ==='
+          objdump -d -M intel --no-show-raw-insn --start-address=0x2e30 --stop-address=0x2fb0 "$RUNNER_TEMP/firmware.so"
