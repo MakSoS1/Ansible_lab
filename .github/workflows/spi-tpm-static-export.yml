@@ -1,0 +1,40 @@
+name: HITCON SPI TPM - distribute verified public firmware to analysis
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths: [.github/workflows/spi-tpm-static-export.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Download original challenge archive and print compressed public firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --proto '=https' --max-redirs 0 --connect-timeout 14 \
+            --max-time 90 --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' \
+            -o "$RUNNER_TEMP/contest.tar.gz"
+          echo "e15a21887cc925818a5bdb0e6b669028bc30c94bbfc1fe0a06f4c5a4c543ad94  $RUNNER_TEMP/contest.tar.gz" | sha256sum -c -
+          python3 - <<'PY'
+          import base64,hashlib,io,lzma,os,pathlib,tarfile
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          with tarfile.open(root/'contest.tar.gz') as tf:
+              entry=tf.getmember('spi-tpm-rev/src/libspi_tpm_firmware.so')
+              assert entry.isfile() and entry.size==22424
+              data=tf.extractfile(entry).read()
+          assert hashlib.sha256(data).hexdigest()=="1bd76fdd713d7c1003e27e418813e0444c3a2a780bf895836f093048b5cc7a40"
+          packed=lzma.compress(data,preset=9|lzma.PRESET_EXTREME,format=lzma.FORMAT_XZ)
+          print('verified public firmware size=',len(data),'xz packed=',len(packed))
+          print('BEGIN_VERIFIED_PUBLIC_FIRMWARE_XZ')
+          b64=base64.b64encode(packed).decode()
+          for off in range(0,len(b64),500):
+              print(b64[off:off+500])
+          print('END_VERIFIED_PUBLIC_FIRMWARE_XZ')
+          PY
