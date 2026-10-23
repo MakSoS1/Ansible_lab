@@ -41,6 +41,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 ctf/fastcoll/archive_inspector.py /tmp/ctf-fastcoll/challenge.tar.gz
+      - name: Forge full-width cross-seed collisions for known seeds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ctf/fastcoll/forge_known_seed.py
       - name: Reproduce local 128-bit collision and prove adjacent-seed failure
         shell: bash
         run: |
