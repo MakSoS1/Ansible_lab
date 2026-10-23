@@ -25,6 +25,8 @@ jobs:
             item=tf.getmember('spi-tpm-rev/src/libspi_tpm_firmware.so')
             (base/'firmware.so').write_bytes(tf.extractfile(item).read())
           PY
+          echo '=== KEY ROUTING FUNCTION 0x3850:0x3aC8 ==='
+          objdump -d -M intel --no-show-raw-insn --start-address=0x3850 --stop-address=0x3ac8 "$RUNNER_TEMP/firmware.so"
           echo '=== ENCRYPT data input, 0x27d0:0x2a90 ==='
           objdump -d -M intel --no-show-raw-insn --start-address=0x27d0 --stop-address=0x2aa0 "$RUNNER_TEMP/firmware.so"
           echo '=== DECRYPT data input, 0x2e30:0x2fa0 ==='
