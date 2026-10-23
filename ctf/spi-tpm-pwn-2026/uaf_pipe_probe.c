@@ -6,9 +6,10 @@ int main(void){
  int fd=call(56,-100,(long)"/dev/spi-tpm0",2,0,0,0);struct gen g;fill(&g,0,sizeof(g));long r=call(29,fd,0xc0184301UL,(long)&g,0,0,0);
  logrow(-1,-1,r,g.status,g.key,0);if(r||g.status)return 1;
  for(int k=0;k<8;k++){
-   long p=call(59,(long)pipes[k],0x4800,0,0,0,0);long s=call(25,pipes[k][1],1031,524288,0,0,0);
+   long p=call(59,(long)pipes[k],0x800,0,0,0,0);long s=call(25,pipes[k][1],1031,524288,0,0,0);
    if(p||s!=524288){logrow(-2,k,p,s,0,0);say("PROBE_COMPLETE\n");return 2;}
-   for(int j=0;j<128;j++){u8 ch=0x41+k;if(call(64,pipes[k][1],(long)&ch,1,0,0,0)!=1){say("PIPE_FILL_FAILED\nPROBE_COMPLETE\n");return 3;}}
+   fill(flood,0x41+k,sizeof(flood));
+   for(int j=0;j<128;j++)if(call(64,pipes[k][1],(long)flood,sizeof(flood),0,0,0)!=sizeof(flood)){say("PIPE_FILL_FAILED\nPROBE_COMPLETE\n");return 3;}
  }
  say("PIPES_READY\n");
  volatile u32 *shared=(void*)call(222,0,4096,3,0x21,-1,0);if((long)shared<0)return 4;*shared=0;
@@ -24,7 +25,7 @@ int main(void){
      long spray=now()-t0;long t[2]={0,30000000};call(101,(long)t,0,0,0,0,0);
      logrow(0,i,r,c.status,c.outlen,dt);logrow(-3,0,0,0,0,spray);
      int hits=0;
-     for(int k=0;k<8;k++){int avail=0;long q=call(29,pipes[k][0],0x541b,(long)&avail,0,0,0);logrow(-4,k,q,sizes[k],avail,0);if(q==0 && avail!=128)hits++;}
+     for(int k=0;k<8;k++){int avail=0;long q=call(29,pipes[k][0],0x541b,(long)&avail,0,0,0);logrow(-4,k,q,sizes[k],avail,0);if(q==0 && avail!=524288)hits++;}
      if(hits)say("STALE_WRITE_CONFIRMED\n");else say("NO_PIPE_RING_RECLAIM\n");
      say("PROBE_COMPLETE\n");for(;;){long t[2]={1,0};call(101,(long)t,0,0,0,0,0);}
    }
