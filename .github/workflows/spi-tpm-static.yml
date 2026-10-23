@@ -34,7 +34,7 @@ jobs:
                   if m.name in allowed:
                       assert m.isfile() and m.size<2_000_000
                       (out/pathlib.PurePosixPath(m.name).name).write_bytes(tf.extractfile(m).read())
-          data=gzip.decompress((out/'initramfs.cpio.gz').read())
+          data=gzip.decompress((out/'initramfs.cpio.gz').read_bytes())
           assert len(data)<6_000_000
           off=0; n=0
           while off<len(data) and n<250:
