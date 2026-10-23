@@ -34,8 +34,8 @@ def library() -> ctypes.CDLL:
     lib = ctypes.CDLL(name)
     lib.XXH_versionNumber.argtypes = []
     lib.XXH_versionNumber.restype = ctypes.c_uint
-    if lib.XXH_versionNumber() < 803:
-        raise RuntimeError("XXH3 0.8.3 or newer is required")
+    if lib.XXH_versionNumber() < 800:
+        raise RuntimeError("System libxxhash lacks XXH3 support (version < 0.8.0)")
     lib.XXH3_128bits_withSeed.argtypes = [
         ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint64
     ]
