@@ -1,0 +1,46 @@
+name: HITCON SPI TPM - compare runner network routes
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths: [.github/workflows/spi-tpm-connectivity.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  tcp:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Check TCP to only the official challenge server, read banner, disconnect
+        shell: bash
+        run: |
+          python - <<'PY'
+          import socket,time,platform,sys
+          host='spi-tpm-rev.chal.hitconctf.com'
+          print('Platform:',platform.system(),platform.machine(),flush=True)
+          try:
+              resolved=socket.getaddrinfo(host,1337,proto=socket.IPPROTO_TCP)
+              print('DNS:',[x[4] for x in resolved],flush=True)
+          except Exception as exc:
+              print('DNS_ERROR:',type(exc).__name__,str(exc),flush=True)
+              raise SystemExit(0)
+          for attempt in range(1,4):
+              try:
+                  with socket.create_connection((host,1337),timeout=8) as s:
+                      s.settimeout(10)
+                      print('SUCCESS_TCP_CONNECTED',attempt,flush=True)
+                      print('BANNER:',repr(s.recv(500)),flush=True)
+                      break
+              except Exception as exc:
+                  print('TCP_ATTEMPT_ERROR:',attempt,type(exc).__name__,str(exc),flush=True)
+                  time.sleep(1)
+          PY
