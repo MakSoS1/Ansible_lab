@@ -1,0 +1,67 @@
+name: HITCON 2026 SPI TPM - untrusted archive audit
+
+on:
+  push:
+    branches:
+      - ctf/spi-tpm-2026
+    paths:
+      - .github/workflows/spi-tpm-2026.yml
+      - ctf/spi-tpm-2026/**
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Download only the allowlisted HITCON attachment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --proto '=https' \
+            --max-redirs 0 --connect-timeout 12 --max-time 75 \
+            --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' \
+            -o challenge.tar.gz
+          sha256sum challenge.tar.gz
+          file challenge.tar.gz
+          ls -lh challenge.tar.gz
+      - name: Staticaly inspect members, reject unsafe paths and display small text files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,io,os,pathlib,re,tarfile
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'challenge.tar.gz'
+          with tarfile.open(p, mode='r:gz') as tar:
+              members=tar.getmembers()
+              print('archive members:',len(members),flush=True)
+              if len(members)>200: raise ValueError('member count too large')
+              if sum(m.size for m in members)>40_000_000: raise ValueError('unpacked size too large')
+              for m in members:
+                  path=pathlib.PurePosixPath(m.name)
+                  if path.is_absolute() or '..' in path.parts or not(m.isfile() or m.isdir()):
+                      raise ValueError('unsafe archive member: '+repr(m.name))
+                  print('\nMEMBER',repr(m.name),'bytes',m.size,'type',m.type,flush=True)
+                  if m.isfile():
+                      data=tar.extractfile(m).read()
+                      print(' SHA256:',hashlib.sha256(data).hexdigest())
+                      if m.size<=35000:
+                          try:
+                              s=data.decode('utf-8')
+                              if s.count('\0')==0 and sum(c.isprintable() or c in '\t\n\r' for c in s)/max(1,len(s))>.89:
+                                  print('-----BEGIN UNTRUSTED FILE DATA-----')
+                                  print(s[:35000])
+                                  print('-----END UNTRUSTED FILE DATA-----')
+                                  continue
+                          except UnicodeError: pass
+                      print(' BIN first 64 bytes:',data[:64].hex())
+                      import subprocess
+                      if len(data)<4_000_000:
+                          words=re.findall(rb'[ -~]{10,}',data)
+                          for word in words[:35]:
+                              print(' STR:',word[:350].decode('ascii','replace'))
+          PY
