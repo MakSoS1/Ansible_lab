@@ -1,0 +1,80 @@
+name: SPI TPM pwn - direct FIFO UART timing experiment
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-pressure-fifo.yml]
+permissions:
+  contents: read
+jobs:
+  fifo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Reuse hash-checked compiler and isolated VM setup
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import pathlib,hashlib,textwrap,subprocess
+          b=pathlib.Path('.github/workflows/spi-tpm-pwn-pressure.yml').read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='a5d4a4dc7ffa98243cdcdf46585a24ccee0dcce1'
+          lines=b.decode().splitlines(keepends=True);i=0;blocks=[]
+          while i<len(lines):
+            if lines[i].rstrip()=='        run: |':
+              i+=1;acc=[]
+              while i<len(lines) and (lines[i].startswith('          ') or not lines[i].strip()):acc.append(lines[i]);i+=1
+              blocks.append(textwrap.dedent(''.join(acc)))
+            else:i+=1
+          assert len(blocks)==2
+          subprocess.run(['bash','-euo','pipefail','-c',blocks[0]],check=True,timeout=200)
+          PY
+      - name: UART-only FIFO without daemon buffering, all challenge code offline
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import base64,fcntl,os,pathlib,subprocess,select,time,json
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);name='spi-fifo-'+os.environ['GITHUB_RUN_ID']
+          io=root/'uart-io';io.mkdir(mode=0o777);os.chmod(io,0o777);os.mkfifo(io/'uart',0o666);os.chmod(io/'uart',0o666)
+          uart=os.open(io/'uart',os.O_RDWR|os.O_NONBLOCK)
+          fcntl.fcntl(uart,fcntl.F_SETPIPE_SZ,4096)
+          args=['docker','run','--name',name,'--rm','-i','--network=none','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--pids-limit=96','--memory=1g','--cpus=2','--tmpfs=/tmp:rw,nosuid,nodev,mode=1777,size=100m','-v',str(root/'guest')+':/opt/guest:ro','-v',str(io)+':/opt/io:rw','-e','VM_TIMEOUT=70','--entrypoint','/bin/bash','spi-pwn-probe:local','-c','exec /bin/bash /opt/guest/run.sh > /opt/io/uart']
+          p=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
+          start=time.monotonic();buf=b'';phase=0;pauses=0;nextpause=0;total=0;log=pathlib.Path('output/fifo.log').open('wb')
+          try:
+            while time.monotonic()-start<65:
+              ready,_,_=select.select([uart,p.stderr],[],[],.2)
+              if p.stderr in ready:
+                err=os.read(p.stderr.fileno(),4096)
+                if err:print('CONTAINER_ERR',err.decode('utf8','replace'),flush=True)
+              if uart not in ready:
+                if p.poll() is not None:break
+                continue
+              data=os.read(uart,65536)
+              if not data:continue
+              total+=len(data);clean=data.replace(b'Z',b'');buf+=clean;log.write(clean);log.flush()
+              if clean:print(clean.decode('utf8','replace'),end='',flush=True)
+              if phase==0 and b'Base64 payload' in buf:
+                p.stdin.write(base64.b64encode((root/'payload').read_bytes())+b'\n');p.stdin.flush();phase=1
+              elif phase==1 and b'# ' in buf:
+                p.stdin.write(b'/home/spi-tpm/payload\n');p.stdin.flush();phase=2
+              if b'BACKPRESSURE_READY' in buf and pauses<8 and time.monotonic()>nextpause and b'ZZZZ' in data:
+                print('UART_READ_PAUSE',pauses,flush=True);time.sleep(.8);pauses+=1;nextpause=time.monotonic()+.15
+              if b'PROBE_COMPLETE' in buf:break
+              if total>20000000:raise RuntimeError('bounded output limit exceeded')
+          finally:
+            log.close();os.close(uart)
+            subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
+            if p.poll() is None:p.kill()
+            p.wait()
+          pathlib.Path('output/metrics.json').write_text(json.dumps({'bytes':total,'pauses':pauses,'complete':b'PROBE_COMPLETE' in buf}))
+          assert b'PROBE_COMPLETE' in buf,'bounded FIFO experiment did not finish'
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spi-pwn-fifo-observations
+          path: output/
+          retention-days: 2
+          if-no-files-found: error
