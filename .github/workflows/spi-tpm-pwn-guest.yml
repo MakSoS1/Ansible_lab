@@ -63,7 +63,7 @@ jobs:
           import os,subprocess,select,time,re
           directory=os.environ['RUNNER_TEMP']+'/guest'
           argv=[
-            'docker','run','--rm','-i','--network=none','--read-only',
+            'docker','run','--rm','-i','-t','--network=none','--read-only',
             '--cap-drop=ALL','--security-opt=no-new-privileges',
             '--pids-limit=64','--memory=1g','--cpus=2',
             '--tmpfs=/tmp:rw,nosuid,nodev,size=200m',
@@ -81,15 +81,15 @@ jobs:
               buf+=chunk
               print(chunk.decode('utf8','replace'),end='',flush=True)
               if phase==0 and b'Base64 payload' in buf:
-                p.stdin.write(b'\n');p.stdin.flush();phase=1
+                p.stdin.write(b'\n');p.stdin.flush();phase=1;print('sent blank payload',flush=True)
               if phase==1 and b'SPI TPM challenge' in buf:
                 for cmd in [b'id',b'ls -la / /flag /dev/spi-tpm0 /home/spi-tpm',b'cat /flag',
                     b'cat /proc/self/status',b'cat /proc/modules',b'/bin/spi_tpm selftest',b'echo TEST_END',b'exit']:
                   assert b'\n' not in cmd and len(cmd)<100
-                  p.stdin.write(cmd+b'\n');p.stdin.flush()
-                  time.sleep(.2)
+                  print('COMMAND:',cmd.decode(),flush=True);p.stdin.write(cmd+b'\n');p.stdin.flush()
+                  time.sleep(.6)
                 phase=2
-              if phase==2 and b'TEST_END' in buf:break
+              if phase==2 and b'TEST_END' in buf and b'uid=' in buf:break
           if p.poll() is None:p.kill()
           try:p.wait(timeout=5)
           except:pass
