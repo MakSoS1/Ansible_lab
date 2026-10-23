@@ -75,7 +75,7 @@ def test_primitives():
     print("PASS: public transformations and keyed Feistel inverse verified")
 
 
-def decrypt_file(path, k0, k1):
+def decrypt_file(path, k0, k1, output):
     raw=json.loads(Path(path).read_text(encoding="utf8"))
     cipher=bytes.fromhex(raw["flag_hex"])
     if not 44<=len(cipher)<=4136:
@@ -105,12 +105,15 @@ def decrypt_file(path, k0, k1):
         w=outer(w,nonce,i,cost,0,1)
         plain.extend(struct.pack("<I",w))
     result=bytes(plain[:length])
-    print("Decrypted bytes (hex):",result.hex())
-    try: text=result.decode("ascii")
+    try: text=result.decode("ascii").rstrip("\\r\\n")
     except UnicodeError as exc: raise ValueError("decryption is not ASCII") from exc
     if not text.startswith("hitcon{") or not text.endswith("}"):
         raise ValueError("decrypted bytes do not match competition flag format")
-    print("VERIFIED COMPETITION FLAG:",text)
+    outfile=Path(output)
+    if not str(outfile).startswith("/opt/out/") or outfile.is_symlink() or outfile.exists():
+        raise ValueError("invalid output file")
+    outfile.write_text(text,encoding="ascii")
+    print("VERIFIED: recovered plaintext has competition flag syntax; held in isolated output file")
 
 
 if __name__ == "__main__":
@@ -119,10 +122,11 @@ if __name__ == "__main__":
     p.add_argument("--observations",type=Path)
     p.add_argument("--key0",type=lambda x:int(x,0))
     p.add_argument("--key1",type=lambda x:int(x,0))
+    p.add_argument("--out",type=Path)
     opts=p.parse_args()
     if opts.self_test:
         test_primitives()
     else:
-        if opts.observations is None or opts.key0 is None or opts.key1 is None:
+        if opts.observations is None or opts.key0 is None or opts.key1 is None or opts.out is None:
             p.error("all of --observations, --key0, --key1 are required")
-        decrypt_file(opts.observations,opts.key0,opts.key1)
+        decrypt_file(opts.observations,opts.key0,opts.key1,opts.out)
