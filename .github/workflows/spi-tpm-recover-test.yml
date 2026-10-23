@@ -27,4 +27,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -u ctf/spi-tpm-2026/recover_experimental.py --synthetic --radius 3.0
+          python3 -u ctf/spi-tpm-2026/recover_experimental.py --synthetic --radius 3.3
