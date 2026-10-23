@@ -1,0 +1,94 @@
+name: HITCON 2026 SPI TPM - static reverse engineering
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths:
+      - .github/workflows/spi-tpm-static.yml
+
+permissions:
+  contents: read
+
+jobs:
+  reverse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - name: Download verified challenge only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsS --proto '=https' --max-redirs 0 --max-time 80 --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' -o challenge.tar.gz
+          echo 'e15a21887cc925818a5bdb0e6b669028bc30c94bbfc1fe0a06f4c5a4c543ad94  challenge.tar.gz' | sha256sum -c -
+          python3 - <<'PY'
+          import tarfile,hashlib,os,pathlib,gzip
+          base=pathlib.Path(os.environ['RUNNER_TEMP']); out=base/'inspect';out.mkdir()
+          allowed={'spi-tpm-rev/src/libspi_tpm_firmware.so','spi-tpm-rev/src/spi-tpm-service',
+                   'spi-tpm-rev/src/modules/spi_tpm_client.ko',
+                   'spi-tpm-rev/src/modules/spi_tpm_dma.ko',
+                   'spi-tpm-rev/src/initramfs.cpio.gz'}
+          with tarfile.open(base/'challenge.tar.gz') as tf:
+              for m in tf.getmembers():
+                  if m.name in allowed:
+                      assert m.isfile() and m.size<2_000_000
+                      (out/pathlib.PurePosixPath(m.name).name).write_bytes(tf.extractfile(m).read())
+          data=gzip.decompress((out/'initramfs.cpio.gz').read())
+          assert len(data)<6_000_000
+          off=0; n=0
+          while off<len(data) and n<250:
+              if data[off:off+6] not in (b'070701',b'070702'): break
+              h=data[off:off+110]
+              f=[int(h[6+i*8:14+i*8],16) for i in range(13)]
+              namesize=f[11]; filesize=f[6]; mode=f[1]
+              assert namesize<500 and filesize<3_000_000
+              off+=110
+              name=data[off:off+namesize].rstrip(b'\0').decode('ascii','replace')
+              off=(off+namesize+3)&~3
+              content=data[off:off+filesize]
+              off=(off+filesize+3)&~3
+              print('CPIO',repr(name),'mode',oct(mode),'bytes',filesize)
+              if name=='TRAILER!!!': break
+              if name in ('init','etc/init.d/rcS') and filesize<18000:
+                  print('BEGIN UNTRUSTED FILE\n',content.decode('utf-8','replace'),'\nEND UNTRUSTED FILE')
+              n+=1
+          PY
+          echo '=== file types ==='
+          file "$RUNNER_TEMP"/inspect/*
+      - name: Read static symbol/function layouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/inspect"
+          echo '=== FIRMWARE symbols ==='
+          readelf -sW libspi_tpm_firmware.so | head -100
+          echo '=== FIRMWARE strings with offsets ==='
+          strings -tx libspi_tpm_firmware.so | head -150
+          echo '=== SERVICE key symbols ==='
+          readelf -sW spi-tpm-service | grep -E '(encrypt|decrypt|key|flag|main|FUNC)' | head -105 || true
+          echo '=== KERNEL CLIENT symbols ==='
+          readelf -sW spi_tpm_client.ko | grep -E '(spi_tpm_|FUNC|ioctl)' | head -105 || true
+      - name: Print all firmware disassembly (code is never run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          objdump -d -M intel --no-show-raw-insn "$RUNNER_TEMP/inspect/libspi_tpm_firmware.so" | head -n 1600
+      - name: Read-only connectivity check to official challenge port
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import socket
+          host='spi-tpm-rev.chal.hitconctf.com'
+          try:
+              with socket.create_connection((host,1337),timeout=8) as s:
+                  s.settimeout(8)
+                  data=b''
+                  while len(data)<1600 and not data.endswith(b'nonce\n'):
+                      block=s.recv(512)
+                      if not block: break
+                      data+=block
+                  print('Remote initial banner (UNTRUSTED):\n'+data.decode('utf-8','replace'))
+          except Exception as e:
+              print('Connectivity check:',type(e).__name__,str(e))
+          PY
