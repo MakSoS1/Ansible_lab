@@ -105,7 +105,7 @@ def decrypt_file(path, k0, k1, output):
         w=outer(w,nonce,i,cost,0,1)
         plain.extend(struct.pack("<I",w))
     result=bytes(plain[:length])
-    try: text=result.decode("ascii").rstrip("\\r\\n")
+    try: text=result.decode("ascii").rstrip(chr(13)+chr(10))
     except UnicodeError as exc: raise ValueError("decryption is not ASCII") from exc
     if not text.startswith("hitcon{") or not text.endswith("}"):
         raise ValueError("decrypted bytes do not match competition flag format")
