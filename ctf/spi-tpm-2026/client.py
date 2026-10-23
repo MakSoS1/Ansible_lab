@@ -167,9 +167,11 @@ def main() -> int:
         print("plaintext_length:", sealed.plaintext_length)
         print("key_fingerprint:", sealed.key_fingerprint)
         print("auth_tag_hex:", sealed.auth_tag.hex())
-        print("ciphertext_hex:", sealed.ciphertext.hex())
+        if not args.collect_samples:
+            print("ciphertext_hex:", sealed.ciphertext.hex())
         print("decryption_budget_needed:", sealed.cost * ((sealed.plaintext_length + 3) // 4 + 256))
-        print("original_stp1_hex:", result.split()[2])
+        if not args.collect_samples:
+            print("original_stp1_hex:", result.split()[2])
         if args.collect_samples:
             if sealed.key_id != 1:
                 raise ValueError("unexpected flag key ID")
