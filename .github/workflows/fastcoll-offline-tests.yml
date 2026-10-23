@@ -1,0 +1,27 @@
+name: FastColl offline verifier tests
+on:
+  push:
+    branches: [ctf/fastcoll-safe-inspection]
+    paths:
+      - 'ctf/fastcoll/**'
+      - '.github/workflows/fastcoll-offline-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Checkout only the tested branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Inspect the local verifier using Python standard library and system libxxhash
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ctf/fastcoll/offline_verify.py
+          python3 ctf/fastcoll/offline_verify.py --self-test
