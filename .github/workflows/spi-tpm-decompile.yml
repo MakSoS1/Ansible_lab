@@ -48,59 +48,86 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > "$RUNNER_TEMP/DumpRelevant.py" <<'PY'
-          # Ghidra Jython script: decompiles only the public CTF binaries.
-          from ghidra.app.decompiler import DecompInterface
-          from ghidra.program.model.symbol import Reference
-          pname=currentProgram.getName()
-          print("=== DECOMPILER TARGET ===", pname)
-          d=DecompInterface()
-          d.openProgram(currentProgram)
-          listing=currentProgram.getListing()
-          functions=currentProgram.getFunctionManager()
-          selected={}
-          def pick(f,why):
-              if f is None: return
-              addr=str(f.getEntryPoint())
-              if addr not in selected: selected[addr]=[f, why]
-          if pname.endswith('.so'):
-              for f in functions.getFunctions(True):
-                  addr=f.getEntryPoint().getOffset()
-                  if 0x1200<=addr<=0x3fff: pick(f,'firmware function')
-          elif pname.endswith('.ko'):
-              for f in functions.getFunctions(True):
-                  if 'spi_tpm' in f.getName(): pick(f,'named driver function')
-          else:
-              needles=['SPI-TPM reverse service','get_flag','encrypt flag','gen_new_key',
-                       'commands: get_flag','budget %lu','error syntax','plaintext ','ciphertext ',
-                       'genkey','encrypt','decrypt','budget ']
-              count=0
-              for data in listing.getDefinedData(True):
-                  try: value=str(data.getValue())
-                  except: continue
-                  if not any(x in value for x in needles): continue
-                  count+=1
-                  if count>100: break
-                  print('RELEVANT STRING',str(data.getAddress()),repr(value[:190]))
-                  refs=getReferencesTo(data.getAddress())
-                  for ref in refs:
-                      pick(getFunctionContaining(ref.getFromAddress()),'xref '+repr(value[:40]))
-              print('Selected candidate functions', len(selected))
-          n=0
-          for k in sorted(selected):
-              f,why=selected[k]
-              n+=1
-              if n>28: break
-              result=d.decompileFunction(f,30,monitor)
-              print('\n<<< FUNCTION',str(f.getName()),str(f.getEntryPoint()),why,'>>>' )
-              if result.decompileCompleted() and result.getDecompiledFunction() is not None:
-                  s=result.getDecompiledFunction().getC()
-                  print(s[:28000])
-                  if len(s)>28000: print('<<< FUNCTION OUTPUT TRUNCATED >>>')
-              else:
-                  print("FAILED",str(result.getErrorMessage()))
-          d.dispose()
-          PY
+          cat > "$RUNNER_TEMP/DumpRelevant.java" <<'JAVA'
+          import ghidra.app.script.GhidraScript;
+          import ghidra.app.decompiler.DecompInterface;
+          import ghidra.app.decompiler.DecompileResults;
+          import ghidra.program.model.listing.*;
+          import ghidra.program.model.symbol.*;
+          import ghidra.program.model.address.*;
+          import java.util.*;
+
+          public class DumpRelevant extends GhidraScript {
+              private void pick(Map<String,Function> funcs, Map<String,String> why, Function f, String reason) {
+                  if (f == null) return;
+                  String key = f.getEntryPoint().toString();
+                  if (!funcs.containsKey(key)) {
+                      funcs.put(key, f);
+                      why.put(key, reason);
+                  }
+              }
+              @Override
+              public void run() throws Exception {
+                  String pname = currentProgram.getName();
+                  println("=== DECOMPILER TARGET === " + pname);
+                  DecompInterface decomp = new DecompInterface();
+                  decomp.openProgram(currentProgram);
+                  Listing listing=currentProgram.getListing();
+                  FunctionManager fm=currentProgram.getFunctionManager();
+                  TreeMap<String,Function> selected=new TreeMap<>();
+                  Map<String,String> reasons=new HashMap<>();
+                  if (pname.endsWith(".so")) {
+                      FunctionIterator it=fm.getFunctions(true);
+                      while (it.hasNext()) {
+                          Function f=it.next();
+                          long addr=f.getEntryPoint().getOffset();
+                          if (addr>=0x1200 && addr<=0x3fff) pick(selected,reasons,f,"firmware function");
+                      }
+                  } else if (pname.endsWith(".ko")) {
+                      FunctionIterator it=fm.getFunctions(true);
+                      while (it.hasNext()) {
+                          Function f=it.next();
+                          if (f.getName().contains("spi_tpm")) pick(selected,reasons,f,"named driver function");
+                      }
+                  } else {
+                      String[] needles={"SPI-TPM reverse service","get_flag","encrypt flag", "gen_new_key",
+                                        "commands: get_flag","budget %lu","error syntax","plaintext ",
+                                        "ciphertext ", "genkey", "encrypt", "decrypt", "budget "};
+                      int count=0;
+                      DataIterator iter=listing.getDefinedData(true);
+                      while (iter.hasNext() && count<110) {
+                          Data data=iter.next();
+                          Object v=data.getValue();
+                          if (v==null) continue;
+                          String s=v.toString();
+                          boolean match=false;
+                          for(String needle:needles) if(s.contains(needle)){match=true;break;}
+                          if(!match) continue;
+                          count++;
+                          println("RELEVANT STRING "+data.getAddress()+" "+s.substring(0,Math.min(200,s.length())));
+                          Reference[] refs=currentProgram.getReferenceManager().getReferencesTo(data.getAddress());
+                          for (Reference ref: refs)
+                              pick(selected,reasons,fm.getFunctionContaining(ref.getFromAddress()),"xref "+s.substring(0,Math.min(40,s.length())));
+                      }
+                      println("Selected candidate functions: "+selected.size());
+                      Function f=fm.getFunctionAt(currentProgram.getEntryPoint());
+                      pick(selected,reasons,f,"entrypoint");
+                  }
+                  int n=0;
+                  for(String key:selected.keySet()) {
+                      if(n++>=32) break;
+                      Function f=selected.get(key);
+                      DecompileResults res=decomp.decompileFunction(f,30,monitor);
+                      println("<<< FUNCTION "+f.getName()+" "+f.getEntryPoint()+" "+reasons.get(key)+" >>>");
+                      if(res.decompileCompleted() && res.getDecompiledFunction()!=null){
+                          String c=res.getDecompiledFunction().getC();
+                          println(c.substring(0,Math.min(27000,c.length())));
+                      }else println("DECOMPILATION FAILED: "+res.getErrorMessage());
+                  }
+                  decomp.dispose();
+              }
+          }
+          JAVA
           find "$RUNNER_TEMP" -maxdepth 2 -name 'analyzeHeadless' -type f -print
       - name: Decompile firmware x86-64
         shell: bash
@@ -111,7 +138,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ghidra_projects"
           "$GHIDRA_ROOT/support/analyzeHeadless" "$RUNNER_TEMP/ghidra_projects" firmware \
             -import "$RUNNER_TEMP/elffiles/libspi_tpm_firmware.so" -analysisTimeoutPerFile 90 \
-            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.py -deleteProject
+            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.java -deleteProject
       - name: Decompile kernel client driver ARM64
         shell: bash
         run: |
@@ -120,7 +147,7 @@ jobs:
           GHIDRA_ROOT="$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -n 1)"
           "$GHIDRA_ROOT/support/analyzeHeadless" "$RUNNER_TEMP/ghidra_projects" module \
             -import "$RUNNER_TEMP/elffiles/spi_tpm_client.ko" -analysisTimeoutPerFile 90 \
-            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.py -deleteProject
+            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.java -deleteProject
       - name: Decompile ARM64 service main and command handlers
         shell: bash
         run: |
@@ -129,7 +156,7 @@ jobs:
           GHIDRA_ROOT="$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -n 1)"
           "$GHIDRA_ROOT/support/analyzeHeadless" "$RUNNER_TEMP/ghidra_projects" service \
             -import "$RUNNER_TEMP/elffiles/spi-tpm-service" -analysisTimeoutPerFile 180 \
-            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.py -deleteProject
+            -scriptPath "$RUNNER_TEMP" -postScript DumpRelevant.java -deleteProject
       - name: Diagnose remote reachability without sending commands
         shell: bash
         run: |
