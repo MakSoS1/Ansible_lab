@@ -37,7 +37,7 @@ Run:
 
     python3 ctf/fastcoll/test_known_collision.py
 
-The test uses only the Python standard library and the system's installed libxxhash, version >= 0.8.3. It makes **no network requests** and runs no archive code.
+The test uses only the Python standard library and the system's installed libxxhash, version >= 0.8.0 (with the documented test-vector assertion). It makes **no network requests** and runs no archive code.
 
 For the two adjacent-lane, adjacent-stripe words at byte offsets 56 and 112 in an otherwise zeroed **256-byte** input:
 
@@ -66,7 +66,7 @@ The seed counter and full-digest check make both FastColl-on-MD5 and naive brute
 
 - Dedicated branch: ctf/fastcoll-safe-2026-10-23.
 - The workflow .github/workflows/ctf-fastcoll.yml uses a fresh GitHub-hosted ubuntu-24.04 runner, a pinned checkout action and contents:read permission only, with persist-credentials:false.
-- Downloads the fixed HTTPS attachment URL with no redirect following and bounded size, verifies SHA-256, and inspects source using the bounded stdlib-only inspect.py. No files are extracted, imported or executed.
+- Downloads the fixed HTTPS attachment URL with no redirect following and bounded size, verifies SHA-256, and inspects source using the bounded stdlib-only archive_inspector.py. No files are extracted, imported or executed.
 - Runs the independent test_known_collision.py offline. The test deliberately asserts that the same-seed pair fails across consecutive seeds.
 - No request is sent to the remote HTTP judge, no non-solver Wasm payload is submitted, and no genuine flag is published.
 
