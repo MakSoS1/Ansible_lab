@@ -1,0 +1,44 @@
+name: SPI TPM pwn - run reviewed offline DMA probe
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-run-reviewed-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Execute the four reviewed local probe steps without optional kallsyms recovery
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import pathlib,subprocess,textwrap,hashlib
+          p=pathlib.Path('.github/workflows/spi-tpm-pwn-race-probe.yml')
+          b=p.read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='4fb55b2a7c27c6b0a5a4b0144eec58d2abc7e2cf'
+          lines=b.decode().splitlines(keepends=True);blocks=[];i=0
+          while i<len(lines):
+            if lines[i].rstrip()=='        run: |':
+              i+=1;acc=[]
+              while i<len(lines) and (lines[i].startswith('          ') or not lines[i].strip()):
+                acc.append(lines[i]);i+=1
+              blocks.append(textwrap.dedent(''.join(acc)))
+            else:i+=1
+          assert len(blocks)==4
+          blocks[1]=blocks[1].split('python3 -m pip install')[0]
+          for idx,code in enumerate(blocks):
+            print('=== REVIEWED LOCAL PROBE STEP',idx+1,'===',flush=True)
+            subprocess.run(['bash','-euo','pipefail','-c',code],check=True,timeout=180)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spi-pwn-race-observations
+          path: output/
+          retention-days: 2
+          if-no-files-found: error
