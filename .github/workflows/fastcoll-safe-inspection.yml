@@ -1,0 +1,74 @@
+name: Inspect FastColl CTF archive safely
+on:
+  push:
+    branches: [ctf/fastcoll-safe-inspection]
+    paths: ['.github/workflows/fastcoll-safe-inspection.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-source-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: HTTPS download and static archive inspection (no extraction/execution)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, io, json, tarfile, urllib.request, urllib.error
+          from urllib.parse import urlparse
+
+          url = 'https://ctf2026attach.hitconctf.com/2db03954193dce13908ebdb5e5b61a01/fastcoll-a3b7ecfda96b58c1.tar.gz'
+          assert urlparse(url).hostname == 'ctf2026attach.hitconctf.com'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  print('REDIRECT_BLOCKED', code, repr(newurl))
+                  return None
+          opener = urllib.request.build_opener(NoRedirect())
+          try:
+              with opener.open(urllib.request.Request(url, headers={'User-Agent': 'FastColl-Static-Audit/1.0'}), timeout=30) as response:
+                  print('STATUS', response.status)
+                  print('CONTENT_TYPE', response.headers.get('Content-Type'))
+                  data = response.read(16 * 1024 * 1024 + 1)
+          except urllib.error.HTTPError as exc:
+              print('HTTP_ERROR', exc.code, repr(str(exc)))
+              raise
+          if len(data) > 16 * 1024 * 1024:
+              raise ValueError('Archive larger than 16 MiB safety bound')
+          print('ARCHIVE_BYTES', len(data))
+          print('ARCHIVE_SHA256', hashlib.sha256(data).hexdigest())
+          if data[:2] != b'\x1f\x8b':
+              raise ValueError('Not a gzip archive')
+          extensions = ('.py', '.c', '.h', '.cpp', '.hpp', '.js', '.ts', '.json',
+                        '.txt', '.md', '.yml', '.yaml', '.sh', '.html', '.css',
+                        '.php', '.toml', '.ini', '.conf', '.dockerfile')
+          total_size = 0
+          total_printed = 0
+          with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+              for index, member in enumerate(archive):
+                  if index >= 150:
+                      print('ARCHIVE_ENTRY_LIMIT'); break
+                  print('ENTRY', index, json.dumps(member.name, ensure_ascii=True),
+                        member.type.decode('latin-1'), member.size)
+                  if member.name.startswith('/') or '..' in member.name.split('/'):
+                      print('UNSAFE_PATH_REJECTED'); continue
+                  total_size += member.size
+                  if total_size > 64 * 1024 * 1024:
+                      print('ARCHIVE_UNCOMPRESSED_LIMIT'); break
+                  if not member.isfile() or member.size > 160000:
+                      continue
+                  basename = member.name.split('/')[-1].lower()
+                  if not (basename.endswith(extensions) or basename in ('dockerfile', 'makefile', 'readme', 'requirements')):
+                      continue
+                  if total_printed + member.size > 200000:
+                      print('TEXT_OUTPUT_LIMIT'); continue
+                  extracted = archive.extractfile(member)
+                  if extracted is None: continue
+                  raw = extracted.read(160001)
+                  if len(raw) > 160000: continue
+                  total_printed += len(raw)
+                  print('FILE_TEXT_JSON', json.dumps(member.name), json.dumps(raw.decode('utf-8', 'replace'), ensure_ascii=True))
+          PY
