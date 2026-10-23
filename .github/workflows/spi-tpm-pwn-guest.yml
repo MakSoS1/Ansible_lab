@@ -77,14 +77,11 @@ jobs:
           t=time.monotonic();phase=0;buf=b'';nextcmd=0
           commands=[
             b'id',
-            b'ls -ln /flag /dev/spi-tpm0',
-            b'head -30 /proc/kallsyms',
-            b'cat /proc/interrupts',
-            b'cat /proc/iomem',
             b'/bin/spi_tpm genkey',
+            b'/bin/spi_tpm encrypt 1 1000000 ABCDEFGH',
             b'/bin/spi_tpm encrypt 1 1 ABCDEFGH',
-            b'/bin/spi_tpm decrypt 5354503102002800000000000100000004000000000000000000000000000000000000000000000000000000',
-            b'echo TEST_END',b'exit'
+            b'echo TEST_END',
+            b'exit'
           ]
           last=time.monotonic()
           while time.monotonic()-t<65 and p.poll() is None:
