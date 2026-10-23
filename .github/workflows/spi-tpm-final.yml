@@ -1,0 +1,118 @@
+name: HITCON SPI TPM - protected end-to-end recovery attempt
+
+on:
+  push:
+    branches: [ctf/spi-tpm-2026]
+    paths: [.github/workflows/spi-tpm-final.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout reviewed source without retained GitHub credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Talk exclusively to the official HITCON SPI TPM endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u ctf/spi-tpm-2026/client.py \
+            --connect-timeout 14 --pow-timeout 270 \
+            --collect-samples "$RUNNER_TEMP/observations.json"
+          python3 -m json.tool "$RUNNER_TEMP/observations.json" >/dev/null
+          echo "Remote collection succeeded, encrypted observations remain private"
+      - name: Install pinned number theory libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check fpylll==0.6.4 cysignals==1.12.5
+      - name: Recover candidate key without displaying it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u ctf/spi-tpm-2026/recover_experimental.py \
+            --json "$RUNNER_TEMP/observations.json" \
+            --radius 3.5 --out "$RUNNER_TEMP/recovered_private_key.json"
+          test -s "$RUNNER_TEMP/recovered_private_key.json"
+          chmod 600 "$RUNNER_TEMP/recovered_private_key.json"
+      - name: Verify official firmware against pinned SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ctf-lib"
+          curl -fsS --proto '=https' --max-redirs 0 --connect-timeout 12 \
+            --max-time 90 --max-filesize 30000000 \
+            'https://ctf2026attach.hitconctf.com/654627eea204ea708368d11d316e6555/spi-tpm-rev-e15a21887cc92581.tar.gz' \
+            -o "$RUNNER_TEMP/ctf-verified.tar.gz"
+          echo "e15a21887cc925818a5bdb0e6b669028bc30c94bbfc1fe0a06f4c5a4c543ad94  $RUNNER_TEMP/ctf-verified.tar.gz" | sha256sum -c -
+          python3 - <<'PY'
+          import tarfile,pathlib,os,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          with tarfile.open(root/'ctf-verified.tar.gz') as tf:
+              m=tf.getmember('spi-tpm-rev/src/libspi_tpm_firmware.so')
+              assert m.isfile() and m.size==22424
+              binary=tf.extractfile(m).read()
+          assert hashlib.sha256(binary).hexdigest()=='1bd76fdd713d7c1003e27e418813e0444c3a2a780bf895836f093048b5cc7a40'
+          (root/'ctf-lib/libspi_tpm_firmware.so').write_bytes(binary)
+          PY
+          mkdir -p "$RUNNER_TEMP/ctf-input" "$RUNNER_TEMP/ctf-out"
+          chmod 1777 "$RUNNER_TEMP/ctf-out"
+          cp "$RUNNER_TEMP/observations.json" "$RUNNER_TEMP/ctf-input/observations.json"
+      - name: Build independently authored sandbox from signed Arch packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'FROM archlinux:base' \
+            'RUN pacman -Syu --noconfirm --needed python && pacman -Scc --noconfirm' \
+            'USER 1000:1000' 'WORKDIR /opt/code' > "$RUNNER_TEMP/Dockerfile"
+          docker build --pull -q -t spi-tpm-decrypt:local \
+            -f "$RUNNER_TEMP/Dockerfile" "$RUNNER_TEMP"
+      - name: Decrypt inside an offline container without publishing key or flag
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,subprocess,pathlib
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])
+          private=json.loads((root/"recovered_private_key.json").read_text())
+          k0=int(private["key0"]);k1=int(private["key1"])
+          assert 0<=k0<2**64 and 0<=k1<2**64
+          command=[
+              "docker","run","--rm","--network","none","--read-only",
+              "--cap-drop","ALL","--security-opt","no-new-privileges",
+              "--pids-limit","64","--cpus","2","--memory","1g",
+              "--tmpfs","/tmp:rw,noexec,nosuid,nodev,size=24m",
+              "-v",str(root/"ctf-lib")+":/opt/challenge:ro",
+              "-v",str(root/"ctf-input")+":/opt/data:ro",
+              "-v",str(root/"ctf-out")+":/opt/out:rw",
+              "-v",os.environ["GITHUB_WORKSPACE"]+"/ctf/spi-tpm-2026:/opt/code:ro",
+              "spi-tpm-decrypt:local","python","-B",
+              "/opt/code/firmware_oracle.py",
+              "--observations","/opt/data/observations.json",
+              "--key0",hex(k0),"--key1",hex(k1),
+              "--out","/opt/out/flag.txt"
+          ]
+          subprocess.run(command,check=True,timeout=150)
+          f=root/"ctf-out/flag.txt"
+          assert f.exists() and 10<=f.stat().st_size<=256
+          print("Protected decryption complete: flag in temporary output file")
+          PY
+      - name: Encrypt recovered flag to ephemeral RSA-OAEP public key
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl pkeyutl -encrypt -pubin \
+            -inkey ctf/spi-tpm-2026/result-recipient.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in "$RUNNER_TEMP/ctf-out/flag.txt" -out "$RUNNER_TEMP/protected_flag.bin"
+          echo "BEGIN_PUBKEY_ENCRYPTED_FLAG"
+          base64 --wrap=0 "$RUNNER_TEMP/protected_flag.bin"
+          echo
+          echo "END_PUBKEY_ENCRYPTED_FLAG"
+          shred -u "$RUNNER_TEMP/ctf-out/flag.txt"
+          shred -u "$RUNNER_TEMP/recovered_private_key.json"
