@@ -20,9 +20,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -u ctf/spi-tpm-2026/client.py \
-            --connect-timeout 15 --pow-timeout 275 \
-            --collect-samples "$RUNNER_TEMP/observations.json"
+          connected=0
+          for attempt in 1 2 3 4; do
+            echo "Official challenge connection attempt $attempt/4"
+            if python3 -u ctf/spi-tpm-2026/client.py \
+                --connect-timeout 12 --pow-timeout 275 \
+                --collect-samples "$RUNNER_TEMP/observations.json"; then
+              connected=1
+              break
+            fi
+            sleep 8
+          done
+          test "$connected" -eq 1
           python3 -m json.tool "$RUNNER_TEMP/observations.json" >/dev/null
 
       - name: RSA-OAEP-SHA256 encrypt observations so public actions log exposes no useful secrets
