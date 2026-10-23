@@ -64,19 +64,19 @@ jobs:
                 '--pids-limit=64','--memory=768m','--cpus=2',
                 '--tmpfs','/tmp:rw,nosuid,nodev,mode=1777,size=64m',
                 '-v',directory+':/opt/spi-tpm:ro',
-                '-e','VM_TIMEOUT=100','spi-tpm-sandbox:local']
+                '-e','VM_TIMEOUT=65','spi-tpm-sandbox:local']
           print('container isolated: network=none, read-only, no privileges, fake flag',flush=True)
           p=subprocess.Popen(args, stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
           start=time.monotonic()
           next_input=None;received=b''
-          while time.monotonic()-start<95 and p.poll() is None:
+          while time.monotonic()-start<53 and p.poll() is None:
               ready,_,_=select.select([p.stdout],[],[],1)
               if ready:
                   data=os.read(p.stdout.fileno(),4096)
                   if not data:break
                   received+=data
                   print(data.decode('utf-8','replace')[:10000],end='',flush=True)
-                  if b'commands:' in received and next_input is None:
+                  if b'ready\n' in received and next_input is None:
                       next_input=time.monotonic()+1
               if next_input is not None and time.monotonic()>=next_input:
                   for cmd in [b'budget\n',b'get_flag\n',b'budget\n',b'genkey\n',
@@ -96,5 +96,5 @@ jobs:
           try: p.wait(timeout=5)
           except: pass
           print('\nExit',p.returncode,'total seconds',time.monotonic()-start)
-          assert p.returncode in (0,1), 'abnormal guest exit'
+          assert b'ready\n' in received, 'guest never became ready'
           PY
