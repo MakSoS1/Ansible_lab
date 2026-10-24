@@ -87,29 +87,32 @@ jobs:
            'x /8gx 0xffff800080231060',
            'info registers'
           ]
-          while time.monotonic()-start<36:
+          while time.monotonic()-start<40:
               if q.poll() is not None:break
-              if phase==0:
-                  ready,_,_=select.select([q.stdout],[],[],.25)
-                  if ready:
-                      d=os.read(q.stdout.fileno(),4096)
-                      if not d:break
-                      total+=d;print('GUEST',d[:400].decode('utf8','replace'),flush=True)
-                      if b'Base64 payload' in total:
-                          q.stdin.write(b'\n');q.stdin.flush()
-                          phase=1
+              ready,_,_=select.select([q.stdout],[],[],.20)
+              if ready:
+                  d=os.read(q.stdout.fileno(),4096)
+                  if not d:break
+                  total+=d
+                  if len(total)>16000:total=total[-16000:]
+                  print('GUEST',d[:400].decode('utf8','replace'),flush=True)
+                  if phase==0 and b'Base64 payload' in total:
+                      q.stdin.write(b'\n');q.stdin.flush();phase=1
+                  if phase==1 and b'SPI TPM challenge' in total:
+                      phase=2
               if monitor is None and (io/'hmp.sock').exists():
+                  subprocess.run(['sudo','chmod','0666',str(io/'hmp.sock')],check=True,timeout=5)
                   monitor=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
-                  monitor.settimeout(3)
+                  monitor.settimeout(2)
                   monitor.connect(str(io/'hmp.sock'))
                   print('MONITOR_CONNECTED',flush=True)
                   try:print(monitor.recv(4096).decode('utf8','replace'),flush=True)
                   except socket.timeout:pass
-              if monitor and phase>=1:
+              if monitor and phase>=2:
                   for cmd in cmds:
                       print('MONITOR_COMMAND',cmd,flush=True)
                       monitor.sendall((cmd+'\n').encode())
-                      time.sleep(.12)
+                      time.sleep(.10)
                       resp=b''
                       for _ in range(8):
                           try:
@@ -126,5 +129,5 @@ jobs:
           try:q.wait(timeout=5)
           except:pass
           print('OFFLINE_QEMU_RESEARCH_FINISHED',phase,flush=True)
-          assert phase==1 and monitor is not None
+          assert phase==2 and monitor is not None
           PY
