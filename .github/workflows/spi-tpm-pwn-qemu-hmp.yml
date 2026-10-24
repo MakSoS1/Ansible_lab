@@ -1,0 +1,118 @@
+name: SPI TPM Pwn - offline QEMU read-only kernel pointer inspection
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-qemu-hmp.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Download exact contest archive; validate before any extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --max-redirs 0 --max-time 110 --max-filesize 35000000 -fsS \
+            'https://ctf2026attach.hitconctf.com/d72ad1da709d0aca3b881f11a651420a/spi-tpm-pwn-db1d27f883a2e5e8.tar.gz' \
+            -o "$RUNNER_TEMP/source.tar.gz"
+          echo "db1d27f883a2e5e8f73c2b1c6b4b77e0ebfe14642676cce6cadfca4c9d9e173d  $RUNNER_TEMP/source.tar.gz" | sha256sum -c -
+          python3 - <<'PY'
+          import tarfile,pathlib,os,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          dest=root/'guest';dest.mkdir(mode=0o755)
+          files={'run.sh':'5ebb883eb5fd3b0154fc4f4d7e4fbb9c1218c2a067197017d917bfbbc5292e7f',
+              'qemu-system-aarch64':'6291b5b075f7e0cedcff4e46cb135f0b8d6e93d94c5973784c034c16eba662bb',
+              'Image':'5d696920c82c11ae4a6921834f65b6d92118d74088176e4c41c8e56f2a237953',
+              'initramfs.cpio.gz':'6a680f86b790bb592229da80feab14baf723b3dc5a0ebcdc77d7bb82aa13356a',
+              'libspi_tpm_firmware.so':'1bd76fdd713d7c1003e27e418813e0444c3a2a780bf895836f093048b5cc7a40'}
+          with tarfile.open(root/'source.tar.gz',mode='r:gz') as tar:
+              for name,sha in files.items():
+                  item=tar.getmember('spi-tpm-pwn/'+('' if name=='run.sh' else 'src/')+name)
+                  assert item.isfile() and item.size<16000000
+                  data=tar.extractfile(item).read()
+                  assert hashlib.sha256(data).hexdigest()==sha
+                  (dest/name).write_bytes(data)
+                  (dest/name).chmod(0o755 if name in ('run.sh','qemu-system-aarch64') else 0o644)
+          source=(dest/'run.sh').read_text()
+          assert source.count('-monitor none')==1
+          source=source.replace('-monitor none','-monitor unix:/opt/debug/mon.sock,server,nowait')
+          (dest/'run.sh').write_text(source)
+          (dest/'flag').write_text('hitcon{DEBUG_FAKE_FLAG_NOT_FOR_SUBMISSION}\n')
+          (dest/'flag').chmod(0o644)
+          debug=root/'debug';debug.mkdir(mode=0o777);debug.chmod(0o777)
+          PY
+      - name: Build trusted userspace with signed packages (provided Dockerfile ignored)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/Dockerfile" <<'DOCKER'
+          FROM archlinux:base
+          RUN pacman -Syu --noconfirm --needed cpio dtc && pacman -Scc --noconfirm
+          USER 1000:1000
+          WORKDIR /opt/guest
+          ENTRYPOINT ["/bin/bash","/opt/guest/run.sh"]
+          DOCKER
+          docker build --pull -q -t spi-pwn-debug:local -f "$RUNNER_TEMP/Dockerfile" "$RUNNER_TEMP"
+      - name: Inspect only kernel addresses using QEMU's read-only monitor
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import os,pathlib,subprocess,socket,select,time
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);debug=root/'debug'
+          args=['docker','run','--rm','-i','--network=none','--read-only',
+                '--cap-drop=ALL','--security-opt=no-new-privileges','--pids-limit=96',
+                '--memory=1g','--cpus=2',
+                '--tmpfs=/tmp:rw,nosuid,nodev,mode=1777,size=100m',
+                '-v',str(root/'guest')+':/opt/guest:ro',
+                '-v',str(debug)+':/opt/debug:rw',
+                '-e','VM_TIMEOUT=55','spi-pwn-debug:local']
+          p=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
+          start=time.monotonic();payload_sent=False;shell_ready=False;seen=bytearray()
+          try:
+              while time.monotonic()-start<18:
+                  ready,_,_=select.select([p.stdout],[],[],0.2)
+                  if ready:
+                      chunk=os.read(p.stdout.fileno(),4096)
+                      if not chunk:break
+                      seen.extend(chunk)
+                      if b'Base64 payload' in seen and not payload_sent:
+                          p.stdin.write(b'\n');p.stdin.flush();payload_sent=True
+                      if b'SPI TPM challenge' in seen:shell_ready=True;break
+                  if p.poll() is not None:break
+              print('GUEST_READY',shell_ready,'MONITOR_FILE',os.path.exists(debug/'mon.sock'))
+              if not shell_ready:print(seen[-2500:].decode('utf8','replace'))
+              if not (debug/'mon.sock').exists():raise RuntimeError('monitor socket not created')
+              monitor=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+              monitor.settimeout(5)
+              monitor.connect(str(debug/'mon.sock'))
+              def recv_prompt():
+                  result=b''
+                  for _ in range(50):
+                      try:
+                          data=monitor.recv(20000)
+                      except socket.timeout:break
+                      if not data:break
+                      result+=data
+                      if b'(qemu)' in result[-70:]:break
+                  return result.decode('latin1','replace')
+              print(recv_prompt()[:2500])
+              commands=[
+                  'cpu 0',
+                  'x/12gx 0xffff800080231060',
+                  'x/24xb 0xffff8000803b80b0',
+                  'x/12gx 0x03ffffffc200ee00',
+                  'x/12gx 0xffffffc200ee00',
+                  'xp/24xb 0x403b80b0',
+                  'info registers',
+              ]
+              for cmd in commands:
+                  monitor.sendall((cmd+'\n').encode('ascii'))
+                  res=recv_prompt()
+                  print('HMP_CMD',cmd,'RESULT',res[:3200],flush=True)
+              monitor.close()
+          finally:
+              if p.poll() is None:p.kill()
+              p.wait(timeout=10)
+          PY
