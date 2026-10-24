@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os,pathlib,socket,subprocess,select,time
+          import os,pathlib,socket,subprocess,select,time,re
           root=pathlib.Path(os.environ['RUNNER_TEMP'])
           p=root/'guest/run.sh'
           src=p.read_text()
@@ -78,15 +78,7 @@ jobs:
                 '-e','VM_TIMEOUT=60','spi-tpm-pwn-guest:local']
           q=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)
           start=time.monotonic();phase=0;total=b'';monitor=None
-          cmds=[
-           'xp /8wx 0x40200000',
-           'xp /8wx 0x405b80b0',
-           'x /8gx 0xffff8000803b80b0',
-           'x /8gx 0xfffffdffc1016e00',
-           'x /8gx 0xfffffdffc100ee00',
-           'x /8gx 0xffff800080231060',
-           'info registers'
-          ]
+          cmds=['info registers','info mem','info tlb','xp /8wx 0x40200000','xp /8wx 0x405b80b0']
           while time.monotonic()-start<40:
               if q.poll() is not None:break
               ready,_,_=select.select([q.stdout],[],[],.20)
@@ -121,7 +113,18 @@ jobs:
                               resp+=chunk
                               if b'(qemu)' in resp:break
                           except socket.timeout:break
-                      print('MONITOR_RESULT',resp.decode('utf8','replace')[:4000],flush=True)
+                      stripped=re.sub(rb'\x1b\[[0-9;]*[A-Za-z]',b'',resp)
+                      print('MONITOR_RESULT',stripped.decode('utf8','replace')[-7200:],flush=True)
+                      if cmd=='info registers':
+                          match=re.search(rb'\bPC=([0-9a-fA-F]{16})',stripped)
+                          if match:
+                              pc=int(match.group(1),16)
+                              guessed_base=pc & ~0x1fffff
+                              for off in [0,0x231060,0x3b80b0]:
+                                  cmds.append('x /8gx 0x%016x'% (guessed_base+off))
+                              print('KERNEL_RANDOMIZED_BASE_GUESS',hex(guessed_base),flush=True)
+                      if cmd=='info mem':
+                          print('INFO_MEM_LEN',len(resp),flush=True)
                   break
           if monitor:
               monitor.close()
