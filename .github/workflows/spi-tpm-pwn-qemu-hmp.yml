@@ -61,7 +61,7 @@ jobs:
           python3 -u - <<'PY'
           import os,pathlib,subprocess,socket,select,time
           root=pathlib.Path(os.environ['RUNNER_TEMP']);debug=root/'debug'
-          args=['docker','run','--rm','-i','--network=none','--read-only',
+          args=['docker','run','--rm','-i','--user',str(os.getuid())+':'+str(os.getgid()),'--network=none','--read-only',
                 '--cap-drop=ALL','--security-opt=no-new-privileges','--pids-limit=96',
                 '--memory=1g','--cpus=2',
                 '--tmpfs=/tmp:rw,nosuid,nodev,mode=1777,size=100m',
