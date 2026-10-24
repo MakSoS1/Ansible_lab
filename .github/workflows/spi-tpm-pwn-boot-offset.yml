@@ -1,0 +1,51 @@
+name: SPI TPM pwn - test QEMU 2MiB kernel load corrected page pointer
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths: [.github/workflows/spi-tpm-pwn-boot-offset.yml, ctf/spi-tpm-pwn-2026/solve_boot_offset.c]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Run hash-checked isolated original guest with own ARM64 payload
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import pathlib,subprocess,textwrap,hashlib,os
+          b=pathlib.Path('.github/workflows/spi-tpm-pwn-pressure-fifo.yml').read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='1d9c47e5810241ee216076e10d715554225531e7'
+          lines=b.decode().splitlines(keepends=True);i=0;blocks=[]
+          while i<len(lines):
+            if lines[i].rstrip()=='        run: |':
+              i+=1;acc=[]
+              while i<len(lines) and (lines[i].startswith('          ') or not lines[i].strip()):acc.append(lines[i]);i+=1
+              blocks.append(textwrap.dedent(''.join(acc)))
+            else:i+=1
+          assert len(blocks)==2
+          subprocess.run(['bash','-euo','pipefail','-c',blocks[0]],check=True,timeout=230)
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          helpers=pathlib.Path('ctf/spi-tpm-pwn-2026/raw_probe.c').read_text().split('static void worker(')[0]
+          src=root/'solve.c';src.write_text(helpers+pathlib.Path('ctf/spi-tpm-pwn-2026/solve_boot_offset.c').read_text())
+          subprocess.run(['clang','--target=aarch64-linux-gnu','-fuse-ld=lld','-nostdlib','-static','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-Wall','-Wextra','-Wl,-e,_start,-s',str(src),'-o',str(root/'payload')],check=True,timeout=20)
+          subprocess.run(['bash','-euo','pipefail','-c',blocks[1]],check=True,timeout=90)
+          text=pathlib.Path('output/fifo.log').read_text()
+          assert 'hitcon{LOCAL_RACE_TEST_ONLY}' in text,'no verified local flag recovery yet'
+          print('LOCAL_FAKE_FLAG_RECOVERY_VERIFIED')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spi-pwn-boot-offset-evidence-${{ matrix.trial }}
+          path: output/
+          retention-days: 2
+          if-no-files-found: error
