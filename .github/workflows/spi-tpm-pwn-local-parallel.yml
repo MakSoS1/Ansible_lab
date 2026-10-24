@@ -1,0 +1,67 @@
+name: SPI TPM Pwn - independent local exploit attempts (bounded)
+on:
+  push:
+    branches: [ctf/spi-tpm-pwn-2026]
+    paths:
+      - .github/workflows/spi-tpm-pwn-local-parallel.yml
+permissions:
+  contents: read
+jobs:
+  local:
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3, 4]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build and run audited isolated AArch64 guest with fake flag
+        shell: bash
+        run: |
+          python3 -u - <<'PY'
+          import pathlib,subprocess,textwrap,hashlib,os
+          b=pathlib.Path('.github/workflows/spi-tpm-pwn-pressure-fifo.yml').read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='1d9c47e5810241ee216076e10d715554225531e7'
+          lines=b.decode().splitlines(keepends=True)
+          blocks=[];i=0
+          while i<len(lines):
+              if lines[i].rstrip()=='        run: |':
+                  i+=1;acc=[]
+                  while i<len(lines) and (lines[i].startswith('          ') or not lines[i].strip()):
+                      acc.append(lines[i]);i+=1
+                  blocks.append(textwrap.dedent(''.join(acc)))
+              else:i+=1
+          assert len(blocks)==2
+          subprocess.run(['bash','-euo','pipefail','-c',blocks[0]],check=True,timeout=230)
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          helpers=pathlib.Path('ctf/spi-tpm-pwn-2026/raw_probe.c').read_text().split('static void worker(')[0]
+          source=helpers+pathlib.Path('ctf/spi-tpm-pwn-2026/solve_pwn.c').read_text()
+          (root/'solve.c').write_text(source)
+          subprocess.run([
+              'clang','--target=aarch64-linux-gnu','-fuse-ld=lld',
+              '-nostdlib','-static','-ffreestanding','-fno-builtin',
+              '-fno-stack-protector','-O2','-Wall','-Wextra','-Wl,-e,_start,-s',
+              str(root/'solve.c'),'-o',str(root/'payload')
+          ],check=True,timeout=25)
+          runner=blocks[1].replace("'VM_TIMEOUT=70'","'VM_TIMEOUT=26'").replace('time.monotonic()-start<65','time.monotonic()-start<30')
+          p=subprocess.run(['bash','-euo','pipefail','-c',runner],check=False,timeout=65)
+          logfile=pathlib.Path('output/fifo.log')
+          data=logfile.read_bytes() if logfile.exists() else b''
+          for marker in (b'PWN_LOCAL_ATTEMPT',b'CONTROLLED_PIPE_RING',b'BEFORE_PIPE_WRITE',
+                         b'AFTER_PIPE_WRITE',b'MODPROBE_AFTER',b'FLAG_RESULT_BEGIN',
+                         b'hitcon{LOCAL_RACE_TEST_ONLY}',b'PROBE_COMPLETE'):
+              print('RESULT',marker.decode(),marker in data,flush=True)
+          print('EXPERIMENT_EXIT',p.returncode,'LOG_BYTES',len(data),flush=True)
+          if b'hitcon{LOCAL_RACE_TEST_ONLY}' in data:
+              print('VERIFIED_LOCAL_FAKE_FLAG_RECOVERED')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spi-tpm-pwn-race-${{ matrix.trial }}
+          path: output/
+          retention-days: 1
+          if-no-files-found: warn
