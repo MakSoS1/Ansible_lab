@@ -98,7 +98,7 @@ jobs:
                       if b'(qemu)' in result[-70:]:break
                   return result.decode('latin1','replace')
               print(recv_prompt()[:2500])
-              for cmd in ['info registers','info mtree','pmemsave 0x40000000 0x4000000 /opt/debug/guest-ram.img']:
+              for cmd in ['info registers','pmemsave 0x40000000 0x4000000 /opt/debug/guest-ram.img']:
                   monitor.sendall((cmd+'\n').encode('ascii'))
                   res=recv_prompt()
                   if cmd=='info registers':
@@ -109,6 +109,10 @@ jobs:
                       print('MEMORY_DUMP',res[-600:].replace('\x1b',' '),flush=True)
               image_file=root/'guest/Image'
               memory_file=debug/'guest-ram.img'
+              for t in range(60):
+                  if memory_file.exists() and memory_file.stat().st_size==0x4000000:break
+                  time.sleep(0.15)
+              print('RAM_DUMP_EXISTS',memory_file.exists(),'SIZE',memory_file.stat().st_size if memory_file.exists() else 0,flush=True)
               if not memory_file.exists(): raise RuntimeError('QEMU did not produce RAM snapshot')
               data=memory_file.read_bytes()
               assert 0<len(data)<=0x4000000
